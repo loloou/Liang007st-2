@@ -1,0 +1,24 @@
+{
+  "appId": "com.liang007.studio",
+  "productName": "liang007生图",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "electron/**/*",
+    "client/dist/**/*"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "logo.ico",
+    "signAndEditExecutable": false
+  },
+  "portable": {
+    "artifactName": "liang007生图.exe"
+  }
+}

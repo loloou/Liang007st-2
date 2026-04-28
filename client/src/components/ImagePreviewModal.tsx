@@ -1,0 +1,251 @@
+import React, { useState, useRef, useEffect } from "react";
+import { GeneratedImage } from "../api/imageClient";
+import { downloadImage } from "../utils/download";
+
+interface ImagePreviewModalProps {
+  image: GeneratedImage | null;
+  onClose: () => void;
+}
+
+export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalProps) {
+  // 所有 hooks 必须放在 early return 之前，顺序固定
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [downloadStatus, setDownloadStatus] = useState<"idle" | "downloading">("idle");
+  // 拖拽时强制重渲染的计数器（必须在 useState 第3位，不能乱动）
+  const [, forceUpdate] = useState(0);
+  // 拖拽全程用 ref，结束时才写 state
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    baseOffsetX: number;
+    baseOffsetY: number;
+  } | null>(null);
+  const hasDragged = useRef(false);
+  const visualTranslate = useRef({ x: 0, y: 0 });
+  // 中键平移状态（放大/未放大都可）
+  const midDragRef = useRef<{
+    startX: number;
+    startY: number;
+    baseOffsetX: number;
+    baseOffsetY: number;
+  } | null>(null);
+  const midDragged = useRef(false);
+
+  // ESC 关闭
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // early return 必须在所有 hooks 之后
+  if (!image) return null;
+
+  const isEnlarged = zoom > 1;
+
+  const handleDownload = async () => {
+    try {
+      setDownloadStatus("downloading");
+      await downloadImage(image.url, `generated_${image.id}.png`);
+    } catch (e) {
+      console.error("下载失败:", e);
+    } finally {
+      setDownloadStatus("idle");
+    }
+  };
+
+  // 单击图片：已放大则还原，未放大则放大（拖拽过则忽略 click）
+  const handleImageClick = () => {
+    if (hasDragged.current) { hasDragged.current = false; return; }
+    if (isEnlarged) {
+      setZoom(1);
+      setOffset({ x: 0, y: 0 });
+    } else {
+      setZoom(2);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // 中键拖动（任何缩放级别都可）
+    if (e.button === 1) {
+      e.preventDefault();
+      midDragged.current = false;
+      midDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        baseOffsetX: offset.x,
+        baseOffsetY: offset.y,
+      };
+      visualTranslate.current = { x: offset.x, y: offset.y };
+      return;
+    }
+    // 左键拖动（仅放大后可拖）
+    if (e.button !== 0) return;
+    if (!isEnlarged) return;
+    e.preventDefault();
+    hasDragged.current = false;
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      baseOffsetX: offset.x,
+      baseOffsetY: offset.y,
+    };
+    visualTranslate.current = { x: offset.x, y: offset.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    // 中键平移
+    if (midDragRef.current) {
+      const { startX, startY, baseOffsetX, baseOffsetY } = midDragRef.current;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!midDragged.current && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        midDragged.current = true;
+      }
+      visualTranslate.current = {
+        x: baseOffsetX + dx,
+        y: baseOffsetY + dy,
+      };
+      forceUpdate((v) => v + 1);
+      return;
+    }
+    // 左键拖动
+    if (!dragRef.current) return;
+    const { startX, startY, baseOffsetX, baseOffsetY } = dragRef.current;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!hasDragged.current && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      hasDragged.current = true;
+    }
+    visualTranslate.current = {
+      x: baseOffsetX + dx,
+      y: baseOffsetY + dy,
+    };
+    // 强制重渲染（拖拽频率不高，可接受）
+    forceUpdate((v) => v + 1);
+  };
+
+  const handleMouseUp = () => {
+    // 中键平移结束
+    if (midDragRef.current) {
+      if (midDragged.current) {
+        setOffset({ x: visualTranslate.current.x, y: visualTranslate.current.y });
+      }
+      midDragRef.current = null;
+      return;
+    }
+    // 左键拖动结束
+    if (!dragRef.current) return;
+    if (hasDragged.current) {
+      setOffset({ x: visualTranslate.current.x, y: visualTranslate.current.y });
+    }
+    dragRef.current = null;
+  };
+
+  const isDragging = !!dragRef.current || !!midDragRef.current;
+  const curTranslate = visualTranslate.current;
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.97)", userSelect: isDragging ? "none" : "auto" }}
+      onClick={onClose}
+      onWheel={(e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 0.88;
+        setZoom((prev) => Math.min(5, Math.max(0.1, parseFloat((prev * factor).toFixed(3)))));
+      }}
+    >
+      {/* 图片可操作区域 */}
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ cursor: isDragging ? "grabbing" : isEnlarged ? "grab" : "zoom-in" }}
+      >
+        <img
+          src={image.url}
+          alt=""
+          draggable={false}
+          style={{
+            maxWidth: zoom <= 1 ? "100vw" : "none",
+            maxHeight: zoom <= 1 ? "100vh" : "none",
+            objectFit: "contain",
+            transform: `scale(${zoom}) translate(${curTranslate.x}px, ${curTranslate.y}px)`,
+            transformOrigin: "center center",
+            transition: isDragging ? "none" : "transform 0.15s ease",
+            borderRadius: zoom <= 1 ? 0 : 6,
+          }}
+          onError={() => {
+            alert("图片加载失败，可能 URL 已过期");
+            onClose();
+          }}
+          onClick={handleImageClick}
+        />
+      </div>
+
+      {/* 顶部控制栏 */}
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-10 pointer-events-none">
+        <div className="pointer-events-auto flex items-center gap-1.5 rounded-xl px-3 py-1.5" style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(12px)" }}>
+          <button
+            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white text-base transition flex items-center justify-center font-bold leading-none"
+            onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.min(5, parseFloat((z * 1.2).toFixed(3)))); }}
+            title="放大 (+20%)"
+          >+</button>
+          <span className="text-white text-xs font-mono w-12 text-center select-none">{Math.round(zoom * 100)}%</span>
+          <button
+            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white text-base transition flex items-center justify-center font-bold leading-none"
+            onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.max(0.1, parseFloat((z * 0.8).toFixed(3)))); }}
+            title="缩小 (-20%)"
+          >−</button>
+          <div className="w-px h-4 bg-white/25 mx-0.5" />
+          <button
+            className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/30 text-white text-[11px] transition"
+            onClick={(e) => { e.stopPropagation(); setZoom(1); setOffset({ x: 0, y: 0 }); }}
+            title="重置 (1:1)"
+          >重置</button>
+          <button
+            className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/30 text-white text-[11px] transition"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen?.().catch(()=>{});
+              } else {
+                document.exitFullscreen?.().catch(()=>{});
+              }
+            }}
+            title="浏览器全屏"
+          >
+            {document.fullscreenElement ? "退出全屏" : "全屏"}
+          </button>
+          {isEnlarged || !!midDragRef.current ? (
+            <span className="text-[10px] text-blue-300 font-medium ml-1">· 可拖动 / 中键平移</span>
+          ) : (
+            <span className="text-[10px] text-white/40 font-medium ml-1">· 中键可平移</span>
+          )}
+        </div>
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            className="px-3 py-1.5 rounded-xl text-white text-sm transition hover:bg-white/20 font-medium flex items-center gap-1.5"
+            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}
+            onClick={(e) => { e.stopPropagation(); handleDownload(); }}
+            disabled={downloadStatus === "downloading"}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            {downloadStatus === "downloading" ? "保存中…" : "保存图片"}
+          </button>
+          <button
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-white/70 hover:text-white text-2xl leading-none transition"
+            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}
+            onClick={onClose}
+            title="关闭 (Esc)"
+          >×</button>
+        </div>
+      </div>
+    </div>
+  );
+}

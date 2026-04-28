@@ -1,0 +1,26 @@
+{
+  "name": "liang007-studio",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "author": "liang007",
+  "scripts": {
+    "dev": "npm run dev --workspace client",
+    "build": "npm run build --workspace client",
+    "preview": "npm run preview --workspace client",
+    "lint": "npm run lint --workspace client",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder -w",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "workspaces": [
+    "client"
+  ],
+  "devDependencies": {
+    "@electron/packager": "^19.1.0",
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1",
+    "electron-packager": "^17.1.2",
+    "png-to-ico": "^3.0.1"
+  }
+}

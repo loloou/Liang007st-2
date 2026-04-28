@@ -1,0 +1,50 @@
+# 依赖目录
+node_modules/
+dist/
+.turbo/
+
+# 编辑器和 IDE
+.cursor/
+.shared/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量（包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+
+# 打包文件
+*.tgz
+*.tar.gz
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 构建产物
+build/
+out/
+
+# 大文件排除
+dist-electron/

@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "sessions": {
+    "8da1a012f0c84b36ae2703a2a9aa1db6": [
+      {
+        "expertId": "SeniorDeveloper",
+        "name": "吴八哥",
+        "profession": "高级开发工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/SeniorDeveloper/SeniorDeveloper.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/SeniorDeveloper/SeniorDeveloper_zh.md",
+        "usedAt": 1777342308486,
+        "industryId": "02-Engineering"
+      },
+      {
+        "expertId": "AutonomousOptimizationArchitect",
+        "name": "自进化",
+        "profession": "自主优化架构师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/AutonomousOptimizationArchitect/AutonomousOptimizationArchitect.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/AutonomousOptimizationArchitect/AutonomousOptimizationArchitect_zh.md",
+        "usedAt": 1777251911872,
+        "industryId": "02-Engineering"
+      },
+      {
+        "expertId": "SoftwareArchitect",
+        "name": "架构通",
+        "profession": "软件架构师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/SoftwareArchitect/SoftwareArchitect.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/SoftwareArchitect/SoftwareArchitect_zh.md",
+        "usedAt": 1777010638555,
+        "industryId": "02-Engineering"
+      }
+    ]
+  },
+  "lastUpdated": 1777347219468
+}
