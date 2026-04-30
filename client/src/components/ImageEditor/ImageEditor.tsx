@@ -1163,7 +1163,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 <div className="space-y-3">
                   <h3 className="text-white/80 text-xs font-medium border-b border-white/10 pb-1">✂ 裁剪</h3>
                   <div className="grid grid-cols-4 gap-1">
-                    {[["free","自由"],["1:1","1:1"],["4:3","4:3"],["16:9","16:9"],["3:2","3:2"],["9:16","9:16"],["3:4","3:4"],["2:3","2:3"]].map(([k,v]) => (
+                    {[["free","自由"],["1:1","1:1"],["4:3","4:3"],["16:9","16:9"],["9:16","9:16"],["3:4","3:4"]].map(([k,v]) => (
                       <button key={k}
                         onClick={() => setCropRatio(k)}
                         className={`py-1 rounded text-[10px] transition ${cropRatio === k ? "bg-indigo-500 text-white" : "bg-white/10 text-white/60"}`}

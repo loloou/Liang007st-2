@@ -16,6 +16,7 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "downloading">("idle");
+  const [isHdLoading, setIsHdLoading] = useState(false); // 原图加载中
   // 拖拽时强制重渲染的计数器（必须在 useState 第3位，不能乱动）
   const [, forceUpdate] = useState(0);
   // 图片 URL：用 ref 缓存初始值，state 管理当前显示（支持降级）
@@ -51,12 +52,28 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
 
   // 初始化图片 URL（只在 image 切换时更新）
   const extendedImage = image as ExtendedImage;
-  const primaryUrl = extendedImage.originalUrl || image.url;
+  const originalUrl = extendedImage.originalUrl;
+  // 优先用缩略图（快速显示），背景懒加载原图
+  const primaryUrl = originalUrl || image.url;
   const hasFallback = !!image.url;
   if (imgInitUrl.current !== primaryUrl) {
     imgInitUrl.current = primaryUrl;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     if (imageUrl !== primaryUrl) setImageUrl(primaryUrl);
+    // 如果有原图且不是 data URI，背景懒加载
+    if (originalUrl && !originalUrl.startsWith("data:")) {
+      setIsHdLoading(true);
+      const hdImg = new Image();
+      hdImg.onload = () => {
+        setImageUrl(originalUrl);
+        setIsHdLoading(false);
+      };
+      hdImg.onerror = () => {
+        // 原图加载失败，保持缩略图
+        setIsHdLoading(false);
+      };
+      hdImg.src = originalUrl;
+    }
   }
 
   const isEnlarged = zoom > 1;
@@ -200,9 +217,9 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
             borderRadius: zoom <= 1 ? 0 : 6,
           }}
           onError={() => {
-            if (hasFallback) {
+            if (hasFallback && !isHdLoading) {
               setImageUrl(image.url);
-            } else {
+            } else if (!isHdLoading) {
               alert("图片加载失败，可能 URL 已过期");
               onClose();
             }
@@ -249,6 +266,9 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
             <span className="text-[10px] text-blue-300 font-medium ml-1">· 可拖动 / 中键平移</span>
           ) : (
             <span className="text-[10px] text-white/40 font-medium ml-1">· 中键可平移</span>
+          )}
+          {isHdLoading && (
+            <span className="text-[10px] text-amber-300 font-medium ml-1 animate-pulse">· 正在加载原图…</span>
           )}
         </div>
         <div className="pointer-events-auto flex items-center gap-2">

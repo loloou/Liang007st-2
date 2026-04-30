@@ -84,6 +84,8 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const elapsedSeconds = useGenerationStore((s) => s.elapsedSeconds);
   const storeStatus = useGenerationStore((s) => s.status);
+  const lastDuration = useGenerationStore((s) => s.lastDuration);
+  const progressPct = useGenerationStore((s) => s.progressPct);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "downloading">("idle");
@@ -239,6 +241,8 @@ function App() {
   const historySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 比例不匹配弹窗防重入标记：用户点"重新生成"后，下一次结果不再触发弹窗
   const ratioMismatchRetried = useRef(false);
+  // 生成计时器 ref
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 存储最新的 handleGenerate 函数引用，避免闭包陷阱
   const handleGenerateRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const saveHistory = (history: typeof generationHistory) => {
@@ -338,9 +342,7 @@ function App() {
 
   // 提示词记录持久化
   useEffect(() => {
-    if (promptHistory.length) {
-      localStorage.setItem(STORAGE_KEYS.PROMPT_HISTORY, JSON.stringify(promptHistory.slice(0, 50)));
-    }
+    localStorage.setItem(STORAGE_KEYS.PROMPT_HISTORY, JSON.stringify(promptHistory.slice(0, 50)));
   }, [promptHistory]);
 
   // 当前生成结果持久化（关闭页面后可在历史中找到）
@@ -452,6 +454,15 @@ function App() {
     }
     setError(null);
     setStatus("running");
+    // 启动生成计时器
+    useGenerationStore.setState({ elapsedSeconds: 0 });
+    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    elapsedTimerRef.current = setInterval(() => {
+      const current = useGenerationStore.getState();
+      if (current.elapsedSeconds < 300) { // 5分钟超时
+        useGenerationStore.setState({ elapsedSeconds: current.elapsedSeconds + 1 });
+      }
+    }, 1000);
     // 每次新的生成开始，重置比例重试标记
     const isRatioRetry = ratioMismatchRetried.current;
     ratioMismatchRetried.current = false;
@@ -533,6 +544,7 @@ function App() {
           return prev;
         }
       });
+      if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
       setStatus("idle");
       if (prompt.trim()) {
         setPromptHistory((prev) => [prompt.trim(), ...prev.filter((p) => p !== prompt.trim())].slice(0, 50));
@@ -639,6 +651,7 @@ function App() {
           jsonValid: result.jsonValid
         }]);
       });
+      if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
       setStatus("idle");
     if (prompt.trim()) {
       setPromptHistory((prev) => [prompt.trim(), ...prev.filter((p) => p !== prompt.trim())].slice(0, 50));
@@ -782,23 +795,6 @@ function App() {
     };
   }, [performanceMonitorOpen]);
 
-  // 提示词模板
-  const [promptTemplates, setPromptTemplates] = useState<{ name: string; prompt: string; negative?: string }[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [templateNameInput, setTemplateNameInput] = useState("");
-  const [showTemplateSave, setShowTemplateSave] = useState(false);
-
-  // 提示词模板持久化
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PROMPT_TEMPLATES, JSON.stringify(promptTemplates));
-  }, [promptTemplates]);
-
   // 历史按钮位置状态（用于拖动）
   // 默认居中，使用固定值避免随机抖动
   const [historyBtnPosition, setHistoryBtnPosition] = useState(() => {
@@ -822,19 +818,6 @@ function App() {
     };
   }, [isDraggingHistory]);
 
-  // 保存模板
-  const handleSaveTemplate = () => {
-    if (!templateNameInput.trim() || !prompt.trim()) return;
-    setPromptTemplates((prev) => [...prev, { name: templateNameInput.trim(), prompt, negative: negativePrompt }]);
-    setTemplateNameInput("");
-    setShowTemplateSave(false);
-  };
-
-  // 删除模板
-  const handleDeleteTemplate = (index: number) => {
-    setPromptTemplates((prev) => prev.filter((_, i) => i !== index));
-  };
-
   // 删除历史记录
   const handleDeleteHistory = (id: string) => {
     setGenerationHistory((prev) => {
@@ -842,82 +825,6 @@ function App() {
       saveHistory(filtered);
       return filtered;
     });
-  };
-
-  // 应用模板
-  const handleApplyTemplate = (template: { name: string; prompt: string; negative?: string }) => {
-    setPrompt(template.prompt);
-    setNegativePrompt(template.negative || "");
-  };
-
-  // 编辑弹窗状态
-  // 编辑模板（改为内联编辑）
-  const handleEditTemplate = (index: number) => {
-    const template = promptTemplates[index];
-    setInlineEditing({
-      index,
-      name: template.name,
-      prompt: template.prompt,
-      negative: template.negative || ""
-    });
-    setInlineEditName(template.name);
-    setInlineEditPrompt(template.prompt);
-    setInlineEditNegative(template.negative || "");
-  };
-
-  // 编辑历史记录（改为内联编辑）
-  const handleEditHistory = (id: string) => {
-    const history = generationHistory.find((h) => h.id === id);
-    if (!history) return;
-    setInlineEditing({
-      id,
-      prompt: history.prompt,
-      negative: history.negativePrompt || ""
-    });
-    setInlineEditPrompt(history.prompt);
-    setInlineEditNegative(history.negativePrompt || "");
-  };
-
-  // 保存内联编辑
-  const handleInlineSaveEdit = () => {
-    if (manageDialogType === "template") {
-      if (inlineEditing?.index === undefined) return;
-      if (!inlineEditName.trim() || !inlineEditPrompt.trim()) {
-        alert(inlineEditName.trim() ? "请输入提示词内容" : "请输入模板名称");
-        return;
-      }
-      setPromptTemplates((prev) =>
-        prev.map((t, i) =>
-          i === inlineEditing!.index
-            ? { ...t, name: inlineEditName.trim(), prompt: inlineEditPrompt.trim(), negative: inlineEditNegative.trim() || "" }
-            : t
-        )
-      );
-    } else if (manageDialogType === "history" && inlineEditing?.id) {
-      setGenerationHistory((prev) =>
-        prev.map((h) =>
-          h.id === inlineEditing!.id
-            ? { ...h, negativePrompt: inlineEditNegative.trim() || "" }
-            : h
-        )
-      );
-    }
-    setInlineEditing(null);
-  };
-
-  // 取消内联编辑
-  const handleInlineCancelEdit = () => {
-    setInlineEditing(null);
-  };
-
-  // 删除内联编辑条目
-  const handleInlineDeleteEdit = () => {
-    if (manageDialogType === "template" && inlineEditing?.index !== undefined) {
-      handleDeleteTemplate(inlineEditing.index);
-    } else if (manageDialogType === "history" && inlineEditing?.id) {
-      handleDeleteHistory(inlineEditing.id);
-    }
-    setInlineEditing(null);
   };
 
   // 管理弹窗尺寸
@@ -955,16 +862,12 @@ function App() {
   const [historyTemplateValue, setHistoryTemplateValue] = useState("");
 
   // 反向提示词下拉值（用于重置选择）
-  const [negTemplateValue, setNegTemplateValue] = useState("");
 
-  // 历史/模板管理弹窗
+  // 历史管理弹窗
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
-  const [manageDialogType, setManageDialogType] = useState<"history" | "template">("history");
-  // 内联编辑状态（在管理弹窗中直接编辑，不打开新弹窗）
-  const [inlineEditing, setInlineEditing] = useState<{ index?: number; id?: string; name?: string; prompt?: string; negative?: string } | null>(null);
-  const [inlineEditName, setInlineEditName] = useState("");
-  const [inlineEditPrompt, setInlineEditPrompt] = useState("");
-  const [inlineEditNegative, setInlineEditNegative] = useState("");
+  // 历史管理标签页
+  const [historyTab, setHistoryTab] = useState<"input">("input");
+  const [selectedPromptHistory, setSelectedPromptHistory] = useState<Set<number>>(new Set());
 
   const handlePromptOptimize = () => {
     if (!prompt.trim()) return;
@@ -2220,11 +2123,11 @@ function App() {
                                     const elapsedMs = entry.createdAt ? Date.now() - entry.createdAt : null;
                                     const elapsedStr = elapsedMs ? `（耗时 ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒）` : "";
                                     const errorLog = {
-                                      time: new Date(entry.timestamp).toLocaleTimeString(),
+                                      time: new Date(entry.createdAt || Date.now()).toLocaleTimeString(),
                                       endpoint: `生成图片${elapsedStr}`,
                                       error: entry.error,
                                       request: `[模型] ${entry.model}\n[尺寸] ${entry.width}×${entry.height}\n[批次] ${entry.batchSize}\n[正向提示词]\n${entry.prompt}${entry.negativePrompt ? `\n\n[反向提示词]\n${entry.negativePrompt}` : ""}`,
-                                      httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || entry.timestamp).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
+                                      httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || Date.now()).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
                                     };
                                     useUiStore.getState().setSelectedLogEntry(errorLog);
                                     useUiStore.getState().setShowDetailedLog(true);
@@ -2304,11 +2207,11 @@ function App() {
                               const elapsedMs = entry.createdAt ? Date.now() - entry.createdAt : null;
                               const elapsedStr = elapsedMs ? `（耗时 ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒）` : "";
                               const errorLog = {
-                                time: new Date(entry.timestamp).toLocaleTimeString(),
+                                time: new Date(entry.createdAt || Date.now()).toLocaleTimeString(),
                                 endpoint: `生成图片${elapsedStr}`,
                                 error: entry.error,
                                 request: `[模型] ${entry.model}\n[尺寸] ${entry.width}×${entry.height}\n[批次] ${entry.batchSize}\n[正向提示词]\n${entry.prompt}${entry.negativePrompt ? `\n\n[反向提示词]\n${entry.negativePrompt}` : ""}`,
-                                httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || entry.timestamp).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
+                                httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || Date.now()).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
                               };
                               useUiStore.getState().setSelectedLogEntry(errorLog);
                               useUiStore.getState().setShowDetailedLog(true);
@@ -2393,17 +2296,17 @@ function App() {
             <div className="flex items-center gap-2 text-sm text-slate-700">
               <span className="font-semibold">生成结果</span>
               {results.length > 0 && <span className="badge-primary">{results.length} 张</span>}
-              {results.length > 0 && elapsedSeconds > 0 && (() => {
-                const mins = Math.floor(elapsedSeconds / 60);
-                const secs = elapsedSeconds % 60;
-                return <span className="badge-primary/60 text-slate-500 font-mono">{mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`}</span>;
-              })()}
-              {selectedImageIds.size > 0 && <span className="badge-success">已选 {selectedImageIds.size}</span>}
+              {/* 生图完成：显示用时 */}
+              {results.length > 0 && lastDuration && (
+                <span className="badge-primary/60 text-slate-500 font-mono">用时 {lastDuration}</span>
+              )}
+              {/* 生成中：显示倒计时 */}
               {storeStatus === "running" && (() => {
                 const mins = Math.floor(elapsedSeconds / 60);
                 const secs = elapsedSeconds % 60;
                 return <span className="badge-warning flex items-center gap-1"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />生成中 {mins > 0 ? `(${mins}分${secs}秒)` : `(${secs}秒)`}</span>;
               })()}
+              {selectedImageIds.size > 0 && <span className="badge-success">已选 {selectedImageIds.size}</span>}
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               {results.length > 0 && (
@@ -2469,12 +2372,12 @@ function App() {
                     {/* 主图区 - 填满结果区 */}
                     <div
                       className="flex-1 relative overflow-hidden cursor-pointer group"
-                      onClick={() => { setPreviewImage(activeImg); }}
+                      onClick={() => { if (status !== "running") setPreviewImage(activeImg); }}
                     >
                       <img
                         src={activeImgUrl}
                         alt=""
-                        className="w-full h-full object-contain"
+                        className={`w-full h-full object-contain ${status === "running" ? "opacity-40 scale-105" : ""} transition-all duration-300`}
                         draggable={false}
                         onError={(e) => {
                           // 缩略图也失败时再提示
@@ -2484,14 +2387,54 @@ function App() {
                           }
                         }}
                       />
-                      {/* 删除按钮 */}
+
+                      {/* 叠层进度遮罩 - 再次生图时显示在旧图上方 */}
+                      {status === "running" && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+                          {/* 半透明暗色背景 */}
+                          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+                          {/* 进度内容 */}
+                          <div className="relative z-10 flex flex-col items-center gap-3 w-full px-6 max-w-xs">
+                            {/* 旋转图标 + 文字 */}
+                            <div className="flex items-center gap-2 text-white">
+                              <svg className="animate-spin w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                              <span className="text-sm font-medium">生成中…</span>
+                              <span className="text-xs text-amber-300 font-mono ml-1">
+                                {Math.floor(elapsedSeconds / 60) > 0
+                                  ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
+                                  : `${elapsedSeconds}秒`}
+                              </span>
+                            </div>
+                            {/* 进度条 */}
+                            <div className="w-full">
+                              <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${progressPct}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between mt-1">
+                                <span className="text-[10px] text-amber-200">正在生成新图…</span>
+                                <span className="text-[10px] text-amber-200 font-mono">{progressPct}%</span>
+                              </div>
+                            </div>
+                            {/* 提示文字 */}
+                            <p className="text-[10px] text-white/60 text-center">旧图已保留，新图完成后自动切换</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 返回默认界面按钮 */}
                       <button
-                        className="absolute top-2 left-2 w-8 h-8 rounded-full bg-red-500/80 hover:bg-red-600 text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10"
-                        onClick={(e) => { e.stopPropagation(); setResults((prev) => prev.filter((_, i) => i !== safeIdx)); setResultActiveIdx(0); }}
-                        title="删除此图片"
+                        className="absolute top-2 left-2 w-8 h-8 rounded-full bg-slate-500/80 hover:bg-slate-600 text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-30"
+                        onClick={(e) => { e.stopPropagation(); setResults([]); setResultActiveIdx(0); setSelectedImageIds(new Set()); }}
+                        title="返回默认界面"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                         </svg>
                       </button>
                       {/* 左右切换箭头（多图时显示） */}
@@ -3178,23 +3121,21 @@ function App() {
         onAdopt={(optimized) => setPrompt(optimized)}
       />
 
-      {/* ── 管理/历史弹窗（统一） ───────────────────────────────────────────── */}
+      {/* ── 历史记录管理弹窗 ─────────────────────────────────────────────── */}
       {manageDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-dark" onClick={() => setManageDialogOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-dark" onClick={() => { setManageDialogOpen(false); setSelectedPromptHistory(new Set()); }}>
           <div
             className="glass-popup rounded-2xl overflow-hidden flex flex-col popup-enter"
-            style={{ width: manageModalSize.w, height: manageModalSize.h, minHeight: 400, minWidth: 520 }}
+            style={{ width: manageModalSize.w, height: manageModalSize.h, minHeight: 420, minWidth: 560 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 标题栏 */}
             <div className="px-5 py-3 border-b border-slate-200/60 flex items-center justify-between bg-white/40">
-              <h3 className="text-sm font-semibold text-slate-800">
-                {manageDialogType === "template" ? "📁 提示词模板管理" : "📋 生成历史管理"}
-              </h3>
+              <h3 className="text-sm font-semibold text-slate-800">📋 历史记录管理</h3>
               <button
                 type="button"
                 className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                onClick={() => setManageDialogOpen(false)}
+                onClick={() => { setManageDialogOpen(false); setSelectedPromptHistory(new Set()); }}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3202,304 +3143,120 @@ function App() {
               </button>
             </div>
 
-            {/* 内容区 */}
-            <div className="flex-1 overflow-auto p-4">
-              {/* 内联编辑表单 */}
-              {inlineEditing ? (
-                <div className="bg-white rounded-xl border-2 border-primary-200 p-4 mb-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100">
-                    <h4 className="text-sm font-semibold text-primary-600">
-                      {manageDialogType === "template" ? "✏️ 编辑模板" : "✏️ 编辑历史记录"}
-                    </h4>
-                    <button
-                      type="button"
-                      className="text-slate-400 hover:text-slate-600 transition-colors"
-                      onClick={handleInlineCancelEdit}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {/* 模板名称（仅模板编辑） */}
-                    {manageDialogType === "template" && (
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">模板名称</label>
-                        <input
-                          type="text"
-                          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400"
-                          value={inlineEditName}
-                          onChange={(e) => setInlineEditName(e.target.value)}
-                          placeholder="输入模板名称..."
-                        />
-                      </div>
-                    )}
-                    
-                    {/* 正向提示词 */}
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">
-                        {manageDialogType === "template" ? "正向提示词" : "提示词（只读）"}
-                      </label>
-                      <textarea
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 resize-none"
-                        rows={3}
-                        value={inlineEditPrompt}
-                        onChange={(e) => setInlineEditPrompt(e.target.value)}
-                        disabled={manageDialogType === "history"}
-                        style={manageDialogType === "history" ? { backgroundColor: "#f8fafc" } : {}}
-                        placeholder="输入提示词..."
-                      />
-                    </div>
-                    
-                    {/* 反向提示词 */}
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">反向提示词</label>
-                      <textarea
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 resize-none"
-                        rows={2}
-                        value={inlineEditNegative}
-                        onChange={(e) => setInlineEditNegative(e.target.value)}
-                        placeholder="输入反向提示词（可选）..."
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 rounded-lg text-xs border border-red-200 text-red-500 hover:bg-red-50 transition"
-                      onClick={handleInlineDeleteEdit}
-                    >
-                      删除条目
-                    </button>
-                    <div className="flex-1"></div>
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-                      onClick={handleInlineCancelEdit}
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      className="px-4 py-1.5 rounded-lg text-xs font-medium bg-primary-500 text-white hover:bg-primary-600 transition shadow-sm"
-                      onClick={handleInlineSaveEdit}
-                    >
-                      保存修改
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              
-              {manageDialogType === "template" ? (
-                /* 模板列表 + 输入历史 */
-                <div className="space-y-4">
-                  {/* 模板列表 */}
-                  {promptTemplates.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">📁 保存的模板（{promptTemplates.length}）</div>
-                      {promptTemplates.map((t, i) => (
-                        <div
-                          key={i}
-                          className="group bg-white/60 rounded-lg border border-slate-200 hover:border-primary-300 transition-all p-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-semibold text-slate-800 truncate">{t.name}</span>
-                                <button
-                                  type="button"
-                                  className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-primary-600 transition-colors"
-                                  title="编辑模板"
-                                  onClick={() => handleEditTemplate(i)}
-                                >
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                </button>
-                              </div>
-                              <div className="text-[11px] text-slate-600 mb-1">{t.prompt.slice(0, 80)}{t.prompt.length > 80 ? "..." : ""}</div>
-                              {t.negative && t.negative.trim() && (
-                                <div className="text-[11px] text-rose-600/80 italic">反向: {t.negative.slice(0, 40)}{t.negative.length > 40 ? "..." : ""}</div>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
-                              title="删除模板"
-                              onClick={() => handleDeleteTemplate(i)}
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center text-slate-400 py-4">
-                      <svg className="w-10 h-10 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <p className="text-sm">暂无保存的模板</p>
-                      <p className="text-xs mt-1">在提示词下拉中选择"保存当前为模板"</p>
-                    </div>
-                  )}
-
-                  {/* 输入历史列表 */}
-                  {promptHistory.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 pt-2 border-t border-slate-200/60">📝 输入历史（{promptHistory.length}）</div>
-                      {promptHistory.map((p, i) => (
-                        <div
-                          key={i}
-                          className="group bg-white/40 rounded-lg border border-slate-100 hover:border-primary-200 transition-all p-2.5"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div
-                              className="flex-1 text-[11px] text-slate-600 line-clamp-2 cursor-pointer hover:text-primary-600"
-                              onClick={() => { setPrompt(p); setManageDialogOpen(false); }}
-                              title="点击应用此提示词"
-                            >
-                              {p}
-                            </div>
-                            <button
-                              type="button"
-                              className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
-                              title="删除此历史"
-                              onClick={() => {
-                                setPromptHistory(prev => prev.filter((_, idx) => idx !== i));
-                              }}
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {promptHistory.length > 0 && (
-                        <button
-                          type="button"
-                          className="w-full mt-2 px-3 py-1.5 rounded-lg text-xs border border-red-200 text-red-500 hover:bg-red-50 transition"
-                          onClick={() => {
-                            if (confirm("确定要清空所有输入历史吗？")) {
-                              setPromptHistory([]);
-                            }
-                          }}
-                        >
-                          清空输入历史
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* 反向提示词历史记录列表 */
-                (() => {
-                  const negativeHistory = generationHistory.filter(h => h.negativePrompt && h.negativePrompt.trim());
-                  return negativeHistory.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold text-rose-500 uppercase tracking-wide mb-2">⛔ 反向提示词历史（{negativeHistory.length}）</div>
-                    {negativeHistory.map((h, i) => {
-                      const isGenerating = h.results.length === 0;
-                      return (
-                        <div
-                          key={h.id}
-                          className={`group bg-white/60 rounded-lg border transition-all p-3 ${
-                            isGenerating
-                              ? h.error
-                                ? "border-red-300 bg-red-50/40"
-                                : "border-blue-300 bg-blue-50/40"
-                              : "border-slate-200 hover:border-blue-300"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-semibold text-slate-800">{h.time}</span>
-                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px]">{h.model}</span>
-                              </div>
-                              {/* 反向提示词 - 主要显示 */}
-                              <div className="text-[11px] text-rose-600 mb-1 font-medium">{h.negativePrompt}</div>
-                              {/* 正向提示词 - 次要显示 */}
-                              <div className="text-[11px] text-slate-500 italic">正向: {h.prompt.slice(0, 50)}{h.prompt.length > 50 ? "..." : ""}</div>
-                            </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              {!isGenerating && (
-                                <button
-                                  type="button"
-                                  className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors"
-                                  title="编辑历史（修改反向提示词）"
-                                  onClick={() => handleEditHistory(h.id)}
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                                title="删除历史记录"
-                                onClick={() => handleDeleteHistory(h.id)}
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400 py-8">
-                    <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-sm">暂无反向提示词历史</p>
-                    <p className="text-xs mt-1">使用了反向提示词的生成记录会显示在此</p>
-                  </div>
-                );
-                })()
-              )}
+            {/* 标签页切换 */}
+            <div className="px-5 pt-3 pb-0 flex items-center gap-1 bg-white/20">
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-t-lg text-xs font-medium transition-all ${historyTab === "input" ? "bg-white text-primary-600 border border-slate-200 border-b-white -mb-px" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"}`}
+                onClick={() => { setHistoryTab("input"); }}
+              >
+                📝 输入历史 <span className="ml-1 text-[10px] opacity-70">{promptHistory.length}</span>
+              </button>
             </div>
 
-            {/* 底部操作区 */}
-            <div className="px-5 py-3 border-t border-slate-200/60 bg-slate-50/60 flex items-center justify-between flex-shrink-0">
-              {manageDialogType === "template" && (
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition"
-                  onClick={() => {
-                    if (confirm("确定要清空所有模板吗？此操作不可恢复。")) {
-                      setPromptTemplates([]);
-                    }
-                  }}
-                >
-                  清空全部
-                </button>
-              )}
-              {manageDialogType === "history" && (
-                <button
-                  type="button"
-                  className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition"
-                  onClick={() => {
-                    if (confirm("确定要清空所有历史记录吗？此操作不可恢复。")) {
-                      setGenerationHistory([]);
-                    }
-                  }}
-                >
-                  清空全部
-                </button>
-              )}
-              <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                <span>模板 {promptTemplates.length} | 输入历史 {promptHistory.length} | 生成历史 {generationHistory.length}</span>
+            {/* 批量操作工具栏 */}
+            {(() => {
+              const selCount = selectedPromptHistory.size;
+              return selCount > 0 ? (
+                <div className="px-5 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+                  <span className="text-xs text-blue-600 font-medium">已选择 {selCount} 项</span>
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-lg text-[11px] border border-blue-200 text-blue-600 hover:bg-blue-100 transition"
+                    onClick={() => {
+                      setSelectedPromptHistory(new Set(promptHistory.map((_, i) => i)));
+                    }}
+                  >
+                    全选
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-lg text-[11px] border border-blue-200 text-blue-600 hover:bg-blue-100 transition"
+                    onClick={() => {
+                      setSelectedPromptHistory(prev => {
+                        const all = new Set(promptHistory.map((_, i) => i));
+                        return new Set([...all].filter(i => !prev.has(i)));
+                      });
+                    }}
+                  >
+                    反选
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    type="button"
+                    className="px-3 py-1 rounded-lg text-[11px] bg-red-500 text-white hover:bg-red-600 transition"
+                    onClick={() => {
+                      const toDel = [...selectedPromptHistory].sort((a, b) => b - a);
+                      setPromptHistory(prev => prev.filter((_, i) => !selectedPromptHistory.has(i)));
+                      setSelectedPromptHistory(new Set());
+                    }}
+                  >
+                    删除所选
+                  </button>
+                </div>
+              ) : null;
+            })()}
+
+            {/* 内容区（标签页切换） */}
+            <div className="flex-1 overflow-auto px-5 py-3">
+              {/* ── 输入历史 ── */}
+              {promptHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-400 py-12">
+                    <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    <p className="text-sm">暂无输入历史</p>
+                    <p className="text-xs mt-1">每次生成后会保存提示词到历史</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {promptHistory.map((p, i) => (
+                      <div
+                        key={i}
+                        className={`group flex items-start gap-2 bg-white/50 rounded-lg border transition-all p-2.5 hover:border-primary-200 ${selectedPromptHistory.has(i) ? "border-blue-300 bg-blue-50/30" : "border-slate-100"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-300 cursor-pointer flex-shrink-0"
+                          checked={selectedPromptHistory.has(i)}
+                          onChange={(e) => {
+                            setSelectedPromptHistory(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(i); else next.delete(i);
+                              return next;
+                            });
+                          }}
+                        />
+                        <div
+                          className="flex-1 text-[11px] text-slate-600 line-clamp-2 cursor-pointer hover:text-primary-600 min-w-0"
+                          onClick={() => { setPrompt(p); setManageDialogOpen(false); }}
+                          title="点击应用此提示词"
+                        >
+                          {p}
+                        </div>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+                          title="删除"
+                          onClick={() => {
+                            setPromptHistory(prev => prev.filter((_, idx) => idx !== i));
+                            setSelectedPromptHistory(prev => { const s = new Set(prev); s.delete(i); return s; });
+                          }}
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
+            {/* 底部状态栏 */}
+            <div className="px-5 py-2.5 border-t border-slate-200/60 bg-slate-50/60 flex items-center justify-end flex-shrink-0">
+              <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                <span>📝 输入历史 {promptHistory.length}</span>
               </div>
             </div>
 
@@ -3524,8 +3281,6 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* 编辑弹窗已改为内联编辑，移除旧代码 */}
 
       {/* ── 关于弹窗 ─────────────────────────────────────────────────────── */}
       <AboutDialog />
@@ -3569,7 +3324,7 @@ function App() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
             />
-            {/* 提示词模板下拉（含模板和历史记录） */}
+            {/* 提示词历史下拉 */}
             <div className="flex items-center gap-1">
               <select
                 className="flex-1 min-w-[140px] text-xs rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-300"
@@ -3578,11 +3333,7 @@ function App() {
                   const v = e.target.value;
                   setHistoryTemplateValue("");
                   if (!v) return;
-                  if (v.startsWith("tpl:")) {
-                    // 应用模板
-                    const idx = parseInt(v.slice(4));
-                    if (!isNaN(idx) && promptTemplates[idx]) handleApplyTemplate(promptTemplates[idx]);
-                  } else if (v.startsWith("ph:")) {
+                  if (v.startsWith("ph:")) {
                     // 应用输入历史
                     const idx = parseInt(v.slice(3));
                     if (!isNaN(idx) && promptHistory[idx]) {
@@ -3601,9 +3352,7 @@ function App() {
                       if (entry.results && entry.results.length > 0) {
                         const validResults = entry.results.filter(img => {
                           if (!img || !img.url) return false;
-                          // 跳过失效的 blob: 和 data: URL
                           if (img.url.startsWith('blob:') || img.url.startsWith('data:')) {
-                            // 如果有 originalUrl 字段，使用它
                             if ((img as any).originalUrl && !(img as any).originalUrl.startsWith('blob:') && !(img as any).originalUrl.startsWith('data:')) {
                               (img as any).url = (img as any).originalUrl;
                               return true;
@@ -3618,12 +3367,10 @@ function App() {
                         }
                       }
                     }
-                  } else if (v === "save") {
-                    setShowTemplateSave(true);
                   }
                 }}
               >
-                <option value="">提示词模板/历史…</option>
+                <option value="">提示词历史…</option>
                 {/* 输入历史 */}
                 {promptHistory.length > 0 && (
                   <optgroup label="📝 输入历史">
@@ -3634,56 +3381,20 @@ function App() {
                     ))}
                   </optgroup>
                 )}
-                {/* 历史记录选项 */}
-                {generationHistory.length > 0 && (
-                  <optgroup label="📋 生成历史">
-                    {generationHistory.slice(0, 10).map((entry, i) => (
-                      <option key={`hist-${i}`} value={`hist:${i}`}>
-                        {entry.time} - {entry.prompt.slice(0, 25)}{entry.prompt.length > 25 ? "..." : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {/* 模板选项 */}
-                <optgroup label="📁 保存的模板">
-                  {promptTemplates.length > 0 ? (
-                    promptTemplates.map((t, i) => (
-                      <option key={i} value={`tpl:${i}`}>{t.name}</option>
-                    ))
-                  ) : (
-                    <option disabled value="">（暂无模板）</option>
-                  )}
-                </optgroup>
-                <option value="save">＋ 保存当前为模板…</option>
               </select>
-              {/* 管理按钮：打开模板管理弹窗 */}
+              {/* 管理按钮：打开历史管理弹窗 */}
               <button
                 type="button"
-                title="管理提示词"
+                title="管理历史"
                 className="flex-shrink-0 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-500 hover:text-primary-600 hover:border-primary-200 hover:bg-primary-50 transition text-[11px]"
-                onClick={() => { setManageDialogType("template"); setManageDialogOpen(true); }}
+                onClick={() => { setManageDialogOpen(true); }}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </button>
             </div>
-            {/* 保存模板内联区 */}
-            {showTemplateSave && (
-              <div className="flex items-center gap-1.5 bg-primary-50 rounded-lg px-2 py-1.5 border border-primary-200">
-                <input
-                  type="text"
-                  className="flex-1 text-xs rounded border border-primary-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-300"
-                  placeholder="模板名称…"
-                  value={templateNameInput}
-                  onChange={(e) => setTemplateNameInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveTemplate()}
-                />
-                <button type="button" className="px-2 py-1 rounded bg-primary-500 text-white text-[11px] hover:bg-primary-600" onClick={handleSaveTemplate}>保存</button>
-                <button type="button" className="px-2 py-1 rounded border border-slate-200 text-slate-500 text-[11px] hover:bg-slate-50" onClick={() => { setShowTemplateSave(false); setTemplateNameInput(""); }}>×</button>
-              </div>
-            )}
-            {/* 反向提示词 - 历史记录 + 模板 */}
+            {/* 反向提示词 - 历史记录 */}
             <div className="border border-slate-200/60 rounded-lg overflow-hidden">
               <textarea
                 className="w-full text-xs glass-input px-2.5 py-2 resize-none app-scrollbar rounded-none border-0"
@@ -3692,66 +3403,6 @@ function App() {
                 value={negativePrompt}
                 onChange={(e) => setNegativePrompt(e.target.value)}
               />
-              {/* 反向提示词历史记录 + 模板（合并到一个下拉） */}
-              <div className="border-t border-slate-200/60 px-2 py-1.5 bg-slate-50/40">
-                {/* 模板和历史记录合并下拉 */}
-                <div className="flex items-center gap-1">
-                  <select
-                    className="flex-1 min-w-[140px] text-xs rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-rose-300"
-                    value={negTemplateValue}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setNegTemplateValue("");
-                      if (!v) return;
-                      if (v.startsWith("tpl:")) {
-                        // 从正向模板中提取反向提示词
-                        const idx = parseInt(v.slice(4));
-                        if (!isNaN(idx) && promptTemplates[idx]) {
-                          setNegativePrompt(promptTemplates[idx].negative || "");
-                        }
-                      } else if (v.startsWith("hist:")) {
-                        // 从生成历史中提取反向提示词
-                        const idx = parseInt(v.slice(5));
-                        if (!isNaN(idx) && generationHistory[idx] && generationHistory[idx].negativePrompt) {
-                          setNegativePrompt(generationHistory[idx].negativePrompt || "");
-                        }
-                      }
-                    }}
-                  >
-                    <option value="">反向提示词/历史…</option>
-                    {/* 历史记录中的反向提示词 */}
-                    {generationHistory.filter(h => h.negativePrompt && h.negativePrompt.trim()).length > 0 && (
-                      <optgroup label="📋 历史记录">
-                        {generationHistory.filter(h => h.negativePrompt && h.negativePrompt.trim()).slice(0, 10).map((entry, i) => (
-                          <option key={`hist-${entry.id}`} value={`hist:${generationHistory.indexOf(entry)}`}>
-                            {entry.time} - {entry.negativePrompt!.slice(0, 25)}{entry.negativePrompt!.length > 25 ? "..." : ""}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {/* 模板中的反向提示词 */}
-                    {promptTemplates.filter(t => t.negative && t.negative.trim()).length > 0 && (
-                      <optgroup label="📁 保存的模板">
-                        {promptTemplates.filter(t => t.negative && t.negative.trim()).map((t, i) => (
-                          <option key={i} value={`tpl:${promptTemplates.indexOf(t)}`}>
-                            {t.name} - {t.negative!.slice(0, 20)}{t.negative!.length > 20 ? "..." : ""}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                  <button
-                    type="button"
-                    title="管理反向提示词"
-                    className="flex-shrink-0 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-500 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition text-[11px]"
-                    onClick={() => { setManageDialogType("history"); setManageDialogOpen(true); }}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -3808,13 +3459,42 @@ function App() {
             </div>
           </div>
 
-          {/* ── 生图设置 - 单行紧凑 ── */}
+          {/* ── 生图设置 ── */}
           <div className="glass-card rounded-xl px-3 py-2.5 flex flex-col gap-2 flex-shrink-0">
-            <div className="text-xs font-semibold text-slate-700">生图设置</div>
-            {/* 四项横排：模型 / 比例 / 分辨率 / 数量 */}
-            <div className="grid grid-cols-[1fr_88px_68px_1fr] gap-1.5 text-[11px]">
-              {/* 模型 */}
+            <div className="text-xs font-semibold text-slate-700">生图参数</div>
+            {/* 第一行：比例下拉 + 分辨率按钮组 */}
+            <div className="flex items-center gap-2">
+              {/* 比例下拉 */}
+              <div className="flex flex-col gap-0.5 flex-1">
+                <span className="text-slate-400 text-[10px]">宽高比</span>
+                <AspectRatioSelect
+                  value={resolutionPreset}
+                  onChange={setResolutionPreset}
+                />
+              </div>
+              {/* 分辨率按钮组 */}
               <div className="flex flex-col gap-0.5">
+                <span className="text-slate-400 text-[10px]">分辨率</span>
+                <div className="flex gap-1">
+                  {SIZE_TIERS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`px-3 py-1.5 rounded border text-[11px] font-medium transition ${
+                        sizeTier === t.id
+                          ? "border-primary-500 bg-primary-50 text-primary-700"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                      onClick={() => setSizeTier(t.id as SizeTierId)}
+                    >{t.label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* 第二行：模型下拉 + 数量下拉 */}
+            <div className="flex items-center gap-2">
+              {/* 模型下拉 */}
+              <div className="flex flex-col gap-0.5 flex-1">
                 <span className="text-slate-400 text-[10px]">模型</span>
                 <select
                   value={model}
@@ -3827,48 +3507,21 @@ function App() {
                   ))}
                 </select>
               </div>
-              {/* 比例 */}
+              {/* 数量下拉 */}
               <div className="flex flex-col gap-0.5">
-                <span className="text-slate-400 text-[10px]">比例</span>
-                <AspectRatioSelect
-                  value={resolutionPreset}
-                  onChange={setResolutionPreset}
-                  isGemini={(getApiConfig().globalApiSpec ?? "gemini") === "gemini"}
-                />
-              </div>
-              {/* 分辨率 */}
-              <div className="flex flex-col gap-0.5">
-                <span className="text-slate-400 text-[10px]">分辨率</span>
+                <span className="text-slate-400 text-[10px]">数量</span>
                 <select
-                  value={sizeTier}
-                  onChange={(e) => setSizeTier(e.target.value as SizeTierId)}
-                  className="border border-slate-200 rounded-md px-1.5 py-1.5 text-[11px] bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-300 w-full"
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(Number(e.target.value))}
+                  className="border border-slate-200 rounded-md px-1.5 py-1.5 text-[11px] bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-300 w-16"
                 >
-                  {SIZE_TIERS.map((t) => (
-                    <option key={t.id} value={t.id}>{t.label}</option>
+                  {[1, 2, 4].map((n) => (
+                    <option key={n} value={n}>{n}</option>
                   ))}
                 </select>
               </div>
-              {/* 数量 */}
-              <div className="flex flex-col gap-0.5">
-                <span className="text-slate-400 text-[10px]">数量</span>
-                <div className="flex gap-0.5">
-                  {[1, 2, 4].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`flex-1 py-1.5 rounded border text-[11px] font-medium transition ${
-                        batchSize === n
-                          ? "border-primary-500 bg-primary-50 text-primary-700"
-                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                      onClick={() => setBatchSize(n)}
-                    >{n}</button>
-                  ))}
-                </div>
-              </div>
             </div>
-            {/* 分辨率尺寸 + 已选模型管理（同行） */}
+            {/* 尺寸 + 已选模型管理（同行） */}
             <div className="flex items-center justify-between text-[10px]">
               <span className="text-slate-400 tabular-nums">{width} × {height} px</span>
               <button
@@ -3927,7 +3580,7 @@ function App() {
           </div>
 
           {/* ── 日志 ── */}
-          <div className="glass-card rounded-xl flex flex-col overflow-hidden flex-1 min-h-0">
+          <div className="glass-card rounded-xl flex flex-col overflow-hidden flex-1 min-h-0" style={{ maxHeight: 160 }}>
             {/* 标题栏 */}
             <div className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-white/20">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">

@@ -130,7 +130,7 @@ export interface CropConfig {
   rotation: number;    // -45 ~ 45
   flipH: boolean;
   flipV: boolean;
-  aspectPreset: string; // "free" | "1:1" | "4:3" | "3:2" | "16:9" | "9:16" | "2:3" | custom
+  aspectPreset: string; // "free" | "1:1" | "4:3" | "16:9" | "9:16" | "3:4" | custom
   guidePreset: string;  // "none" | "rule" | "golden" | "grid" | "diagonal"
 }
 

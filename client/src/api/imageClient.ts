@@ -119,38 +119,31 @@ function toOpenAISizeString(width: number, height: number): string {
  * presetId 存在时直接用预设 ratio；fallback 时通过宽高比像素值映射
  */
 function toAspectRatio(width: number, height: number, presetId?: string): string {
-  // Gemini 官方支持的 10 种比例
-  const GEMINI_RATIOS = [
-    "1:1", "16:9", "9:16", "4:3", "3:4",
-    "21:9", "3:2", "2:3", "5:4", "4:5"
-  ] as const;
+  // Gemini 官方支持的 10 种纵横比
+  const GEMINI_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5"] as const;
 
   // 精确预设直接返回
   if (presetId && presetId !== "original") {
     if ((GEMINI_RATIOS as readonly string[]).includes(presetId)) return presetId;
-    // 不支持的预设映射到最近似值
-    const ratioMap: Record<string, string> = {
-      "9:21": "9:16",  // 超竖 → 竖屏最接近
-    };
-    if (ratioMap[presetId]) return ratioMap[presetId];
-    // 其余全部走像素比 fallback
+    // 不支持的预设走像素比 fallback
   }
 
-  // 按像素比映射（阈值参考官方 4K 尺寸表）
+  // 按像素比映射 fallback（阈值为相邻预设的几何均值）
   const ratio = width / height;
 
   // 横向
-  if (ratio > 2.1)    return "21:9";  // ~2.333
-  if (ratio > 1.55)   return "16:9";  // ~1.778
-  if (ratio > 1.25)   return "4:3";   // ~1.333
-  if (ratio > 1.05)   return "5:4";   // ~1.25
+  if (ratio > 2.0)   return "21:9";  // ~2.333
+  if (ratio > 1.35)   return "16:9";  // ~1.778
+  if (ratio > 1.1)    return "5:4";   // 1.25
+  if (ratio > 1.02)   return "4:3";   // ~1.333
   // 正方形
-  if (ratio >= 0.95)  return "1:1";
+  if (ratio >= 0.98) return "1:1";
 
   // 纵向
-  if (ratio > 0.85)  return "4:5";   // ~0.8
-  if (ratio > 0.65)  return "3:4";   // ~0.75
-  if (ratio > 0.52)  return "2:3";   // ~0.667
+  if (ratio > 0.82)   return "3:2";   // ~1.5
+  if (ratio > 0.72)   return "4:5";   // 0.8
+  if (ratio > 0.62)   return "3:4";   // ~0.75
+  if (ratio > 0.45)   return "2:3";   // ~0.667
   return "9:16";                      // ~0.5625
 }
 
