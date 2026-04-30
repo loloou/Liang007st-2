@@ -67,27 +67,6 @@ type DiffStats = {
 
 // ── 模板图标映射 ──────────────────────────────────────────────────────
 
-// ── 模板与标本类型关联 ─────────────────────────────────────────────────
-
-const TEMPLATE_SPECIMEN_HINTS: Record<string, { types: SpecimenType[]; hint: string }> = {
-  "tcm-herbarium": {
-    types: ["herbarium"],
-    hint: "腊叶标本：中药腊叶标本摄影专业优化"
-  },
-  "tcm-liquid-specimen": {
-    types: ["immersed"],
-    hint: "浸制标本：保色液封存标本摄影"
-  },
-  "tcm-crude-drug": {
-    types: ["crude_drug"],
-    hint: "生药标本：原生药材摄影"
-  },
-  "tcm-slice-specimen": {
-    types: ["decoction_pieces"],
-    hint: "饮片标本：炮制饮片摄影"
-  },
-};
-
 // ── 常量 ──────────────────────────────────────────────────────────────
 
 const STORAGE_KEY_RECORDS = "liang007_optimize_records";

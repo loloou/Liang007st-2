@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useUiStore } from "./store/uiStore";
-import { useGenerationStore } from "./store/generationStore";
-import { generateImages, testApiGenerate, GeneratedImage } from "./api/imageClient";
+import { useGenerationStore, STORAGE_KEYS } from "./store/generationStore";
+import { generateImages, GeneratedImage } from "./api/imageClient";
 import { downloadImage, downloadImages } from "./utils/download";
 import PromptOptimizerDialog from "./components/PromptOptimizerDialog";
 import AboutDialog from "./components/Dialogs/AboutDialog";
@@ -14,14 +14,8 @@ import HistoryFullPreview from "./components/HistoryFullPreview";
 import {
   getApiSettings,
   setApiSettings,
-  updateCurrentChannel,
-  addChannel,
-  removeChannel,
-  setActiveChannel,
   getApiConfig,
   saveApiConfig,
-  updateApiConfig,
-  syncGlobalBaseUrl,
   resolveApiSpec,
   addApiVendor,
   removeApiVendor,
@@ -31,10 +25,9 @@ import {
   type ApiConfig,
   type ApiSpec,
   type ChatModel,
-  type ImageModel,
-  type ApiVendor
+  type ImageModel
 } from "./api/settings";
-import { testChatModel, testImageModel, fetchModelList, type TestResult } from "./api/modelConfig";
+import { testChatModel, testImageModel, fetchModelList } from "./api/modelConfig";
 import {
   RESOLUTION_PRESETS,
   SIZE_TIERS,
@@ -55,15 +48,15 @@ import {
 import { fetchBalance } from "./api/balance";
 import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode } from "./utils/theme";
 import { createThumbnail } from "./utils/imageUtils";
+import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
 
 type GenerationStatus = "idle" | "running";
 
 const DEFAULT_SIZE_TIER: SizeTierId = "2K";
-const DEFAULT_MODEL = "nano-banana-pro";
 const RIGHT_PANEL_MIN = 280;
 const RIGHT_PANEL_MAX = 640;
-const RIGHT_PANEL_DEFAULT = 360;
+const RIGHT_PANEL_DEFAULT = 340;
 
 function getInitialModelAndList() {
   const s = getApiSettings();
@@ -89,6 +82,8 @@ function App() {
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [status, setStatus] = useState<GenerationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const elapsedSeconds = useGenerationStore((s) => s.elapsedSeconds);
+  const storeStatus = useGenerationStore((s) => s.status);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "downloading">("idle");
@@ -141,7 +136,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [promptHistory, setPromptHistory] = useState<string[]>(() => {
     try {
-      const raw = localStorage.getItem("liang007_prompt_history");
+      const raw = localStorage.getItem(STORAGE_KEYS.PROMPT_HISTORY);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -172,6 +167,8 @@ function App() {
     httpStatus?: number;
     /** 响应是否为有效 JSON */
     jsonValid?: boolean;
+    /** HTTP 错误响应体 */
+    httpErrorBody?: string;
   }[]>([]);
   const [balanceStatus, setBalanceStatus] = useState<"idle" | "loading" | "ok" | "fail">("idle");
   const [balanceMessage, setBalanceMessage] = useState("");
@@ -200,7 +197,7 @@ function App() {
     createdAt?: number; // 创建时间戳，用于清理超时条目
   }[]>(() => {
     try {
-      const raw = localStorage.getItem("liang007_generation_history");
+      const raw = localStorage.getItem(STORAGE_KEYS.GENERATION_HISTORY);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -229,9 +226,9 @@ function App() {
   useEffect(() => {
     try {
       // 清理历史记录，只保留最近 50 条（与 promptHistory effect 保持一致，避免双写冲突）
-      const promptHistory = JSON.parse(localStorage.getItem("liang007_prompt_history") || "[]");
+      const promptHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROMPT_HISTORY) || "[]");
       if (promptHistory.length > 50) {
-        localStorage.setItem("liang007_prompt_history", JSON.stringify(promptHistory.slice(0, 50)));
+        localStorage.setItem(STORAGE_KEYS.PROMPT_HISTORY, JSON.stringify(promptHistory.slice(0, 50)));
       }
     } catch (error) {
       console.error("清理 localStorage 数据失败:", error);
@@ -242,10 +239,12 @@ function App() {
   const historySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 比例不匹配弹窗防重入标记：用户点"重新生成"后，下一次结果不再触发弹窗
   const ratioMismatchRetried = useRef(false);
+  // 存储最新的 handleGenerate 函数引用，避免闭包陷阱
+  const handleGenerateRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const saveHistory = (history: typeof generationHistory) => {
     if (historySaveTimer.current) clearTimeout(historySaveTimer.current);
     historySaveTimer.current = setTimeout(() => {
-      try { localStorage.setItem("liang007_generation_history", JSON.stringify(history)); } catch { /* 配额超出静默 */ }
+      try { localStorage.setItem(STORAGE_KEYS.GENERATION_HISTORY, JSON.stringify(history)); } catch { /* 配额超出静默 */ }
     }, 500);
   };
 
@@ -340,7 +339,7 @@ function App() {
   // 提示词记录持久化
   useEffect(() => {
     if (promptHistory.length) {
-      localStorage.setItem("liang007_prompt_history", JSON.stringify(promptHistory.slice(0, 50)));
+      localStorage.setItem(STORAGE_KEYS.PROMPT_HISTORY, JSON.stringify(promptHistory.slice(0, 50)));
     }
   }, [promptHistory]);
 
@@ -369,26 +368,26 @@ function App() {
             batchSize,
             results: validResults
           };
-          localStorage.setItem("liang007_current_generation", JSON.stringify(currentSession));
+          localStorage.setItem(STORAGE_KEYS.CURRENT_GENERATION, JSON.stringify(currentSession));
         }
       } catch (error) {
         console.error('保存当前生成结果失败:', error);
         // 配额超出时静默失败，不影响应用使用
       }
     } else {
-      localStorage.removeItem("liang007_current_generation");
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_GENERATION);
     }
   }, [results, prompt, negativePrompt, model, width, height, batchSize]);
 
   // 页面加载时恢复上次的结果
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("liang007_current_generation");
+      const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_GENERATION);
       if (saved) {
         const currentSession = JSON.parse(saved);
         if (currentSession.results && currentSession.results.length > 0) {
           // 验证图片数据完整性，过滤掉失效的 blob: URL 和 base64 URL
-          const validResults = currentSession.results.filter((img: any) => {
+          const validResults = currentSession.results.filter((img: GeneratedImage) => {
             if (!img || !img.url) return false;
             // blob: 和 data: URL 可能已失效，跳过
             if (img.url.startsWith('blob:') || img.url.startsWith('data:')) return false;
@@ -407,7 +406,7 @@ function App() {
     } catch (err) {
       console.error("恢复上次结果失败:", err);
       // 忽略解析错误或配额错误，继续正常运行
-      localStorage.removeItem("liang007_current_generation");
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_GENERATION);
     }
   }, []);
 
@@ -573,8 +572,8 @@ function App() {
                     setRatioMismatchDialog(null);
                     // 标记这次是比例重试，避免再次弹窗
                     ratioMismatchRetried.current = true;
-                    // 重新生成
-                    setTimeout(() => handleGenerate(), 100);
+                    // 重新生成（使用 ref 避免闭包陷阱）
+                    setTimeout(() => handleGenerateRef.current(), 100);
                   }
                 });
               }
@@ -645,6 +644,10 @@ function App() {
       setPromptHistory((prev) => [prompt.trim(), ...prev.filter((p) => p !== prompt.trim())].slice(0, 50));
     }
   };
+
+  // 保持 handleGenerateRef 始终指向最新的 handleGenerate 函数
+  // eslint-disable-next-line react-hooks/use-effect-requires-second-argument
+  useEffect(() => { handleGenerateRef.current = handleGenerate; });
 
   // 切换图片选中状态
   const toggleImageSelection = (id: string) => {
@@ -782,7 +785,7 @@ function App() {
   // 提示词模板
   const [promptTemplates, setPromptTemplates] = useState<{ name: string; prompt: string; negative?: string }[]>(() => {
     try {
-      const raw = localStorage.getItem("liang007_prompt_templates");
+      const raw = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -793,15 +796,13 @@ function App() {
 
   // 提示词模板持久化
   useEffect(() => {
-    localStorage.setItem("liang007_prompt_templates", JSON.stringify(promptTemplates));
+    localStorage.setItem(STORAGE_KEYS.PROMPT_TEMPLATES, JSON.stringify(promptTemplates));
   }, [promptTemplates]);
 
   // 历史按钮位置状态（用于拖动）
-  // 默认靠中间，每次加载随机上下浮动 ±60px
+  // 默认居中，使用固定值避免随机抖动
   const [historyBtnPosition, setHistoryBtnPosition] = useState(() => {
-    const mid = window.innerHeight / 2;
-    const jitter = (Math.random() - 0.5) * 120; // ±60px 随机浮动
-    return Math.max(80, Math.min(window.innerHeight - 200, Math.round(mid + jitter)));
+    return Math.round(window.innerHeight / 2);
   });
   const [isDraggingHistory, setIsDraggingHistory] = useState(false);
 
@@ -994,7 +995,7 @@ function App() {
   // 编辑弹窗拖动调整尺寸已删除（改为内联编辑）
 
   return (
-    <div className={`min-h-screen flex flex-col bg-gradient-to-br ${themeConfig.bgGradient} text-slate-900`}>
+    <div className={`min-h-screen flex flex-col bg-gradient-to-br ${themeConfig.bgGradient} ${themeConfig.textColor}`}>
       {/* 顶部工具栏 - 固定悬浮毛玻璃 */}
       <header className="fixed top-0 left-0 right-0 z-30 h-14 flex items-center justify-between px-6 glass-header">
         {/* 左侧：Logo 和功能按钮 */}
@@ -1068,7 +1069,7 @@ function App() {
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setThemeMenuOpen(false)} />
           <div
-            className="fixed glass-popup rounded-xl py-2 z-[9999] w-52 popup-enter"
+            className="fixed glass-popup rounded-xl py-2 z-[9999] w-40 popup-enter"
             style={{ left: themeBtnRef.current.getBoundingClientRect().left, top: themeBtnRef.current.getBoundingClientRect().bottom + 6 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1078,11 +1079,14 @@ function App() {
             {THEMES.map((t) => {
               const isActive = theme === t.id;
               const colorMap: Record<string, string> = {
-                light: "bg-gradient-to-r from-blue-400 to-indigo-500", dark: "bg-gradient-to-r from-slate-600 to-slate-800",
-                darkBlue: "bg-gradient-to-r from-blue-800 to-indigo-900", darkPurple: "bg-gradient-to-r from-purple-800 to-violet-900",
-                blue: "bg-gradient-to-r from-blue-500 to-indigo-600", purple: "bg-gradient-to-r from-violet-400 to-purple-600",
-                green: "bg-gradient-to-r from-emerald-400 to-teal-600", sunset: "bg-gradient-to-r from-orange-400 to-pink-500",
-                ocean: "bg-gradient-to-r from-cyan-400 to-sky-600", forest: "bg-gradient-to-r from-green-500 to-emerald-700",
+                light: "bg-gradient-to-r from-blue-400 to-indigo-500",
+                darkBlue: "bg-gradient-to-r from-blue-700 to-indigo-800",
+                purple: "bg-gradient-to-r from-violet-400 to-purple-600",
+                sunset: "bg-gradient-to-r from-orange-400 to-amber-500",
+                ocean: "bg-gradient-to-r from-cyan-400 to-sky-600",
+                auroraPink: "bg-gradient-to-r from-pink-400 to-rose-500",
+                auroraGreen: "bg-gradient-to-r from-emerald-400 to-teal-500",
+                forest: "bg-gradient-to-r from-green-500 to-emerald-600",
               };
               const dotColor = colorMap[t.id] || "bg-gradient-to-r from-slate-300 to-slate-400";
               return (
@@ -1090,7 +1094,6 @@ function App() {
                   className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-white/50 transition-colors ${isActive ? "bg-white/60" : ""}`}
                   onClick={() => { handleThemeChange(t.id); setThemeMenuOpen(false); }}
                 >
-                  <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${dotColor} shadow-sm`} />
                   <span className={`flex-1 ${isActive ? "text-primary-600 font-semibold" : "text-slate-700"}`}>{t.name}</span>
                   {isActive && <svg className="w-3 h-3 text-primary-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                 </button>
@@ -2200,9 +2203,34 @@ function App() {
                                 if (historyBatchMode) {
                                   setHistorySelected(prev => {
                                     const next = new Set(prev);
-                                    next.has(entry.id) ? next.delete(entry.id) : next.add(entry.id);
+                                    if (next.has(entry.id)) {
+                                      next.delete(entry.id);
+                                    } else {
+                                      next.add(entry.id);
+                                    }
                                     return next;
                                   });
+                                }
+                              }}
+                              onDoubleClick={(e) => {
+                                if (!historyBatchMode) {
+                                  e.stopPropagation();
+                                  if (hasError) {
+                                    // 打开错误详情
+                                    const elapsedMs = entry.createdAt ? Date.now() - entry.createdAt : null;
+                                    const elapsedStr = elapsedMs ? `（耗时 ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒）` : "";
+                                    const errorLog = {
+                                      time: new Date(entry.timestamp).toLocaleTimeString(),
+                                      endpoint: `生成图片${elapsedStr}`,
+                                      error: entry.error,
+                                      request: `[模型] ${entry.model}\n[尺寸] ${entry.width}×${entry.height}\n[批次] ${entry.batchSize}\n[正向提示词]\n${entry.prompt}${entry.negativePrompt ? `\n\n[反向提示词]\n${entry.negativePrompt}` : ""}`,
+                                      httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || entry.timestamp).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
+                                    };
+                                    useUiStore.getState().setSelectedLogEntry(errorLog);
+                                    useUiStore.getState().setShowDetailedLog(true);
+                                  } else if (firstImg) {
+                                    setHistoryFullPreview(firstImg);
+                                  }
                                 }
                               }}
                             >
@@ -2210,8 +2238,8 @@ function App() {
                                 <img
                                   src={firstImg.url}
                                   alt=""
-                                  className="w-full aspect-square object-cover bg-slate-700"
-                                  onDoubleClick={(e) => { e.stopPropagation(); setHistoryFullPreview(firstImg); }}
+                                  className="w-full aspect-square object-cover bg-slate-700 cursor-zoom-in hover:opacity-90 transition"
+                                  onDoubleClick={() => setHistoryFullPreview(firstImg)}
                                   title="双击查看大图"
                                 />
                               ) : (
@@ -2270,6 +2298,25 @@ function App() {
                             });
                           }
                         }}
+                        onDoubleClick={() => {
+                          if (!historyBatchMode) {
+                            if (hasError) {
+                              const elapsedMs = entry.createdAt ? Date.now() - entry.createdAt : null;
+                              const elapsedStr = elapsedMs ? `（耗时 ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒）` : "";
+                              const errorLog = {
+                                time: new Date(entry.timestamp).toLocaleTimeString(),
+                                endpoint: `生成图片${elapsedStr}`,
+                                error: entry.error,
+                                request: `[模型] ${entry.model}\n[尺寸] ${entry.width}×${entry.height}\n[批次] ${entry.batchSize}\n[正向提示词]\n${entry.prompt}${entry.negativePrompt ? `\n\n[反向提示词]\n${entry.negativePrompt}` : ""}`,
+                                httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || entry.timestamp).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
+                              };
+                              useUiStore.getState().setSelectedLogEntry(errorLog);
+                              useUiStore.getState().setShowDetailedLog(true);
+                            } else if (firstImg) {
+                              setHistoryFullPreview(firstImg);
+                            }
+                          }
+                        }}
                       >
                         {/* 批量选择checkbox */}
                         {historyBatchMode && (
@@ -2288,7 +2335,7 @@ function App() {
                               src={firstImg.url}
                               alt=""
                               className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-slate-700 cursor-zoom-in hover:ring-2 hover:ring-primary-400 transition"
-                              onDoubleClick={(e) => { e.stopPropagation(); setHistoryFullPreview(firstImg); }}
+                              onDoubleClick={() => setHistoryFullPreview(firstImg)}
                               title="双击查看大图"
                             />
                           ) : (
@@ -2346,22 +2393,17 @@ function App() {
             <div className="flex items-center gap-2 text-sm text-slate-700">
               <span className="font-semibold">生成结果</span>
               {results.length > 0 && <span className="badge-primary">{results.length} 张</span>}
-              {results.length > 0 && (() => {
-                const elapsedSeconds = useGenerationStore.getState().elapsedSeconds;
-                if (elapsedSeconds > 0) {
-                  const mins = Math.floor(elapsedSeconds / 60);
-                  const secs = elapsedSeconds % 60;
-                  return <span className="badge-primary/60 text-slate-500 font-mono">{mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`}</span>;
-                }
-                return null;
-              })()}
-              {selectedImageIds.size > 0 && <span className="badge-success">已选 {selectedImageIds.size}</span>}
-              {status === "running" && <span className="badge-warning flex items-center gap-1"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />生成中 {(() => {
-                const elapsedSeconds = useGenerationStore.getState().elapsedSeconds;
+              {results.length > 0 && elapsedSeconds > 0 && (() => {
                 const mins = Math.floor(elapsedSeconds / 60);
                 const secs = elapsedSeconds % 60;
-                return mins > 0 ? `(${mins}分${secs}秒)` : `(${secs}秒)`;
-              })()}</span>}
+                return <span className="badge-primary/60 text-slate-500 font-mono">{mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`}</span>;
+              })()}
+              {selectedImageIds.size > 0 && <span className="badge-success">已选 {selectedImageIds.size}</span>}
+              {storeStatus === "running" && (() => {
+                const mins = Math.floor(elapsedSeconds / 60);
+                const secs = elapsedSeconds % 60;
+                return <span className="badge-warning flex items-center gap-1"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />生成中 {mins > 0 ? `(${mins}分${secs}秒)` : `(${secs}秒)`}</span>;
+              })()}
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               {results.length > 0 && (
@@ -2417,21 +2459,25 @@ function App() {
                 }
                 const safeIdx = Math.min(Math.max(resultActiveIdx, 0), results.length - 1);
                 const activeImg = results[safeIdx];
+                // 扩展类型，支持 originalUrl（原图 URL）
+                const extendedImg = activeImg as typeof activeImg & { originalUrl?: string };
+                // 优先用缩略图（base64，稳定），备用原图 URL（可能已失效）
+                const activeImgUrl = activeImg.url || extendedImg.originalUrl;
                 const isSelected = selectedImageIds.has(activeImg.id);
                 return (
                   <div className="w-full h-full flex flex-col">
                     {/* 主图区 - 填满结果区 */}
                     <div
                       className="flex-1 relative overflow-hidden cursor-pointer group"
-                      onClick={() => { setPreviewImage(activeImg); setImgZoom(1); setImgOffset({ x: 0, y: 0 }); }}
+                      onClick={() => { setPreviewImage(activeImg); }}
                     >
                       <img
-                        src={activeImg.url}
+                        src={activeImgUrl}
                         alt=""
                         className="w-full h-full object-contain"
                         draggable={false}
                         onError={(e) => {
-                          console.error('图片加载失败:', activeImg.url);
+                          // 缩略图也失败时再提示
                           const parent = e.currentTarget.parentElement;
                           if (parent) {
                             parent.innerHTML = '<div class="flex items-center justify-center w-full h-full text-slate-400">图片加载失败</div>';
@@ -2469,23 +2515,28 @@ function App() {
                     {/* 缩略图横条（多图时显示） */}
                     {results.length > 1 && (
                       <div className="flex-shrink-0 flex gap-1.5 px-2 py-2 overflow-x-auto app-scrollbar border-t border-white/20">
-                        {results.map((img, idx) => (
-                          <div key={img.id} className="relative flex-shrink-0">
-                            <button
-                              onClick={() => setResultActiveIdx(idx)}
-                              className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${idx === safeIdx ? "border-primary-400 ring-1 ring-primary-300" : "border-transparent hover:border-white/60"}`}
-                            >
-                              <img src={img.url} alt="" className="w-full h-full object-cover" />
-                            </button>
-                            <button
-                              className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center transition text-xs leading-none"
-                              onClick={(e) => { e.stopPropagation(); setResults((prev) => prev.filter((_, i) => i !== idx)); if (idx < safeIdx) setResultActiveIdx(safeIdx - 1); else if (idx === safeIdx && results.length > 1) setResultActiveIdx(Math.min(safeIdx, results.length - 2)); }}
-                              title="删除此图片"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
+                        {results.map((img, idx) => {
+                          // 扩展类型，支持 originalUrl（原图 URL）
+                          const extImg = img as typeof img & { originalUrl?: string };
+                          const thumbUrl = img.url || extImg.originalUrl;
+                          return (
+                            <div key={img.id} className="relative flex-shrink-0">
+                              <button
+                                onClick={() => setResultActiveIdx(idx)}
+                                className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${idx === safeIdx ? "border-primary-400 ring-1 ring-primary-300" : "border-transparent hover:border-white/60"}`}
+                              >
+                                <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                              </button>
+                              <button
+                                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center transition text-xs leading-none"
+                                onClick={(e) => { e.stopPropagation(); setResults((prev) => prev.filter((_, i) => i !== idx)); if (idx < safeIdx) setResultActiveIdx(safeIdx - 1); else if (idx === safeIdx && results.length > 1) setResultActiveIdx(Math.min(safeIdx, results.length - 2)); }}
+                                title="删除此图片"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -3243,62 +3294,117 @@ function App() {
               ) : null}
               
               {manageDialogType === "template" ? (
-                /* 模板列表 */
-                promptTemplates.length > 0 ? (
-                  <div className="space-y-2">
-                    {promptTemplates.map((t, i) => (
-                      <div
-                        key={i}
-                        className="group bg-white/60 rounded-lg border border-slate-200 hover:border-primary-300 transition-all p-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-semibold text-slate-800 truncate">{t.name}</span>
-                              <button
-                                type="button"
-                                className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-primary-600 transition-colors"
-                                title="编辑模板"
-                                onClick={() => handleEditTemplate(i)}
-                              >
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
+                /* 模板列表 + 输入历史 */
+                <div className="space-y-4">
+                  {/* 模板列表 */}
+                  {promptTemplates.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">📁 保存的模板（{promptTemplates.length}）</div>
+                      {promptTemplates.map((t, i) => (
+                        <div
+                          key={i}
+                          className="group bg-white/60 rounded-lg border border-slate-200 hover:border-primary-300 transition-all p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold text-slate-800 truncate">{t.name}</span>
+                                <button
+                                  type="button"
+                                  className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-primary-600 transition-colors"
+                                  title="编辑模板"
+                                  onClick={() => handleEditTemplate(i)}
+                                >
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div className="text-[11px] text-slate-600 mb-1">{t.prompt.slice(0, 80)}{t.prompt.length > 80 ? "..." : ""}</div>
+                              {t.negative && t.negative.trim() && (
+                                <div className="text-[11px] text-rose-600/80 italic">反向: {t.negative.slice(0, 40)}{t.negative.length > 40 ? "..." : ""}</div>
+                              )}
                             </div>
-                            <div className="text-[11px] text-slate-600 mb-1">{t.prompt.slice(0, 80)}{t.prompt.length > 80 ? "..." : ""}</div>
-                            {t.negative && t.negative.trim() && (
-                              <div className="text-[11px] text-rose-600/80 italic">反向: {t.negative.slice(0, 40)}{t.negative.length > 40 ? "..." : ""}</div>
-                            )}
+                            <button
+                              type="button"
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
+                              title="删除模板"
+                              onClick={() => handleDeleteTemplate(i)}
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
-                            title="删除模板"
-                            onClick={() => handleDeleteTemplate(i)}
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400 py-8">
-                    <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p className="text-sm">暂无保存的模板</p>
-                    <p className="text-xs mt-1">在提示词下拉中选择"保存当前为模板"</p>
-                  </div>
-                )
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-400 py-4">
+                      <svg className="w-10 h-10 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p className="text-sm">暂无保存的模板</p>
+                      <p className="text-xs mt-1">在提示词下拉中选择"保存当前为模板"</p>
+                    </div>
+                  )}
+
+                  {/* 输入历史列表 */}
+                  {promptHistory.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 pt-2 border-t border-slate-200/60">📝 输入历史（{promptHistory.length}）</div>
+                      {promptHistory.map((p, i) => (
+                        <div
+                          key={i}
+                          className="group bg-white/40 rounded-lg border border-slate-100 hover:border-primary-200 transition-all p-2.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div
+                              className="flex-1 text-[11px] text-slate-600 line-clamp-2 cursor-pointer hover:text-primary-600"
+                              onClick={() => { setPrompt(p); setManageDialogOpen(false); }}
+                              title="点击应用此提示词"
+                            >
+                              {p}
+                            </div>
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                              title="删除此历史"
+                              onClick={() => {
+                                setPromptHistory(prev => prev.filter((_, idx) => idx !== i));
+                              }}
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {promptHistory.length > 0 && (
+                        <button
+                          type="button"
+                          className="w-full mt-2 px-3 py-1.5 rounded-lg text-xs border border-red-200 text-red-500 hover:bg-red-50 transition"
+                          onClick={() => {
+                            if (confirm("确定要清空所有输入历史吗？")) {
+                              setPromptHistory([]);
+                            }
+                          }}
+                        >
+                          清空输入历史
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               ) : (
-                /* 历史记录列表 */
-                generationHistory.length > 0 ? (
+                /* 反向提示词历史记录列表 */
+                (() => {
+                  const negativeHistory = generationHistory.filter(h => h.negativePrompt && h.negativePrompt.trim());
+                  return negativeHistory.length > 0 ? (
                   <div className="space-y-2">
-                    {generationHistory.map((h, i) => {
+                    <div className="text-xs font-semibold text-rose-500 uppercase tracking-wide mb-2">⛔ 反向提示词历史（{negativeHistory.length}）</div>
+                    {negativeHistory.map((h, i) => {
                       const isGenerating = h.results.length === 0;
                       return (
                         <div
@@ -3316,58 +3422,13 @@ function App() {
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="text-xs font-semibold text-slate-800">{h.time}</span>
                                 <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px]">{h.model}</span>
-                                {isGenerating && (
-                                  <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${h.error ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
-                                    {h.error ? (
-                                      <>
-                                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                        失败
-                                      </>
-                                    ) : (
-                                      <>
-                                        <svg className="animate-spin h-2.5 w-2.5" viewBox="0 0 24 24">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                        </svg>
-                                        生图中...
-                                      </>
-                                    )}
-                                  </span>
-                                )}
                               </div>
-                              <div className="text-[11px] text-slate-600 mb-1">{h.prompt.slice(0, 60)}{h.prompt.length > 60 ? "..." : ""}</div>
-                              {h.negativePrompt && h.negativePrompt.trim() && (
-                                <div className="text-[11px] text-rose-600/80 italic">反向: {h.negativePrompt.slice(0, 40)}{h.negativePrompt.length > 40 ? "..." : ""}</div>
-                              )}
-                              {/* 图片缩略图 */}
-                              {!isGenerating && h.results.length > 0 && (
-                                <div className="flex gap-1 mt-2 flex-wrap">
-                                  {h.results.slice(0, 4).map((img, idx) => {
-                                    const displayUrl = (img as any).originalUrl || img.url;
-                                    return (
-                                      <div key={idx} className="w-10 h-10 rounded overflow-hidden border border-slate-200 flex-shrink-0 bg-slate-100">
-                                        {displayUrl && (displayUrl.startsWith('data:') || displayUrl.startsWith('blob:') || displayUrl.startsWith('http')) ? (
-                                          <img src={displayUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                                        ) : (
-                                          <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                  {h.results.length > 4 && (
-                                    <div className="w-10 h-10 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-[10px] text-slate-400 font-medium flex-shrink-0">
-                                      +{h.results.length - 4}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                              {/* 反向提示词 - 主要显示 */}
+                              <div className="text-[11px] text-rose-600 mb-1 font-medium">{h.negativePrompt}</div>
+                              {/* 正向提示词 - 次要显示 */}
+                              <div className="text-[11px] text-slate-500 italic">正向: {h.prompt.slice(0, 50)}{h.prompt.length > 50 ? "..." : ""}</div>
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              {/* 进行中不显示编辑按钮 */}
                               {!isGenerating && (
                                 <button
                                   type="button"
@@ -3401,10 +3462,11 @@ function App() {
                     <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-sm">暂无生成历史</p>
-                    <p className="text-xs mt-1">生成图片后会在此显示</p>
+                    <p className="text-sm">暂无反向提示词历史</p>
+                    <p className="text-xs mt-1">使用了反向提示词的生成记录会显示在此</p>
                   </div>
-                )
+                );
+                })()
               )}
             </div>
 
@@ -3437,7 +3499,7 @@ function App() {
                 </button>
               )}
               <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                <span>共 {manageDialogType === "template" ? promptTemplates.length : generationHistory.length} 条</span>
+                <span>模板 {promptTemplates.length} | 输入历史 {promptHistory.length} | 生成历史 {generationHistory.length}</span>
               </div>
             </div>
 
@@ -3520,6 +3582,12 @@ function App() {
                     // 应用模板
                     const idx = parseInt(v.slice(4));
                     if (!isNaN(idx) && promptTemplates[idx]) handleApplyTemplate(promptTemplates[idx]);
+                  } else if (v.startsWith("ph:")) {
+                    // 应用输入历史
+                    const idx = parseInt(v.slice(3));
+                    if (!isNaN(idx) && promptHistory[idx]) {
+                      setPrompt(promptHistory[idx]);
+                    }
                   } else if (v.startsWith("hist:")) {
                     // 应用历史记录
                     const idx = parseInt(v.slice(5));
@@ -3556,9 +3624,19 @@ function App() {
                 }}
               >
                 <option value="">提示词模板/历史…</option>
+                {/* 输入历史 */}
+                {promptHistory.length > 0 && (
+                  <optgroup label="📝 输入历史">
+                    {promptHistory.slice(0, 10).map((p, i) => (
+                      <option key={`ph-${i}`} value={`ph:${i}`}>
+                        {p.slice(0, 30)}{p.length > 30 ? "..." : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
                 {/* 历史记录选项 */}
                 {generationHistory.length > 0 && (
-                  <optgroup label="📋 历史记录">
+                  <optgroup label="📋 生成历史">
                     {generationHistory.slice(0, 10).map((entry, i) => (
                       <option key={`hist-${i}`} value={`hist:${i}`}>
                         {entry.time} - {entry.prompt.slice(0, 25)}{entry.prompt.length > 25 ? "..." : ""}
@@ -3734,7 +3812,7 @@ function App() {
           <div className="glass-card rounded-xl px-3 py-2.5 flex flex-col gap-2 flex-shrink-0">
             <div className="text-xs font-semibold text-slate-700">生图设置</div>
             {/* 四项横排：模型 / 比例 / 分辨率 / 数量 */}
-            <div className="grid grid-cols-4 gap-1.5 text-[11px]">
+            <div className="grid grid-cols-[1fr_88px_68px_1fr] gap-1.5 text-[11px]">
               {/* 模型 */}
               <div className="flex flex-col gap-0.5">
                 <span className="text-slate-400 text-[10px]">模型</span>
@@ -3752,22 +3830,11 @@ function App() {
               {/* 比例 */}
               <div className="flex flex-col gap-0.5">
                 <span className="text-slate-400 text-[10px]">比例</span>
-                <select
+                <AspectRatioSelect
                   value={resolutionPreset}
-                  onChange={(e) => setResolutionPreset(e.target.value as ResolutionPresetId)}
-                  className={`border rounded-md px-1.5 py-1.5 text-[11px] bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-300 w-full ${
-                    ["2:3","3:2","21:9","9:21"].includes(resolutionPreset) && (() => { const c = getApiConfig(); return (c.globalApiSpec ?? "gemini") === "gemini"; })()
-                      ? "border-amber-300"
-                      : "border-slate-200"
-                  }`}
-                >
-                  {RESOLUTION_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
-                  ))}
-                </select>
-                {["2:3","3:2","21:9","9:21"].includes(resolutionPreset) && (() => { const c = getApiConfig(); return (c.globalApiSpec ?? "gemini") === "gemini"; })() && (
-                  <span className="text-[9px] text-amber-500 leading-tight mt-0.5" title="Gemini 仅支持 1:1/3:4/4:3/9:16/16:9，将自动映射到最近比例">⚠ Gemini近似</span>
-                )}
+                  onChange={setResolutionPreset}
+                  isGemini={(getApiConfig().globalApiSpec ?? "gemini") === "gemini"}
+                />
               </div>
               {/* 分辨率 */}
               <div className="flex flex-col gap-0.5">

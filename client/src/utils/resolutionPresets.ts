@@ -14,22 +14,32 @@ export type ResolutionPresetId =
   | "21:9"
   | "9:21";
 
-export const RESOLUTION_PRESETS: { id: ResolutionPresetId; label: string; ratio: number }[] = [
-  { id: "original", label: "原比例", ratio: 0 },
-  { id: "1:1",  label: "1:1",  ratio: 1 },
-  { id: "16:9", label: "16:9", ratio: 16 / 9 },
-  { id: "9:16", label: "9:16", ratio: 9 / 16 },
-  { id: "4:3",  label: "4:3",  ratio: 4 / 3 },
-  { id: "3:4",  label: "3:4",  ratio: 3 / 4 },
-  { id: "3:2",  label: "3:2",  ratio: 3 / 2 },
-  { id: "2:3",  label: "2:3",  ratio: 2 / 3 },
-  { id: "5:4",  label: "5:4",  ratio: 5 / 4 },
-  { id: "4:5",  label: "4:5",  ratio: 4 / 5 },
-  { id: "21:9", label: "21:9", ratio: 21 / 9 },
-  { id: "9:21", label: "9:21", ratio: 9 / 21 }
+/** 比例形状类型 */
+export type ShapeType = "square" | "landscape" | "portrait" | "ultrawide" | "ultratall";
+
+export const RESOLUTION_PRESETS: {
+  id: ResolutionPresetId;
+  label: string;
+  ratio: number;
+  shape: ShapeType;
+}[] = [
+  { id: "original", label: "原比例", ratio: 0, shape: "square" },
+  { id: "1:1",  label: "1:1",  ratio: 1,     shape: "square"   },
+  { id: "16:9", label: "16:9", ratio: 16 / 9, shape: "landscape" },
+  { id: "9:16", label: "9:16", ratio: 9 / 16, shape: "portrait"  },
+  { id: "4:3",  label: "4:3",  ratio: 4 / 3,  shape: "landscape" },
+  { id: "3:4",  label: "3:4",  ratio: 3 / 4,  shape: "portrait"  },
+  { id: "3:2",  label: "3:2",  ratio: 3 / 2,  shape: "landscape" },
+  { id: "2:3",  label: "2:3",  ratio: 2 / 3,  shape: "portrait"  },
+  { id: "5:4",  label: "5:4",  ratio: 5 / 4,  shape: "landscape" },
+  { id: "4:5",  label: "4:5",  ratio: 4 / 5,  shape: "portrait"  },
+  { id: "21:9", label: "21:9", ratio: 21 / 9, shape: "ultrawide"  },
+  { id: "9:21", label: "9:21", ratio: 9 / 21, shape: "ultratall"  }
 ];
 
-/** 尺寸档位：1K / 2K / 4K，默认 2K */
+/** 尺寸档位：1K / 2K / 4K，默认 2K
+ * 与 Google Gemini API 标准对齐（高度基准：768/1536/3072）
+ */
 export const SIZE_TIERS = [
   { id: "1K", label: "1K", maxSide: 1024 },
   { id: "2K", label: "2K", maxSide: 1920 },
@@ -38,47 +48,51 @@ export const SIZE_TIERS = [
 
 export type SizeTierId = (typeof SIZE_TIERS)[number]["id"];
 
-/** 国家标准分辨率：按 1K / 2K / 4K 与比例预设（宽×高） */
+/** 标准分辨率：与 Google Gemini API 标准完全对齐
+ * 高度基准：1K=768px, 2K=1536px, 4K=3072px
+ * 宽边按比例精确换算（比例不变 × 高度基准）
+ * 参考：https://docs.laozhang.ai/api-capabilities/nano-banana-pro-image
+ */
 export const STANDARD_RESOLUTIONS: Record<
   SizeTierId,
   Partial<Record<ResolutionPresetId, { width: number; height: number }>>
 > = {
   "1K": {
     "1:1":  { width: 1024, height: 1024 },
-    "4:3":  { width: 1200, height: 896  },
+    "4:3":  { width: 1024, height: 768  },
     "16:9": { width: 1376, height: 768  },
-    "3:4":  { width: 896,  height: 1200 },
+    "3:4":  { width: 768,  height: 1024 },
     "9:16": { width: 768,  height: 1376 },
-    "3:2":  { width: 1248, height: 832  },
-    "2:3":  { width: 832,  height: 1248 },
-    "5:4":  { width: 1152, height: 896  },
-    "4:5":  { width: 896,  height: 1152 },
+    "3:2":  { width: 1152, height: 768  },
+    "2:3":  { width: 768,  height: 1152 },
+    "5:4":  { width: 960,  height: 768  },
+    "4:5":  { width: 768,  height: 960  },
     "21:9": { width: 1584, height: 672  },
     "9:21": { width: 672,  height: 1584 }
   },
   "2K": {
     "1:1":  { width: 2048, height: 2048 },
-    "4:3":  { width: 2400, height: 1792 },
+    "4:3":  { width: 2048, height: 1536 },
     "16:9": { width: 2752, height: 1536 },
-    "3:4":  { width: 1792, height: 2400 },
+    "3:4":  { width: 1536, height: 2048 },
     "9:16": { width: 1536, height: 2752 },
-    "3:2":  { width: 2496, height: 1664 },
-    "2:3":  { width: 1664, height: 2496 },
-    "5:4":  { width: 2304, height: 1792 },
-    "4:5":  { width: 1792, height: 2304 },
+    "3:2":  { width: 2304, height: 1536 },
+    "2:3":  { width: 1536, height: 2304 },
+    "5:4":  { width: 1920, height: 1536 },
+    "4:5":  { width: 1536, height: 1920 },
     "21:9": { width: 3168, height: 1344 },
     "9:21": { width: 1344, height: 3168 }
   },
   "4K": {
     "1:1":  { width: 4096,  height: 4096  },
+    "4:3":  { width: 4096,  height: 3072  },
     "16:9": { width: 5504,  height: 3072  },
+    "3:4":  { width: 3072,  height: 4096  },
     "9:16": { width: 3072,  height: 5504  },
-    "4:3":  { width: 4800,  height: 3584  },
-    "3:4":  { width: 3584,  height: 4800  },
-    "3:2":  { width: 4992,  height: 3328  },
-    "2:3":  { width: 3328,  height: 4992  },
-    "5:4":  { width: 4608,  height: 3584  },
-    "4:5":  { width: 3584,  height: 4608  },
+    "3:2":  { width: 4608,  height: 3072  },
+    "2:3":  { width: 3072,  height: 4608  },
+    "5:4":  { width: 3840,  height: 3072  },
+    "4:5":  { width: 3072,  height: 3840  },
     "21:9": { width: 6336,  height: 2688  },
     "9:21": { width: 2688,  height: 6336  }
   }

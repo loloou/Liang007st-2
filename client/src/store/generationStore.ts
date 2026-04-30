@@ -143,6 +143,7 @@ interface GenerationState {
   setRatioMismatchDialog: (
     dialog: { actualRatio: string; expectedRatio: string; onConfirm: () => void } | null
   ) => void;
+  setError: (v: string | null) => void;
 
   handleDownloadSingle: (img: GeneratedImage) => Promise<void>;
   handleBatchDownload: () => Promise<void>;
@@ -236,6 +237,7 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
     setResults: (images) => set({ results: images }),
     setResultActiveIdx: (idx) => set({ resultActiveIdx: idx }),
     setRatioMismatchDialog: (dialog) => set({ ratioMismatchDialog: dialog }),
+    setError: (v: string | null) => set({ error: v }),
     syncReferencePreviewUrls: (urls) => set({ referencePreviewUrls: urls }),
 
     setResolutionPreset: (v) => {

@@ -2,6 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { GeneratedImage } from "../api/imageClient";
 import { downloadImage } from "../utils/download";
 
+// 扩展类型，支持 originalUrl（原图 URL）
+interface ExtendedImage extends GeneratedImage {
+  originalUrl?: string;
+}
+
 interface ImagePreviewModalProps {
   image: GeneratedImage | null;
   onClose: () => void;
@@ -14,6 +19,9 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "downloading">("idle");
   // 拖拽时强制重渲染的计数器（必须在 useState 第3位，不能乱动）
   const [, forceUpdate] = useState(0);
+  // 图片 URL：用 ref 缓存初始值，state 管理当前显示（支持降级）
+  const imgInitUrl = useRef<string>("");
+  const [imageUrl, setImageUrl] = useState<string>("");
   // 拖拽全程用 ref，结束时才写 state
   const dragRef = useRef<{
     startX: number;
@@ -42,12 +50,24 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
   // early return 必须在所有 hooks 之后
   if (!image) return null;
 
+  // 初始化图片 URL（只在 image 切换时更新）
+  const extendedImage = image as ExtendedImage;
+  const primaryUrl = extendedImage.originalUrl || image.url;
+  const hasFallback = !!image.url;
+  if (imgInitUrl.current !== primaryUrl) {
+    imgInitUrl.current = primaryUrl;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (imageUrl !== primaryUrl) setImageUrl(primaryUrl);
+  }
+
   const isEnlarged = zoom > 1;
 
   const handleDownload = async () => {
     try {
       setDownloadStatus("downloading");
-      await downloadImage(image.url, `generated_${image.id}.png`);
+      // 下载优先用原图 URL，备用当前显示的图
+      const downloadUrl = extendedImage.originalUrl || image.url;
+      await downloadImage(downloadUrl, `generated_${image.id}.png`);
     } catch (e) {
       console.error("下载失败:", e);
     } finally {
@@ -168,7 +188,7 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
         style={{ cursor: isDragging ? "grabbing" : isEnlarged ? "grab" : "zoom-in" }}
       >
         <img
-          src={image.url}
+          src={imageUrl}
           alt=""
           draggable={false}
           style={{
@@ -181,8 +201,12 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
             borderRadius: zoom <= 1 ? 0 : 6,
           }}
           onError={() => {
-            alert("图片加载失败，可能 URL 已过期");
-            onClose();
+            if (hasFallback) {
+              setImageUrl(image.url);
+            } else {
+              alert("图片加载失败，可能 URL 已过期");
+              onClose();
+            }
           }}
           onClick={handleImageClick}
         />

@@ -63,6 +63,50 @@
 - **数据/逻辑分离**：中药数据库、LCS 算法独立为纯数据/工具文件
 - **真正性能监控**：使用 `requestAnimationFrame` + `performance.memory` 获取真实数据
 
+## Bug 修复（2026-04-29）
+
+### 已完成
+1. **统一 localStorage key**：将 App.tsx 中的硬编码字符串替换为 `generationStore.ts` 中的 `STORAGE_KEYS` 常量
+2. **修复 historyBtnPosition 随机抖动**：移除 `Math.random()` 抖动，固定使用居中位置
+3. **修复 ratioMismatchDialog 闭包陷阱**：添加 `handleGenerateRef` 存储最新函数引用，避免闭包陈旧
+4. **修复编译错误**：
+   - DraggableHistoryPanel.tsx: 添加 `GeneratedImage` 类型导入，使用类型守卫
+   - PromptOptimizerDialog.tsx: 删除重复的 `TEMPLATE_SPECIMEN_HINTS` 声明
+   - useAppState.ts: 删除对已删除 Legacy 状态的引用
+   - App.tsx: 添加 `httpErrorBody` 到 logEntries 类型，删除未定义的 `setImgZoom`/`setImgOffset`
+   - generationStore.ts: 添加 `setError` action 及其类型声明
+
+### 额外清理（2026-04-29 下午）
+1. **修复 lint 错误**：
+   - 第395行: `any` 类型 → `GeneratedImage`
+   - 第2209行: 无用表达式 → 正确 if-else 写法
+2. **清理未使用导入**：
+   - `testApiGenerate`, `updateCurrentChannel`, `addChannel`, `removeChannel`, `setActiveChannel`
+   - `updateApiConfig`, `syncGlobalBaseUrl`, `ApiVendor`, `TestResult`
+3. **删除未使用常量**：`DEFAULT_MODEL`
+
+## 主题重新设计（2026-04-29）
+
+### 修改内容
+1. **精简主题数量**：10 种 → 8 种精选主题
+2. **优化配色**：更现代的渐变配色
+3. **应用主题文本颜色**：主界面文本颜色随主题变化
+
+### 新主题列表
+| ID | 名称 | 背景渐变 | 强调色 |
+|----|------|---------|--------|
+| light | 简约白 | slate-50 → slate-200 | #3b82f6 |
+| darkBlue | 暗夜蓝 | slate-950 → blue-950 | #3b82f6 |
+| purple | 梦幻紫 | violet-50 → fuchsia-50 | #9333ea |
+| sunset | 落日橘 | orange-50 → yellow-50 | #f97316 |
+| ocean | 海洋蓝 | cyan-50 → blue-50 | #06b6d4 |
+| auroraPink | 极光粉 | pink-50 → fuchsia-50 | #ec4899 |
+| auroraGreen | 极光绿 | emerald-50 → teal-50 | #10b981 |
+| forest | 森林绿 | green-50 → lime-50 | #22c55e |
+
+### 待处理（P0 重构）
+- **状态统一**：App.tsx 仍有大量未使用状态变量（Legacy 遗留），需评估是否可安全删除
+
 ## 用户偏好
 - 指令简短，期望直接执行
 - 有 UI 审美，在意细节

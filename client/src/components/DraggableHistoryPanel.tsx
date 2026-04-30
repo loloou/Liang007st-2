@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useUiStore } from "../store/uiStore";
 import { useGenerationStore } from "../store/generationStore";
+import type { GeneratedImage } from "../api/imageClient";
 
 interface HistoryEntry {
   id: string;
@@ -46,7 +47,7 @@ const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
   const setBatchSize = useGenerationStore((s) => s.setBatchSize);
   const setResults = useGenerationStore((s) => s.setResults);
   const setResultActiveIdx = useGenerationStore((s) => s.setResultActiveIdx);
-  const setError = useUiStore((s) => s.setError);
+  const setError = useGenerationStore((s) => s.setError);
   
   // 默认位置和尺寸（x=85 避免遮挡左侧历史按钮，y 固定屏幕垂直居中偏上）
   const DEFAULT_WIDTH = 320;
@@ -462,7 +463,7 @@ const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
                               if (originalUrl) return { ...img, url: originalUrl };
                               return img;
                             });
-                            const validResults = restoredResults.filter(img => img && img.url);
+                            const validResults = restoredResults.filter((img): img is GeneratedImage => img && img.url);
                             if (validResults.length === 0) {
                               setError("此记录的图片数据已失效");
                               return;
