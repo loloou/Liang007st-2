@@ -1341,10 +1341,10 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       {/* ── 提交汇总面板 ──────────────────────────────────────── */}
       {submitPanelOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-[520px] max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-800">提交预览</h2>
-              <button onClick={toggleSubmitPanel} className="text-slate-400 hover:text-slate-600">✕</button>
+          <div className="bg-white/[0.06] rounded-2xl shadow-2xl w-[520px] max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-100">提交预览</h2>
+              <button onClick={toggleSubmitPanel} className="text-slate-400 hover:text-slate-400">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {/* 蒙版 */}
@@ -1357,7 +1357,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                     <span className="text-red-400 text-sm">🖌</span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-slate-700">蒙版选区</p>
+                        <p className="text-sm font-medium text-slate-300">蒙版选区</p>
                         <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] rounded-full">已提取</span>
                       </div>
                       <p className="text-xs text-slate-500 mt-0.5">
@@ -1373,7 +1373,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl">
                   <span className="text-amber-400 text-sm">📍</span>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-slate-700">标记批注 ({pins.length} 个)</p>
+                    <p className="text-sm font-medium text-slate-300">标记批注 ({pins.length} 个)</p>
                     {pins.map((p) => (
                       <p key={p.id} className="text-xs text-slate-500 mt-0.5">
                         #{p.label}: {p.note || "(无备注)"}
@@ -1387,7 +1387,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-xl">
                   <span className="text-blue-400 text-sm">🔤</span>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">文字编辑 ({textAdditions.length})</p>
+                    <p className="text-sm font-medium text-slate-300">文字编辑 ({textAdditions.length})</p>
                     {textAdditions.map((t) => (
                       <p key={t.id} className="text-xs text-slate-500 mt-0.5">"{t.content}"</p>
                     ))}
@@ -1399,7 +1399,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 <div className="flex items-start gap-3 p-3 bg-green-50 rounded-xl">
                   <span className="text-green-400 text-sm">🖼</span>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">背景处理</p>
+                    <p className="text-sm font-medium text-slate-300">背景处理</p>
                     <p className="text-xs text-slate-500 mt-0.5">{bgEdit.action} {bgEdit.replacePrompt || bgEdit.solidColor || `(模糊 ${bgEdit.blurStrength}px)`}</p>
                   </div>
                 </div>
@@ -1409,7 +1409,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 <div className="flex items-start gap-3 p-3 bg-purple-50 rounded-xl">
                   <span className="text-purple-400 text-sm">🎨</span>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">滤镜: {filter.preset}</p>
+                    <p className="text-sm font-medium text-slate-300">滤镜: {filter.preset}</p>
                     <p className="text-xs text-slate-500 mt-0.5">强度 {filter.presetStrength}%</p>
                   </div>
                 </div>
@@ -1419,7 +1419,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 <div className="flex items-start gap-3 p-3 bg-orange-50 rounded-xl">
                   <span className="text-orange-400 text-sm">↔</span>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">扩图延展</p>
+                    <p className="text-sm font-medium text-slate-300">扩图延展</p>
                     <p className="text-xs text-slate-500 mt-0.5">{outpaint.targetWidth}×{outpaint.targetHeight}px</p>
                   </div>
                 </div>
@@ -1432,10 +1432,10 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
               )}
 
               {/* 额外提示词 */}
-              <div className="pt-2 border-t border-slate-100">
+              <div className="pt-2 border-t border-white/[0.06]">
                 <label className="text-xs text-slate-500 block mb-1">额外提示词（可补充 AI 指令）</label>
                 <textarea
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl resize-none bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full px-3 py-2 text-sm border border-white/[0.08] rounded-xl resize-none bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   rows={3}
                   placeholder="例如：将标记区域的人物服装改为蓝色礼服..."
                   value={submitPrompt}
@@ -1445,7 +1445,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
 
               {/* 高级参数折叠 */}
               <details className="group">
-                <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 list-none flex items-center gap-1">
+                <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-400 list-none flex items-center gap-1">
                   <span className="text-[10px] group-open:rotate-90 transition-transform">▶</span>
                   高级参数
                 </summary>
@@ -1468,9 +1468,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                 </div>
               </details>
             </div>
-            <div className="px-5 py-4 border-t border-slate-100 flex justify-end gap-3">
+            <div className="px-5 py-4 border-t border-white/[0.06] flex justify-end gap-3">
               <button onClick={toggleSubmitPanel}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm hover:bg-slate-200 transition"
+                className="px-4 py-2 rounded-xl bg-white/[0.08] text-slate-400 text-sm hover:bg-slate-200 transition"
               >取消</button>
               <button
                 onClick={handleSubmit}

@@ -44,19 +44,19 @@ const RatioMismatchDialog: React.FC<RatioMismatchDialogProps> = ({
 
         {/* 内容 */}
         <div className="p-5 space-y-3">
-          <p className="text-sm text-slate-700">生成的图片比例与您的设置不匹配：</p>
+          <p className="text-sm text-slate-300">生成的图片比例与您的设置不匹配：</p>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-red-50 rounded-xl p-3 border border-red-100">
+            <div className="bg-red-500/10 rounded-xl p-3 border border-red-500/15">
               <p className="text-[10px] text-red-500 font-semibold uppercase tracking-wider mb-1">
                 实际比例
               </p>
-              <p className="text-lg font-bold text-red-600">{data.actualRatio}</p>
+              <p className="text-lg font-bold text-red-400">{data.actualRatio}</p>
             </div>
-            <div className="bg-green-50 rounded-xl p-3 border border-green-100">
-              <p className="text-[10px] text-green-600 font-semibold uppercase tracking-wider mb-1">
+            <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/15">
+              <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider mb-1">
                 设置比例
               </p>
-              <p className="text-lg font-bold text-green-600">{data.expectedRatio}</p>
+              <p className="text-lg font-bold text-emerald-400">{data.expectedRatio}</p>
             </div>
           </div>
           <p className="text-xs text-slate-500">是否重新生成以获得正确比例的图片？</p>
@@ -65,7 +65,7 @@ const RatioMismatchDialog: React.FC<RatioMismatchDialogProps> = ({
         {/* 操作 */}
         <div className="px-5 pb-5 flex gap-2 justify-end">
           <button
-            className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition"
+            className="px-4 py-2 rounded-xl border border-white/[0.08] text-slate-400 text-sm hover:bg-white/[0.04] transition"
             onClick={onDismiss}
           >
             保留当前结果

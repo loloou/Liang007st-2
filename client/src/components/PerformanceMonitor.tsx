@@ -85,8 +85,8 @@ const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
       <div className="p-3 space-y-2.5">
         <div className="grid grid-cols-2 gap-2">
           {([
-            { label: "帧率 FPS", value: performanceData.fps, unit: "", color: "text-green-600", bg: "bg-green-50/70 border-green-100/60", bar: performanceData.fps / 60, barColor: "bg-green-500", available: true },
-            { label: "渲染时间", value: performanceData.renderTime, unit: "ms", color: "text-blue-600", bg: "bg-blue-50/70 border-blue-100/60", bar: 1 - performanceData.renderTime / 30, barColor: "bg-blue-500", available: true },
+            { label: "帧率 FPS", value: performanceData.fps, unit: "", color: "text-emerald-400", bg: "bg-emerald-500/70 border-emerald-500/60", bar: performanceData.fps / 60, barColor: "bg-emerald-500/100", available: true },
+            { label: "渲染时间", value: performanceData.renderTime, unit: "ms", color: "text-blue-600", bg: "bg-blue-500/70 border-blue-500/60", bar: 1 - performanceData.renderTime / 30, barColor: "bg-blue-500", available: true },
             { label: "内存占用", value: performanceData.memory ?? 0, unit: "%", color: "text-purple-600", bg: "bg-purple-50/70 border-purple-100/60", bar: (performanceData.memory ?? 0) / 100, barColor: "bg-purple-500", available: performanceData.memory !== null },
             { label: "GPU使用", value: performanceData.gpuUsage ?? 0, unit: "%", color: "text-orange-600", bg: "bg-orange-50/70 border-orange-100/60", bar: (performanceData.gpuUsage ?? 0) / 100, barColor: "bg-orange-500", available: performanceData.gpuUsage !== null },
           ] as { label: string; value: number; unit: string; color: string; bg: string; bar: number; barColor: string; available: boolean }[]).map(({ label, value, unit, color, bg, bar, barColor, available }) => (
@@ -107,9 +107,9 @@ const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({
           <div className="flex items-center gap-1.5">
             {performanceData.networkLatency !== null ? (
               <>
-                <span className="font-mono font-medium text-slate-700">{performanceData.networkLatency}ms</span>
+                <span className="font-mono font-medium text-slate-300">{performanceData.networkLatency}ms</span>
                 <div className={`w-2 h-2 rounded-full ${
-                  performanceData.networkLatency < 50 ? "bg-green-500" :
+                  performanceData.networkLatency < 50 ? "bg-emerald-500/100" :
                   performanceData.networkLatency < 100 ? "bg-yellow-500" : "bg-red-500"
                 }`} />
               </>

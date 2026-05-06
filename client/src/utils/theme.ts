@@ -1,9 +1,10 @@
-/**
- * 主题管理工具
- * 8 种精选渐变配色主题
- */
-
-export type ThemeMode = "light" | "darkBlue" | "purple" | "sunset" | "ocean" | "auroraPink" | "auroraGreen" | "forest";
+export type ThemeMode =
+  | "dark"
+  | "aurora"
+  | "cyber"
+  | "dawn"
+  | "ember"
+  | "verdant";
 
 export interface ThemeConfig {
   id: ThemeMode;
@@ -11,83 +12,100 @@ export interface ThemeConfig {
   bgGradient: string;
   textColor: string;
   accentColor: string;
+  dotGradient: string;
+  isDark: boolean;
   cardBg: string;
   borderColor: string;
+  style: "glass" | "flat";
+  fontStyle: "sans" | "serif";
+  description: string;
 }
 
 export const THEMES: ThemeConfig[] = [
   {
-    id: "light",
-    name: "🧊 简约白",
-    bgGradient: "from-slate-50 via-slate-100 to-slate-200",
-    textColor: "text-slate-800",
-    accentColor: "#3b82f6",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-slate-200/60"
+    id: "dark",
+    name: "墨石",
+    description: "纯黑极简，专注高效",
+    bgGradient: "from-[#0a0a0f] via-[#0a0a0f] to-[#0a0a0f]",
+    textColor: "text-slate-100",
+    accentColor: "#6366f1",
+    dotGradient: "linear-gradient(135deg, #0a0a0f, #6366f1)",
+    isDark: true,
+    cardBg: "rgba(255, 255, 255, 0.05)",
+    borderColor: "border-white/[0.08]",
+    style: "glass",
+    fontStyle: "sans",
   },
   {
-    id: "darkBlue",
-    name: "🌙 暗夜蓝",
-    bgGradient: "from-slate-950 via-blue-950 to-slate-900",
-    textColor: "text-blue-100",
-    accentColor: "#3b82f6",
-    cardBg: "rgba(15, 23, 42, 0.85)",
-    borderColor: "border-blue-800/50"
+    id: "aurora",
+    name: "极光",
+    description: "紫粉交织，暗夜流光",
+    bgGradient: "from-[#0f0a1a] via-[#0a0f1a] to-[#0a1a15]",
+    textColor: "text-slate-100",
+    accentColor: "#8b5cf6",
+    dotGradient: "linear-gradient(135deg, #7c3aed, #ec4899)",
+    isDark: true,
+    cardBg: "rgba(15, 10, 26, 0.6)",
+    borderColor: "border-violet-500/[0.15]",
+    style: "glass",
+    fontStyle: "sans",
   },
   {
-    id: "purple",
-    name: "💜 梦幻紫",
-    bgGradient: "from-violet-50 via-purple-50 to-fuchsia-50",
-    textColor: "text-slate-800",
-    accentColor: "#9333ea",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-purple-200/60"
+    id: "cyber",
+    name: "赛博朋克",
+    description: "霓虹渐变，毛玻璃光影",
+    bgGradient: "from-[#07060e] via-[#07060e] to-[#07060e]",
+    textColor: "text-cyan-50",
+    accentColor: "#00f0ff",
+    dotGradient: "linear-gradient(135deg, #00f0ff, #ff2d78)",
+    isDark: true,
+    cardBg: "rgba(7, 6, 14, 0.65)",
+    borderColor: "border-cyan-400/[0.12]",
+    style: "glass",
+    fontStyle: "sans",
   },
   {
-    id: "sunset",
-    name: "🌅 落日橘",
-    bgGradient: "from-orange-50 via-amber-50 to-yellow-50",
-    textColor: "text-slate-800",
-    accentColor: "#f97316",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-orange-200/60"
+    id: "dawn",
+    name: "晨曦",
+    description: "温暖明亮，干净舒适",
+    bgGradient: "from-[#fafaf9] via-[#fafaf9] to-[#f5f5f4]",
+    textColor: "text-stone-900",
+    accentColor: "#4f46e5",
+    dotGradient: "linear-gradient(135deg, #fafaf9, #4f46e5)",
+    isDark: false,
+    cardBg: "rgba(255, 255, 255, 0.7)",
+    borderColor: "border-black/[0.06]",
+    style: "glass",
+    fontStyle: "sans",
   },
   {
-    id: "ocean",
-    name: "🌊 海洋蓝",
-    bgGradient: "from-cyan-50 via-sky-50 to-blue-50",
-    textColor: "text-slate-800",
-    accentColor: "#06b6d4",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-cyan-200/60"
+    id: "ember",
+    name: "炽焰",
+    description: "暖红暗调，火焰点缀",
+    bgGradient: "from-[#0f0a0a] via-[#1a0f0a] to-[#0f0a0a]",
+    textColor: "text-red-50",
+    accentColor: "#dc2626",
+    dotGradient: "linear-gradient(135deg, #dc2626, #ea580c)",
+    isDark: true,
+    cardBg: "rgba(15, 10, 10, 0.6)",
+    borderColor: "border-red-500/[0.12]",
+    style: "glass",
+    fontStyle: "sans",
   },
   {
-    id: "auroraPink",
-    name: "🌸 极光粉",
-    bgGradient: "from-pink-50 via-rose-50 to-fuchsia-50",
-    textColor: "text-slate-800",
-    accentColor: "#ec4899",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-pink-200/60"
+    id: "verdant",
+    name: "翡翠",
+    description: "深林幽绿，自然光泽",
+    bgGradient: "from-[#050f0a] via-[#0a1510] to-[#050f0a]",
+    textColor: "text-emerald-50",
+    accentColor: "#059669",
+    dotGradient: "linear-gradient(135deg, #059669, #10b981)",
+    isDark: true,
+    cardBg: "rgba(5, 15, 10, 0.6)",
+    borderColor: "border-emerald-500/[0.12]",
+    style: "glass",
+    fontStyle: "sans",
   },
-  {
-    id: "auroraGreen",
-    name: "🌿 极光绿",
-    bgGradient: "from-emerald-50 via-green-50 to-teal-50",
-    textColor: "text-slate-800",
-    accentColor: "#10b981",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-emerald-200/60"
-  },
-  {
-    id: "forest",
-    name: "🌲 森林绿",
-    bgGradient: "from-green-50 via-emerald-50 to-lime-50",
-    textColor: "text-slate-800",
-    accentColor: "#22c55e",
-    cardBg: "rgba(255, 255, 255, 0.8)",
-    borderColor: "border-green-200/60"
-  }
 ];
 
 const STORAGE_KEY = "liang007_theme";
@@ -95,13 +113,13 @@ const STORAGE_KEY = "liang007_theme";
 export function getTheme(): ThemeMode {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && THEMES.some(t => t.id === saved)) {
+    if (saved && THEMES.some((t) => t.id === saved)) {
       return saved as ThemeMode;
     }
   } catch {
     // ignore
   }
-  return "light";
+  return "dark";
 }
 
 export function setTheme(theme: ThemeMode): void {
@@ -113,5 +131,5 @@ export function setTheme(theme: ThemeMode): void {
 }
 
 export function getThemeConfig(theme: ThemeMode): ThemeConfig {
-  return THEMES.find(t => t.id === theme) ?? THEMES[0];
+  return THEMES.find((t) => t.id === theme) ?? THEMES[0];
 }

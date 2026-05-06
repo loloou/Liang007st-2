@@ -109,7 +109,7 @@ export default function AspectRatioSelect({ value, onChange }: AspectRatioSelect
         aria-haspopup="listbox"
         tabIndex={0}
         onClick={handleTriggerClick}
-        className="flex items-center gap-1 border border-slate-200 rounded-md px-1.5 py-1.5 text-[11px] bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-300 cursor-pointer select-none w-full whitespace-nowrap overflow-hidden"
+        className="flex items-center gap-1 border border-white/[0.08] rounded-md px-1.5 py-1.5 text-[11px] bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-primary-500/30 cursor-pointer select-none w-full whitespace-nowrap overflow-hidden"
       >
         {selected && <ShapeIcon presetId={value} className="flex-shrink-0 text-slate-500" />}
         <span className="flex-1 overflow-hidden text-ellipsis">{selected?.label ?? value}</span>
@@ -130,7 +130,7 @@ export default function AspectRatioSelect({ value, onChange }: AspectRatioSelect
             width: dropdownRect.width,
             zIndex: 99999,
           }}
-          className="bg-white border border-slate-200 rounded-lg shadow-xl overflow-y-auto max-h-60 py-0.5 animate-slide-up"
+          className="bg-white/[0.06] border border-white/[0.08] rounded-lg shadow-xl overflow-y-auto max-h-60 py-0.5 animate-slide-up"
         >
           {RESOLUTION_PRESETS.map((p) => (
             <li
@@ -140,8 +140,8 @@ export default function AspectRatioSelect({ value, onChange }: AspectRatioSelect
               onClick={() => { onChange(p.id); setOpen(false); }}
               className={`flex items-center gap-1.5 px-2 py-1.5 text-[11px] cursor-pointer rounded transition min-h-[28px] ${
                 p.id === value
-                  ? "bg-primary-50 text-primary-700 font-medium"
-                  : "text-slate-700 hover:bg-slate-50"
+                  ? "bg-primary-500/10 text-primary-400 font-medium"
+                  : "text-slate-300 hover:bg-white/[0.04]"
               }`}
             >
               <ShapeIcon presetId={p.id} className="flex-shrink-0 text-slate-500" />

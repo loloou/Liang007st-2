@@ -85,24 +85,35 @@
    - `updateApiConfig`, `syncGlobalBaseUrl`, `ApiVendor`, `TestResult`
 3. **删除未使用常量**：`DEFAULT_MODEL`
 
-## 主题重新设计（2026-04-29）
+## 主题重新设计（2026-05-06 再次重设计）
 
-### 修改内容
-1. **精简主题数量**：10 种 → 8 种精选主题
-2. **优化配色**：更现代的渐变配色
-3. **应用主题文本颜色**：主界面文本颜色随主题变化
+### 问题
+auroraGreen（极光绿）和 forest（森林绿）色相重复，用户要求整体重新设计、增加创意。
 
-### 新主题列表
-| ID | 名称 | 背景渐变 | 强调色 |
-|----|------|---------|--------|
-| light | 简约白 | slate-50 → slate-200 | #3b82f6 |
-| darkBlue | 暗夜蓝 | slate-950 → blue-950 | #3b82f6 |
-| purple | 梦幻紫 | violet-50 → fuchsia-50 | #9333ea |
-| sunset | 落日橘 | orange-50 → yellow-50 | #f97316 |
-| ocean | 海洋蓝 | cyan-50 → blue-50 | #06b6d4 |
-| auroraPink | 极光粉 | pink-50 → fuchsia-50 | #ec4899 |
-| auroraGreen | 极光绿 | emerald-50 → teal-50 | #10b981 |
-| forest | 森林绿 | green-50 → lime-50 | #22c55e |
+### 新方案（8 个，色相完全不重复）
+| ID | 名称 | 色相 | 暗色 |
+|----|------|------|--------|
+| pearlWhite | 🤍 珍珠白 | 灰白系 | 否 |
+| deepSpace | 🌌 深空蓝 | 深蓝/靛蓝 | 是 |
+| lavender | 💜 薰衣草 | 浅紫/粉紫 | 否 |
+| amberSunset | 🌅 琥珀黄昏 | 橘橙/琥珀 | 否 |
+| oceanBreeze | 🌀 海洋清风 | 冰蓝/青 | 否 |
+| sakura | 🌸 樱花 | 粉红/玫瑰 | 否 |
+| cyanMint | 🍃 薄荷青 | 青绿/薄荷 | 否 |
+| honeyGold | 🍯 蜜糖金 | 金黄/琥珀 | 否 |
+
+### 修改文件
+- `client/src/utils/theme.ts`：完整重写
+  - ThemeMode 类型更新为 8 个新 ID
+  - THEMES 数组全部替换，每个主题 dotGradient 独立
+  - getTheme() 默认值改为 "pearlWhite"
+
+### 验证
+- `npx tsc --noEmit` 通过，exit code 0
+
+### 注意事项
+- styles.css 中 `[data-theme="dark"]` 规则对全部 isDark:true 主题生效，无需额外修改
+- 旧主题 ID 的 localStorage 值会自动 fallback 到 pearlWhite
 
 ### 待处理（P0 重构）
 - **状态统一**：App.tsx 仍有大量未使用状态变量（Legacy 遗留），需评估是否可安全删除

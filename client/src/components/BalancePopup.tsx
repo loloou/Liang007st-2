@@ -40,7 +40,7 @@ const BalancePopup: React.FC<BalancePopupProps> = ({
         </div>
         <div className="p-3">
           {balanceStatus === "ok" ? (
-            <pre className="text-xs text-slate-700 whitespace-pre-wrap break-all font-mono bg-white/60 rounded-lg p-2 max-h-40 overflow-y-auto app-scrollbar border border-white/40">
+            <pre className="text-xs text-slate-300 whitespace-pre-wrap break-all font-mono bg-white/60 rounded-lg p-2 max-h-40 overflow-y-auto app-scrollbar border border-white/40">
               {balanceMessage}
             </pre>
           ) : (

@@ -898,12 +898,16 @@ function App() {
   // 编辑弹窗拖动调整尺寸已删除（改为内联编辑）
 
   return (
-    <div className={`min-h-screen flex flex-col bg-gradient-to-br ${themeConfig.bgGradient} ${themeConfig.textColor}`}>
-      {/* 顶部工具栏 - 固定悬浮毛玻璃 */}
+    <div
+      className={`min-h-screen flex flex-col ${themeConfig.textColor}`}
+      data-theme={themeConfig.id}
+      style={{ "--accent": themeConfig.accentColor } as React.CSSProperties}
+    >
+      {/* 顶部工具栏 */}
       <header className="fixed top-0 left-0 right-0 z-30 h-14 flex items-center justify-between px-6 glass-header">
-        {/* 左侧：Logo 和功能按钮 */}
-        <div className="flex items-center gap-3 text-sm">
-          <span className="font-bold text-gradient text-base tracking-tight">Liang007 生图</span>
+        <div className="flex items-center gap-4 text-sm">
+          <span className="font-bold text-gradient text-base tracking-tight select-none">Liang007</span>
+          <div className="h-4 w-px bg-white/10" />
           <button
               onClick={() => {
                 setCfgDraft(getApiConfig());
@@ -915,13 +919,13 @@ function App() {
                 setSettingsTab("image");
                 setSettingsOpen(true);
               }}
-              className="px-3 py-1.5 rounded-full glass-button text-slate-700 text-xs btn-hover-lift"
+              className="px-3 py-1.5 rounded-lg glass-button text-xs btn-hover-lift"
             >
-              ⚙ 设置
+              设置
             </button>
             <button
               ref={balanceBtnRef}
-              className="px-3 py-1.5 rounded-full glass-button text-slate-700 text-xs btn-hover-lift disabled:opacity-60"
+              className="px-3 py-1.5 rounded-lg glass-button text-xs btn-hover-lift disabled:opacity-40"
               disabled={balanceStatus === "loading"}
               onClick={async () => {
                 setBalanceStatus("loading"); setBalanceMessage(""); setBalancePopupOpen(false);
@@ -932,73 +936,69 @@ function App() {
               }}
             >
               {balanceStatus === "loading" ? (
-                <span className="flex items-center gap-1"><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>查询中…</span>
-              ) : "💰 查询余额"}
+                <span className="flex items-center gap-1.5"><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>查询中</span>
+              ) : "余额"}
             </button>
             <div className="relative">
               <button
                 ref={themeBtnRef}
-                className={`px-3 py-1.5 rounded-full text-xs btn-hover-lift transition-all ${
-                  themeMenuOpen ? "glass-button ring-2 ring-primary-200/60 text-primary-600" : "glass-button text-slate-700"
+                className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift transition-all ${
+                  themeMenuOpen ? "glass-button ring-1 ring-primary-500/40 text-primary-400" : "glass-button"
                 }`}
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
               >
-                🎨 主题
+                主题
               </button>
             </div>
             <button
-              className="px-3 py-1.5 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs font-medium btn-hover-lift shadow-sm"
-              onClick={() => setShowAbout(true)}
+              className="px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all"
+              onClick={() => useUiStore.getState().setShowAbout(true)}
             >
               关于
             </button>
           </div>
-        {/* 右侧：性能监控 */}
         <button
           ref={perfBtnRef}
-          className={`px-3 py-1.5 rounded-full text-white text-xs font-medium btn-hover-lift shadow-sm transition-all ${
-            performanceMonitorOpen
-              ? "bg-gradient-to-r from-cyan-600 to-blue-600 ring-2 ring-cyan-300/60"
-              : "bg-gradient-to-r from-cyan-500 to-blue-500"
+          className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${
+            performanceMonitorOpen ? "ring-1 ring-primary-500/30" : ""
           }`}
           onClick={handleOpenPerformanceMonitor}
         >
-          📊 性能监控
+          性能
         </button>
       </header>
 
-      {/* 主题菜单 - fixed 毛玻璃弹窗 */}
+      {/* 主题菜单 */}
       {themeMenuOpen && themeBtnRef.current && (
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setThemeMenuOpen(false)} />
           <div
-            className="fixed glass-popup rounded-xl py-2 z-[9999] w-40 popup-enter"
-            style={{ left: themeBtnRef.current.getBoundingClientRect().left, top: themeBtnRef.current.getBoundingClientRect().bottom + 6 }}
+            className="fixed glass-popup rounded-xl py-1.5 z-[9999] w-56 popup-enter"
+            style={{ left: themeBtnRef.current.getBoundingClientRect().left, top: themeBtnRef.current.getBoundingClientRect().bottom + 8 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-3 pb-1.5 mb-1 border-b border-white/40">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">选择主题风格</span>
+            <div className="px-3 pb-2 mb-1 border-b border-white/[0.06]">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Theme</span>
             </div>
             {THEMES.map((t) => {
               const isActive = theme === t.id;
-              const colorMap: Record<string, string> = {
-                light: "bg-gradient-to-r from-blue-400 to-indigo-500",
-                darkBlue: "bg-gradient-to-r from-blue-700 to-indigo-800",
-                purple: "bg-gradient-to-r from-violet-400 to-purple-600",
-                sunset: "bg-gradient-to-r from-orange-400 to-amber-500",
-                ocean: "bg-gradient-to-r from-cyan-400 to-sky-600",
-                auroraPink: "bg-gradient-to-r from-pink-400 to-rose-500",
-                auroraGreen: "bg-gradient-to-r from-emerald-400 to-teal-500",
-                forest: "bg-gradient-to-r from-green-500 to-emerald-600",
-              };
-              const dotColor = colorMap[t.id] || "bg-gradient-to-r from-slate-300 to-slate-400";
               return (
                 <button key={t.id}
-                  className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-white/50 transition-colors ${isActive ? "bg-white/60" : ""}`}
+                  className={`w-full px-3 py-2 text-left text-xs flex items-center gap-3 transition-colors rounded-lg mx-0 ${
+                    isActive ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
+                  }`}
+                  style={{ width: 'calc(100% - 8px)', marginLeft: 4 }}
                   onClick={() => { handleThemeChange(t.id); setThemeMenuOpen(false); }}
                 >
-                  <span className={`flex-1 ${isActive ? "text-primary-600 font-semibold" : "text-slate-700"}`}>{t.name}</span>
-                  {isActive && <svg className="w-3 h-3 text-primary-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                  <span
+                    className="w-3.5 h-3.5 rounded-full flex-shrink-0 ring-1 ring-white/10"
+                    style={{ background: t.dotGradient }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className={`${isActive ? "text-primary-400 font-semibold" : "text-slate-300"}`}>{t.name}</span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{t.description}</p>
+                  </div>
+                  {isActive && <svg className="w-3.5 h-3.5 text-primary-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
                 </button>
               );
             })}
@@ -1032,32 +1032,32 @@ function App() {
           onClick={() => setSettingsOpen(false)}
         >
           <div
-            className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden popup-enter"
+            className="relative glass-popup w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden popup-enter"
             onClick={(e) => e.stopPropagation()}
           >
             {/* ── 标题栏 ── */}
             <div className="flex items-center justify-between px-6 pt-5 pb-0 flex-shrink-0">
               <div>
-                <h2 className="text-base font-bold text-slate-800">模型接口配置</h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">严格遵循 OpenAI API 格式，仅替换 BASE URL 和 API KEY 即可完成对接</p>
+                <h2 className="text-base font-bold text-slate-100">模型接口配置</h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">严格遵循 OpenAI API 格式，仅替换 BASE URL 和 API KEY 即可完成对接</p>
               </div>
-              <button className="text-slate-400 hover:text-slate-600 text-xl leading-none p-1 ml-4" onClick={() => setSettingsOpen(false)}>×</button>
+              <button className="text-slate-500 hover:text-slate-300 text-xl leading-none p-1 ml-4 rounded-lg hover:bg-white/[0.06] transition" onClick={() => setSettingsOpen(false)}>×</button>
             </div>
 
             {/* ── 全局配置区（单行紧凑布局） ── */}
-            <div className="px-6 pt-3 pb-3 border-b border-slate-100 flex-shrink-0 bg-slate-50/60">
+            <div className="px-6 pt-3 pb-3 border-b border-white/[0.06] flex-shrink-0">
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary-500 flex-shrink-0" />
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Global Config</span>
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Global Config</span>
                 <span className="text-[10px] text-slate-400 ml-1 hidden sm:inline">— 所有模型默认继承</span>
                 <button
                   type="button"
-                  className="ml-auto px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 text-[11px] font-medium hover:bg-indigo-100 transition flex items-center gap-1 flex-shrink-0"
+                  className="ml-auto px-2.5 py-1 rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 text-[11px] font-medium hover:bg-indigo-500/15 transition flex items-center gap-1 flex-shrink-0"
                   onClick={() => { setVendorDialogOpen(true); setVendorDeleteConfirm(null); }}
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                   供应商管理
-                  {cfgDraft.apiVendors?.length > 0 && <span className="px-1 bg-indigo-100 rounded text-indigo-500 text-[9px]">{cfgDraft.apiVendors.length}</span>}
+                  {cfgDraft.apiVendors?.length > 0 && <span className="px-1 bg-indigo-500/15 rounded text-indigo-400 text-[9px]">{cfgDraft.apiVendors.length}</span>}
                 </button>
               </div>
 
@@ -1067,7 +1067,7 @@ function App() {
                 <div className="relative flex-shrink-0" style={{width: 150}}>
                   <input
                     type="text"
-                    className="w-full border border-slate-200 rounded-lg px-2.5 pr-7 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                    className="w-full border border-white/[0.08] rounded-lg px-2.5 pr-7 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
                     placeholder="供应商名称"
                     value={globalSaveVendorName}
                     onChange={(e) => setGlobalSaveVendorName(e.target.value)}
@@ -1078,7 +1078,7 @@ function App() {
                   {cfgDraft.apiVendors?.length > 0 && (
                     <button
                       type="button"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-500 transition"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-400 transition"
                       onMouseDown={(e) => { e.preventDefault(); setVendorDropdownOpen((v) => !v); }}
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -1086,13 +1086,13 @@ function App() {
                   )}
                   {/* 下拉列表 */}
                   {vendorDropdownOpen && cfgDraft.apiVendors?.length > 0 && (
-                    <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[220px]">
-                      <div className="px-2.5 py-1.5 text-[10px] text-slate-400 font-medium border-b border-slate-100 bg-slate-50">已保存的供应商</div>
+                    <div className="absolute left-0 top-full mt-1 z-50 bg-white/[0.06] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[220px]">
+                      <div className="px-2.5 py-1.5 text-[10px] text-slate-400 font-medium border-b border-white/[0.06] bg-white/[0.04]">已保存的供应商</div>
                       {cfgDraft.apiVendors.map((v) => (
                         <button
                           key={v.id}
                           type="button"
-                          className="w-full text-left px-3 py-2 hover:bg-indigo-50 transition flex items-start gap-2 group"
+                          className="w-full text-left px-3 py-2 hover:bg-indigo-500/10 transition flex items-start gap-2 group"
                           onMouseDown={(e) => {
                             e.preventDefault();
                             // 切换：填充 Base URL、API Key、供应商名称
@@ -1110,9 +1110,9 @@ function App() {
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-semibold text-slate-700 truncate">{v.name}</span>
-                              {cfgDraft.activeVendorId === v.id && <span className="text-[9px] bg-primary-100 text-primary-600 px-1 rounded-full flex-shrink-0">使用中</span>}
-                              {v.isDefault && <span className="text-[9px] bg-emerald-100 text-emerald-600 px-1 rounded-full flex-shrink-0">默认</span>}
+                              <span className="text-xs font-semibold text-slate-300 truncate">{v.name}</span>
+                              {cfgDraft.activeVendorId === v.id && <span className="text-[9px] bg-primary-500/15 text-primary-400 px-1 rounded-full flex-shrink-0">使用中</span>}
+                              {v.isDefault && <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1 rounded-full flex-shrink-0">默认</span>}
                             </div>
                             <p className="text-[10px] text-slate-400 font-mono truncate mt-0.5">{v.baseUrl}</p>
                             {v.remark && <p className="text-[10px] text-slate-400 italic truncate">{v.remark}</p>}
@@ -1127,7 +1127,7 @@ function App() {
                 {/* Base URL */}
                 <input
                   type="url"
-                  className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 text-xs font-mono"
+                  className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 text-xs font-mono"
                   placeholder="Base URL"
                   value={cfgDraft.globalBaseUrl}
                   onChange={(e) => setCfgDraft((d) => ({ ...d, globalBaseUrl: e.target.value.trim() }))}
@@ -1137,7 +1137,7 @@ function App() {
                 <input
                   type="password"
                   autoComplete="off"
-                  className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 text-xs"
+                  className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 text-xs"
                   placeholder="API Key"
                   value={cfgDraft.globalApiKey}
                   onChange={(e) => setCfgDraft((d) => ({ ...d, globalApiKey: e.target.value }))}
@@ -1147,7 +1147,7 @@ function App() {
                 <button
                   type="button"
                   title="同步 Base URL 到所有模型"
-                  className="px-2.5 py-1.5 rounded-lg border border-primary-200 bg-primary-50 text-primary-600 hover:bg-primary-100 text-[10px] font-medium transition whitespace-nowrap flex-shrink-0"
+                  className="px-2.5 py-1.5 rounded-lg border border-primary-500/20 bg-primary-500/10 text-primary-400 hover:bg-primary-500/15 text-[10px] font-medium transition whitespace-nowrap flex-shrink-0"
                   onClick={() => {
                     setCfgDraft((d) => ({
                       ...d,
@@ -1195,21 +1195,21 @@ function App() {
                       (cfgDraft.globalApiSpec ?? "gemini") === sp
                         ? sp === "gemini"
                           ? "border-purple-300 bg-purple-50 text-purple-700 shadow-sm"
-                          : "border-primary-300 bg-primary-50 text-primary-700 shadow-sm"
-                        : "border-slate-200 bg-white text-slate-400 hover:bg-slate-50"
+                          : "border-primary-500/30 bg-primary-500/10 text-primary-400 shadow-sm"
+                        : "border-white/[0.08] bg-white/[0.06] text-slate-400 hover:bg-white/[0.04]"
                     }`}
                   >
                     {sp === "openai" ? "🔵 OpenAI" : "🔮 Gemini"}
                   </button>
                 ))}
                 {syncToast && (
-                  <span className="text-[10px] text-primary-600 flex items-center gap-1 ml-2">
+                  <span className="text-[10px] text-primary-400 flex items-center gap-1 ml-2">
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                     已同步到所有模型
                   </span>
                 )}
                 {globalSaveVendorToast && (
-                  <span className="text-[10px] text-emerald-600 flex items-center gap-1 ml-2">
+                  <span className="text-[10px] text-emerald-400 flex items-center gap-1 ml-2">
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                     供应商已保存
                   </span>
@@ -1218,7 +1218,7 @@ function App() {
             </div>
 
             {/* ── 标签页 ── */}
-            <div className="flex items-center gap-0 px-6 pt-3 flex-shrink-0 border-b border-slate-100">
+            <div className="flex items-center gap-0 px-6 pt-3 flex-shrink-0 border-b border-white/[0.06]">
               {(["image", "chat"] as const).map((tab) => (
                 <button
                   key={tab}
@@ -1226,21 +1226,21 @@ function App() {
                   onClick={() => setSettingsTab(tab)}
                   className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px ${
                     settingsTab === tab
-                      ? "border-primary-500 text-primary-600"
-                      : "border-transparent text-slate-400 hover:text-slate-600"
+                      ? "border-primary-500 text-primary-400"
+                      : "border-transparent text-slate-400 hover:text-slate-400"
                   }`}
                 >
                   {tab === "image" ? (
                     <span className="flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       Image
-                      <code className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded font-mono">/v1/images/generations</code>
+                      <code className="text-[9px] bg-white/[0.08] text-slate-500 px-1 rounded font-mono">/v1/images/generations</code>
                     </span>
                   ) : (
                     <span className="flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                       Chat
-                      <code className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded font-mono">/v1/chat/completions</code>
+                      <code className="text-[9px] bg-white/[0.08] text-slate-500 px-1 rounded font-mono">/v1/chat/completions</code>
                     </span>
                   )}
                 </button>
@@ -1254,7 +1254,7 @@ function App() {
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 工具
-                <span className="text-[9px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full font-normal">待开发</span>
+                <span className="text-[9px] bg-white/[0.08] text-slate-400 px-1.5 py-0.5 rounded-full font-normal">待开发</span>
               </button>
             </div>
 
@@ -1291,7 +1291,7 @@ function App() {
                         <button
                           type="button"
                           disabled={settingsModelsFetching || !cfgDraft.globalBaseUrl.trim()}
-                          className="px-2.5 py-1.5 rounded-lg border border-primary-200 bg-primary-50 text-primary-600 text-[11px] font-medium hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5"
+                          className="px-2.5 py-1.5 rounded-lg border border-primary-500/20 bg-primary-500/10 text-primary-400 text-[11px] font-medium hover:bg-primary-500/15 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5"
                           onClick={async () => {
                             setSettingsModelsFetching(true);
                             setSettingsModelsFetchErr("");
@@ -1317,7 +1317,7 @@ function App() {
                         </button>
                         <button
                           type="button"
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-[11px] hover:bg-slate-50 transition flex items-center gap-1"
+                          className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-slate-400 text-[11px] hover:bg-white/[0.04] transition flex items-center gap-1"
                           onClick={addModel}
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -1339,7 +1339,7 @@ function App() {
                           const tmsg = modelTestMsg[m.id] ?? "";
                           const isActive = cfgDraft.activeImageModelId === m.id;
                           return (
-                            <div key={m.id} className={`rounded-xl border p-3 transition-all ${isActive ? "border-primary-300 bg-primary-50/40" : "border-slate-200 bg-white"}`}>
+                            <div key={m.id} className={`rounded-xl border p-3 transition-all ${isActive ? "border-primary-500/30 bg-primary-500/[0.06]" : "border-white/[0.08] bg-white/[0.06]"}`}>
                               {/* 模型头部 */}
                               <div className="flex items-center gap-2 mb-2.5">
                                 {/* 激活选中 */}
@@ -1347,16 +1347,16 @@ function App() {
                                   type="button"
                                   title={isActive ? "当前生图使用此模型" : "点击设为主模型"}
                                   onClick={() => setCfgDraft((d) => ({ ...d, activeImageModelId: m.id }))}
-                                  className={`w-4 h-4 rounded-full border-2 flex-shrink-0 transition-all ${isActive ? "border-primary-500 bg-primary-500" : "border-slate-300 bg-white hover:border-primary-300"}`}
+                                  className={`w-4 h-4 rounded-full border-2 flex-shrink-0 transition-all ${isActive ? "border-primary-500 bg-primary-500" : "border-white/[0.12] bg-white/[0.06] hover:border-primary-500/30"}`}
                                 />
                                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex-1">Image Model</span>
-                                {isActive && <span className="text-[10px] bg-primary-100 text-primary-600 px-1.5 py-0.5 rounded-full font-medium">主模型</span>}
+                                {isActive && <span className="text-[10px] bg-primary-500/15 text-primary-400 px-1.5 py-0.5 rounded-full font-medium">主模型</span>}
                                 {/* 删除 */}
                                 <button
                                   type="button"
                                   title="删除此模型"
                                   onClick={() => removeModel(m.id)}
-                                  className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"
+                                  className="p-1 rounded hover:bg-red-500/10 text-slate-300 hover:text-red-400 transition-colors"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
@@ -1369,7 +1369,7 @@ function App() {
                                   <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">MODEL ID <span className="text-red-400">*</span></label>
                                   <input
                                     type="text"
-                                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 font-mono"
+                                    className="w-full border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 font-mono"
                                     placeholder="nano-banana"
                                     value={m.modelId}
                                     onChange={(e) => updateModel(m.id, { modelId: e.target.value })}
@@ -1381,7 +1381,7 @@ function App() {
                                   <input
                                     type="password"
                                     autoComplete="off"
-                                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400"
+                                    className="w-full border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
                                     placeholder="留空则用全局 Key"
                                     value={m.apiKey ?? ""}
                                     onChange={(e) => updateModel(m.id, { apiKey: e.target.value })}
@@ -1392,7 +1392,7 @@ function App() {
                                   <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">BASE URL <span className="text-slate-300">(可选)</span></label>
                                   <input
                                     type="url"
-                                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 font-mono"
+                                    className="w-full border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 font-mono"
                                     placeholder={cfgDraft.globalBaseUrl || "继承全局"}
                                     value={m.baseUrl ?? ""}
                                     onChange={(e) => updateModel(m.id, { baseUrl: e.target.value })}
@@ -1414,8 +1414,8 @@ function App() {
                                             activeSpec === sp
                                               ? sp === "gemini"
                                                 ? "border-purple-300 bg-purple-50 text-purple-700"
-                                                : "border-primary-300 bg-primary-50 text-primary-700"
-                                              : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                                                : "border-primary-500/30 bg-primary-500/10 text-primary-400"
+                                              : "border-white/[0.08] bg-white/[0.06] text-slate-500 hover:bg-white/[0.04]"
                                           }`}
                                         >
                                           {sp === "openai" ? "🔵 OpenAI 规范" : "🔮 Gemini 规范"}
@@ -1426,7 +1426,7 @@ function App() {
                                     {m.apiSpec && (
                                       <button
                                         type="button"
-                                        className="text-[10px] text-slate-400 hover:text-slate-600 underline transition ml-1"
+                                        className="text-[10px] text-slate-400 hover:text-slate-400 underline transition ml-1"
                                         onClick={() => updateModel(m.id, { apiSpec: undefined })}
                                       >
                                         重置为全局
@@ -1446,7 +1446,7 @@ function App() {
                                     ? `/v1beta/models/${modelForPreview}:generateContent`
                                     : "/v1/images/generations";
                                   return (
-                                    <code className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-mono flex-1 min-w-0 truncate">
+                                    <code className="text-[10px] bg-white/[0.08] text-slate-500 px-2 py-0.5 rounded font-mono flex-1 min-w-0 truncate">
                                       POST {baseUrlForPreview}{pathPreview}
                                     </code>
                                   );
@@ -1456,8 +1456,8 @@ function App() {
                                   type="button"
                                   disabled={ts === "testing"}
                                   className={`flex-shrink-0 px-2.5 py-1 rounded-lg border text-[10px] font-medium flex items-center gap-1 transition ${
-                                    ts === "ok"   ? "border-green-200 bg-green-50 text-green-600" :
-                                    ts === "fail" ? "border-red-200 bg-red-50 text-red-600" :
+                                    ts === "ok"   ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" :
+                                    ts === "fail" ? "border-red-500/20 bg-red-500/10 text-red-400" :
                                     "border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100 disabled:opacity-50"
                                   }`}
                                   onClick={async () => {
@@ -1482,7 +1482,7 @@ function App() {
                               {/* 测试结果 */}
                               {tmsg && (
                                 <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
-                                  ts === "ok" ? "bg-green-50 border border-green-100 text-green-700" : "bg-red-50 border border-red-100 text-red-700"
+                                  ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-700"
                                 }`}>
                                   {tmsg}
                                 </div>
@@ -1494,7 +1494,7 @@ function App() {
                     )}
 
                     {/* JSON 格式校验开关 */}
-                    <div className="mt-1 flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
+                    <div className="mt-1 flex items-center justify-between bg-white/[0.04] rounded-lg px-3 py-2 border border-white/[0.08]">
                       <span className="text-[11px] text-slate-500">严格校验 API 响应 JSON 格式（非 JSON 返回时给出友好提示）</span>
                       <button
                         type="button"
@@ -1502,10 +1502,10 @@ function App() {
                         aria-checked={cfgDraft.apiValidateJson}
                         onClick={() => setCfgDraft((d) => ({ ...d, apiValidateJson: !d.apiValidateJson }))}
                         className={`relative inline-flex flex-shrink-0 h-5 w-9 rounded-full border-2 transition-colors duration-200 focus:outline-none ${
-                          cfgDraft.apiValidateJson ? "bg-primary-500 border-primary-500" : "bg-slate-300 border-slate-300"
+                          cfgDraft.apiValidateJson ? "bg-primary-500 border-primary-500" : "bg-slate-300 border-white/[0.12]"
                         }`}
                       >
-                        <span className={`inline-block w-3.5 h-3.5 rounded-full bg-white shadow transform transition-transform duration-200 ${cfgDraft.apiValidateJson ? "translate-x-4" : "translate-x-0"}`} />
+                        <span className={`inline-block w-3.5 h-3.5 rounded-full bg-white/[0.06] shadow transform transition-transform duration-200 ${cfgDraft.apiValidateJson ? "translate-x-4" : "translate-x-0"}`} />
                       </button>
                     </div>
                   </div>
@@ -1537,7 +1537,7 @@ function App() {
                         <button
                           type="button"
                           disabled={settingsModelsFetching || !cfgDraft.globalBaseUrl.trim()}
-                          className="px-2.5 py-1.5 rounded-lg border border-primary-200 bg-primary-50 text-primary-600 text-[11px] font-medium hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5"
+                          className="px-2.5 py-1.5 rounded-lg border border-primary-500/20 bg-primary-500/10 text-primary-400 text-[11px] font-medium hover:bg-primary-500/15 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-1.5"
                           onClick={async () => {
                             setSettingsModelsFetching(true);
                             setSettingsModelsFetchErr("");
@@ -1561,7 +1561,7 @@ function App() {
                         </button>
                         <button
                           type="button"
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-[11px] hover:bg-slate-50 transition flex items-center gap-1"
+                          className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-slate-400 text-[11px] hover:bg-white/[0.04] transition flex items-center gap-1"
                           onClick={addModel}
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -1581,14 +1581,14 @@ function App() {
                           const ts = modelTestStatus[m.id] ?? "idle";
                           const tmsg = modelTestMsg[m.id] ?? "";
                           return (
-                            <div key={m.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                            <div key={m.id} className="rounded-xl border border-white/[0.08] bg-white/[0.06] p-3">
                               <div className="flex items-center gap-2 mb-2.5">
                                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex-1">Chat Model</span>
                                 <button
                                   type="button"
                                   title="删除此模型"
                                   onClick={() => removeModel(m.id)}
-                                  className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-400 transition-colors"
+                                  className="p-1 rounded hover:bg-red-500/10 text-slate-300 hover:text-red-400 transition-colors"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                 </button>
@@ -1599,7 +1599,7 @@ function App() {
                                   <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">MODEL ID <span className="text-red-400">*</span></label>
                                   <input
                                     type="text"
-                                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 font-mono"
+                                    className="w-full border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 font-mono"
                                     placeholder="gpt-4o"
                                     value={m.modelId}
                                     onChange={(e) => updateModel(m.id, { modelId: e.target.value })}
@@ -1610,7 +1610,7 @@ function App() {
                                   <input
                                     type="password"
                                     autoComplete="off"
-                                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400"
+                                    className="w-full border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400"
                                     placeholder="留空则用全局 Key"
                                     value={m.apiKey ?? ""}
                                     onChange={(e) => updateModel(m.id, { apiKey: e.target.value })}
@@ -1620,7 +1620,7 @@ function App() {
                                   <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">BASE URL <span className="text-slate-300">(可选)</span></label>
                                   <input
                                     type="url"
-                                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 font-mono"
+                                    className="w-full border border-white/[0.08] rounded-lg px-2 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-400 font-mono"
                                     placeholder={cfgDraft.globalBaseUrl || "继承全局"}
                                     value={m.baseUrl ?? ""}
                                     onChange={(e) => updateModel(m.id, { baseUrl: e.target.value })}
@@ -1629,15 +1629,15 @@ function App() {
                               </div>
 
                               <div className="flex items-center gap-2 flex-wrap">
-                                <code className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-mono flex-1 min-w-0 truncate">
+                                <code className="text-[10px] bg-white/[0.08] text-slate-500 px-2 py-0.5 rounded font-mono flex-1 min-w-0 truncate">
                                   POST {(m.baseUrl?.trim() || cfgDraft.globalBaseUrl || "<BASE_URL>").replace(/\/$/, "")}/v1/chat/completions
                                 </code>
                                 <button
                                   type="button"
                                   disabled={ts === "testing"}
                                   className={`flex-shrink-0 px-2.5 py-1 rounded-lg border text-[10px] font-medium flex items-center gap-1 transition ${
-                                    ts === "ok"   ? "border-green-200 bg-green-50 text-green-600" :
-                                    ts === "fail" ? "border-red-200 bg-red-50 text-red-600" :
+                                    ts === "ok"   ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" :
+                                    ts === "fail" ? "border-red-500/20 bg-red-500/10 text-red-400" :
                                     "border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100 disabled:opacity-50"
                                   }`}
                                   onClick={async () => {
@@ -1661,7 +1661,7 @@ function App() {
                               </div>
                               {tmsg && (
                                 <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
-                                  ts === "ok" ? "bg-green-50 border border-green-100 text-green-700" : "bg-red-50 border border-red-100 text-red-700"
+                                  ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-700"
                                 }`}>
                                   {tmsg}
                                 </div>
@@ -1678,19 +1678,19 @@ function App() {
             </div>
 
             {/* ── 底部操作栏 ── */}
-            <div className="flex-shrink-0 border-t border-slate-100 px-6 py-4 flex items-center justify-between bg-white rounded-b-2xl">
+            <div className="flex-shrink-0 border-t border-white/[0.06] px-6 py-4 flex items-center justify-between rounded-b-2xl">
               <p className="text-[10px] text-slate-400">
-                请求头：<code className="bg-slate-100 px-1 rounded">Authorization: Bearer API_KEY</code>
+                请求头：<code className="bg-white/[0.06] px-1.5 py-0.5 rounded text-slate-400">Authorization: Bearer API_KEY</code>
               </p>
               <div className="flex gap-2">
                 <button
-                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition"
+                  className="px-4 py-2 rounded-lg glass-button text-slate-300 text-sm transition"
                   onClick={() => setSettingsOpen(false)}
                 >
                   取消
                 </button>
                 <button
-                  className="px-5 py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition"
+                  className="px-5 py-2 rounded-lg gradient-button text-white text-sm font-medium"
                   onClick={() => {
                     // 保存配置
                     saveApiConfig(cfgDraft);
@@ -1719,43 +1719,43 @@ function App() {
 
       {/* 选择模型弹窗：悬浮模式，固定定位，可超出设置弹窗，支持拖拽缩放 */}
       {modelSelectOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{backdropFilter:"blur(4px)",background:"rgba(0,0,0,0.45)"}} onClick={(e) => { if (e.target === e.currentTarget) setModelSelectOpen(false); }}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center overlay-dark" onClick={(e) => { if (e.target === e.currentTarget) setModelSelectOpen(false); }}>
           <div
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden popup-enter relative"
+            className="glass-popup flex flex-col overflow-hidden popup-enter relative"
             style={{width: modelModalSize.w, height: modelModalSize.h, maxWidth:"95vw", maxHeight:"95vh", minWidth:520, minHeight:400}}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 顶部标题栏 */}
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-primary-50 to-purple-50">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
-                <h3 className="text-lg font-semibold text-slate-800">选择调用模型</h3>
+                <h3 className="text-lg font-semibold text-slate-100">选择调用模型</h3>
               </div>
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                   <input
                     type="text"
-                    className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 w-48"
+                    className="pl-8 pr-3 py-1.5 border border-white/[0.08] rounded-lg text-sm bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500/30 text-slate-200 w-48"
                     placeholder="搜索模型 id…"
                     value={modelSearchQuery}
                     onChange={(e) => setModelSearchQuery(e.target.value)}
                   />
                 </div>
-                <button type="button" className="text-slate-400 hover:text-slate-600 text-2xl leading-none p-1 hover:bg-slate-100 rounded-lg transition" onClick={() => setModelSelectOpen(false)}>×</button>
+                <button type="button" className="text-slate-500 hover:text-slate-300 text-2xl leading-none p-1 hover:bg-white/[0.06] rounded-lg transition" onClick={() => setModelSelectOpen(false)}>×</button>
               </div>
             </div>
 
             {/* 主体：左侧筛选 + 右侧列表 */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               {/* 左侧筛选面板 */}
-              <div className="w-52 flex-shrink-0 border-r border-slate-100 bg-slate-50/70 flex flex-col overflow-y-auto app-scrollbar">
+              <div className="w-52 flex-shrink-0 border-r border-white/[0.06] flex flex-col overflow-y-auto app-scrollbar">
                 {/* 模型标签 */}
                 <div className="px-3 py-2.5">
                   <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">模型标签</div>
                   <div className="flex flex-col gap-0.5">
-                    <button type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition ${!filterCategoryTag ? "bg-primary-500 text-white font-medium" : "text-slate-600 hover:bg-white hover:shadow-sm"}`} onClick={() => setFilterCategoryTag(null)}>全部标签</button>
+                    <button type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition ${!filterCategoryTag ? "bg-primary-500/20 text-primary-400 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`} onClick={() => setFilterCategoryTag(null)}>全部标签</button>
                     {MODEL_CATEGORY_TAGS.map((tag) => (
-                      <button key={tag} type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between ${filterCategoryTag === tag ? "bg-primary-500 text-white font-medium" : "text-slate-600 hover:bg-white hover:shadow-sm"}`} onClick={() => setFilterCategoryTag(filterCategoryTag === tag ? null : tag)}>
+                      <button key={tag} type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between ${filterCategoryTag === tag ? "bg-primary-500/20 text-primary-400 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`} onClick={() => setFilterCategoryTag(filterCategoryTag === tag ? null : tag)}>
                         <span>{tag}</span>
                         {filterCategoryTag === tag && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                       </button>
@@ -1763,15 +1763,15 @@ function App() {
                   </div>
                 </div>
                 {/* 模型厂商 */}
-                <div className="px-3 py-2.5 border-t border-slate-100">
+                <div className="px-3 py-2.5 border-t border-white/[0.06]">
                   <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                     模型厂商
-                    <a href="https://ai.t8star.cn/models" target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline normal-case">参考</a>
+                    <a href="https://ai.t8star.cn/models" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline normal-case">参考</a>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <button type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition ${!filterVendorTag ? "bg-primary-500 text-white font-medium" : "text-slate-600 hover:bg-white hover:shadow-sm"}`} onClick={() => setFilterVendorTag(null)}>全部厂商</button>
+                    <button type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition ${!filterVendorTag ? "bg-primary-500/20 text-primary-400 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`} onClick={() => setFilterVendorTag(null)}>全部厂商</button>
                     {MODEL_VENDOR_TAGS.map((tag) => (
-                      <button key={tag} type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between ${filterVendorTag === tag ? "bg-primary-500 text-white font-medium" : "text-slate-600 hover:bg-white hover:shadow-sm"}`} onClick={() => setFilterVendorTag(filterVendorTag === tag ? null : tag)}>
+                      <button key={tag} type="button" className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between ${filterVendorTag === tag ? "bg-primary-500/20 text-primary-400 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`} onClick={() => setFilterVendorTag(filterVendorTag === tag ? null : tag)}>
                         <span>{tag}</span>
                         {filterVendorTag === tag && <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                       </button>
@@ -1788,17 +1788,17 @@ function App() {
                   const baseGroups = filterGroupsBySearch(groupModelsByCategory(fetchedModelList), modelSearchQuery);
                   const filtered = filterGroupsByTags(baseGroups, filterCategoryTag, filterVendorTag);
                   return filtered.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                      <svg className="w-12 h-12 text-slate-200 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                      <svg className="w-12 h-12 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       <p className="text-sm">没有匹配的模型</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {filtered.map(({ category, models }) => (
-                        <div key={category}>
+                          <div key={category}>
                           <div className="text-xs font-medium text-slate-500 px-2 py-1.5 mb-1 flex items-center gap-2">
-                            <span className="flex-1 border-b border-slate-100 pb-1">{category}</span>
-                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{models.length}</span>
+                            <span className="flex-1 border-b border-white/[0.06] pb-1">{category}</span>
+                            <span className="text-[10px] text-slate-400 bg-white/[0.06] px-1.5 py-0.5 rounded">{models.length}</span>
                           </div>
                           <div className="grid grid-cols-1 gap-0.5">
                             {models.map((id) => {
@@ -1806,14 +1806,14 @@ function App() {
                               const priceInfo = getModelPrice(id);
                               const checked = selectedModelIdsInModal.includes(id);
                               return (
-                                <label key={id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${checked ? "bg-primary-50 border border-primary-200/70" : "hover:bg-slate-50 border border-transparent"}`}>
+                                <label key={id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${checked ? "bg-primary-500/10 border border-primary-500/20" : "hover:bg-white/[0.04] border border-transparent"}`}>
                                   <input type="checkbox" checked={checked} onChange={() => setSelectedModelIdsInModal((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])} className="text-primary-500 rounded w-4 h-4 flex-shrink-0" />
                                   <div className="flex-1 min-w-0">
-                                    <div className={`text-sm truncate ${checked ? "text-primary-700 font-medium" : "text-slate-700"}`} title={id}>{id}</div>
+                                    <div className={`text-sm truncate ${checked ? "text-primary-400 font-medium" : "text-slate-300"}`} title={id}>{id}</div>
                                     <div className="flex items-center gap-1 mt-0.5">
-                                      {info.categoryTag && <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px]">{info.categoryTag}</span>}
-                                      {info.vendorTag && <span className="px-1.5 py-0.5 rounded bg-primary-50 text-primary-600 text-[10px]">{info.vendorTag}</span>}
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${priceInfo.price === "询价" ? "bg-slate-100 text-slate-400" : "bg-emerald-100 text-emerald-700 border border-emerald-200/60"}`}>
+                                      {info.categoryTag && <span className="px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 text-[10px]">{info.categoryTag}</span>}
+                                      {info.vendorTag && <span className="px-1.5 py-0.5 rounded bg-primary-500/10 text-primary-400 text-[10px]">{info.vendorTag}</span>}
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${priceInfo.price === "询价" ? "bg-white/[0.04] text-slate-500" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"}`}>
                                         {priceInfo.price}
                                         {priceInfo.note && <span className="ml-0.5 opacity-70">{priceInfo.note}</span>}
                                       </span>
@@ -1832,12 +1832,12 @@ function App() {
             </div>
 
             {/* 底部操作栏 */}
-            <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between gap-2 flex-shrink-0 bg-white">
-              {/* 左下角：已选数量（可点击打开管理弹窗） + 清空 */}
+            <div className="px-5 py-3.5 border-t border-white/[0.06] flex items-center justify-between gap-2 flex-shrink-0">
+              {/* 左下角：已选数量 */}
               <div className="flex items-center gap-2.5">
                 <button
                   type="button"
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${selectedModelIdsInModal.length > 0 ? "bg-primary-500 text-white shadow-md shadow-primary-500/25 hover:bg-primary-600" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${selectedModelIdsInModal.length > 0 ? "gradient-button text-white" : "bg-white/[0.06] text-slate-500 hover:bg-white/[0.1]"}`}
                   title="点击管理已选模型"
                   onClick={() => {
                     // 同步当前勾选到 settingsForm，不关闭选择模型弹窗，叠加打开管理弹窗
@@ -1846,16 +1846,16 @@ function App() {
                   }}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  已选 <span className={`text-base font-bold leading-none ${selectedModelIdsInModal.length > 0 ? "text-white" : "text-slate-400"}`}>{selectedModelIdsInModal.length}</span> 个模型
+                  已选 <span className={`text-base font-bold leading-none ${selectedModelIdsInModal.length > 0 ? "text-white" : "text-slate-500"}`}>{selectedModelIdsInModal.length}</span> 个模型
                   <svg className="w-3 h-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
                 {selectedModelIdsInModal.length > 0 && (
-                  <button type="button" className="text-xs text-slate-400 hover:text-red-500 transition px-2 py-1 rounded-lg hover:bg-red-50" onClick={() => setSelectedModelIdsInModal([])}>清空选择</button>
+                  <button type="button" className="text-xs text-slate-500 hover:text-red-400 transition px-2 py-1 rounded-lg hover:bg-red-500/10" onClick={() => setSelectedModelIdsInModal([])}>清空选择</button>
                 )}
               </div>
               <div className="flex gap-2">
-                <button type="button" className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 transition" onClick={() => setModelSelectOpen(false)}>取消</button>
-                <button type="button" className="px-4 py-2 rounded-lg bg-primary-500 text-white text-sm hover:bg-primary-600 transition font-medium" onClick={() => { setSettingsForm((f) => ({ ...f, selectedModelIds: selectedModelIdsInModal, modelList: fetchedModelList })); setModelSelectOpen(false); }}>确定</button>
+                <button type="button" className="px-4 py-2 rounded-lg glass-button text-slate-300 text-sm transition" onClick={() => setModelSelectOpen(false)}>取消</button>
+                <button type="button" className="px-4 py-2 rounded-lg gradient-button text-white text-sm font-medium" onClick={() => { setSettingsForm((f) => ({ ...f, selectedModelIds: selectedModelIdsInModal, modelList: fetchedModelList })); setModelSelectOpen(false); }}>确定</button>
               </div>
             </div>
 
@@ -1871,7 +1871,7 @@ function App() {
                 document.body.style.userSelect = "none";
               }}
             >
-              <svg className="w-3 h-3 text-slate-300 group-hover:text-primary-400 transition-colors" viewBox="0 0 10 10" fill="currentColor">
+              <svg className="w-3 h-3 text-slate-400 group-hover:text-primary-400 transition-colors" viewBox="0 0 10 10" fill="currentColor">
                 <path d="M8 2L2 8M10 5L5 10M10 8L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
               </svg>
             </div>
@@ -1881,22 +1881,22 @@ function App() {
 
       {/* 已选模型管理弹窗（叠加在选择模型弹窗之上） */}
       {selectedModelManageOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center" style={{backdropFilter:"blur(2px)",background:"rgba(0,0,0,0.35)"}} onClick={(e) => { if (e.target === e.currentTarget) { setSelectedModelIdsInModal(settingsForm.selectedModelIds); setSelectedModelManageOpen(false); } }}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden popup-enter" style={{width:"min(90vw,600px)",maxHeight:"min(90vh,680px)"}}>
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overlay-dark" onClick={(e) => { if (e.target === e.currentTarget) { setSelectedModelIdsInModal(settingsForm.selectedModelIds); setSelectedModelManageOpen(false); } }}>
+          <div className="bg-white/[0.06] rounded-2xl shadow-2xl border border-white/[0.08] flex flex-col overflow-hidden popup-enter" style={{width:"min(90vw,600px)",maxHeight:"min(90vh,680px)"}}>
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-emerald-500/10 to-teal-500/10">
               <div className="flex items-center gap-3">
-                <h3 className="text-base font-semibold text-slate-800">已选模型管理</h3>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">{settingsForm.selectedModelIds.length} 个</span>
+                <h3 className="text-base font-semibold text-slate-100">已选模型管理</h3>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-medium">{settingsForm.selectedModelIds.length} 个</span>
               </div>
-              <button type="button" className="text-slate-400 hover:text-slate-600 text-2xl leading-none p-1 hover:bg-slate-100 rounded-lg transition" onClick={() => { setSelectedModelIdsInModal(settingsForm.selectedModelIds); setSelectedModelManageOpen(false); }}>×</button>
+              <button type="button" className="text-slate-400 hover:text-slate-400 text-2xl leading-none p-1 hover:bg-white/[0.08] rounded-lg transition" onClick={() => { setSelectedModelIdsInModal(settingsForm.selectedModelIds); setSelectedModelManageOpen(false); }}>×</button>
             </div>
 
             {/* 主体：左列已选 + 右列可添加 */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               {/* 左：已选列表 */}
-              <div className="flex-1 flex flex-col border-r border-slate-100 min-w-0">
-                <div className="px-4 py-2.5 border-b border-slate-50 bg-slate-50/60 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-600">当前已选</span>
+              <div className="flex-1 flex flex-col border-r border-white/[0.06] min-w-0">
+                <div className="px-4 py-2.5 border-b border-white/[0.04] bg-white/[0.03] flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">当前已选</span>
                   <button type="button" className="text-[10px] text-slate-400 hover:text-red-500 transition" onClick={() => { if (confirm("确定清空所有已选模型吗？")) setSettingsForm((f) => ({ ...f, selectedModelIds: [] })); }}>清空全部</button>
                 </div>
                 <div className="flex-1 overflow-y-auto app-scrollbar p-3 min-h-0">
@@ -1911,13 +1911,13 @@ function App() {
                         const info = getModelDisplayInfo(id);
                         const priceInfo = getModelPrice(id);
                         return (
-                          <div key={id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 hover:border-red-200 hover:bg-red-50/30 group transition-all">
-                            <span className="w-5 h-5 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center text-[9px] font-bold flex-shrink-0">{idx + 1}</span>
+                          <div key={id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] hover:border-red-500/20 hover:bg-red-500/[0.04] group transition-all">
+                            <span className="w-5 h-5 rounded bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-[9px] font-bold flex-shrink-0">{idx + 1}</span>
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs text-slate-700 truncate font-medium" title={id}>{id}</div>
+                              <div className="text-xs text-slate-300 truncate font-medium" title={id}>{id}</div>
                               <div className="flex items-center gap-1 mt-0.5">
-                                {info.vendorTag && <span className="px-1 py-0 rounded bg-primary-50 text-primary-600 text-[9px]">{info.vendorTag}</span>}
-                                <span className={`px-1 py-0 rounded text-[9px] ${priceInfo.price === "询价" ? "bg-slate-100 text-slate-400" : "bg-emerald-50 text-emerald-600"}`}>{priceInfo.price}</span>
+                                {info.vendorTag && <span className="px-1 py-0 rounded bg-primary-500/10 text-primary-400 text-[9px]">{info.vendorTag}</span>}
+                                <span className={`px-1 py-0 rounded text-[9px] ${priceInfo.price === "询价" ? "bg-white/[0.08] text-slate-400" : "bg-emerald-500/10 text-emerald-400"}`}>{priceInfo.price}</span>
                               </div>
                             </div>
                             <button type="button" className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-100 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0" title="移除" onClick={() => setSettingsForm((f) => ({ ...f, selectedModelIds: f.selectedModelIds.filter(x => x !== id) }))}>
@@ -1933,16 +1933,16 @@ function App() {
 
               {/* 右：从已获取列表中添加 */}
               <div className="flex-1 flex flex-col min-w-0">
-                <div className="px-4 py-2.5 border-b border-slate-50 bg-slate-50/60">
-                  <span className="text-xs font-semibold text-slate-600">添加模型</span>
+                <div className="px-4 py-2.5 border-b border-white/[0.04] bg-white/[0.03]">
+                  <span className="text-xs font-semibold text-slate-400">添加模型</span>
                   {fetchedModelList.length === 0 && <span className="text-[9px] text-slate-400 ml-1.5">请先在设置中获取模型列表</span>}
                 </div>
                 {fetchedModelList.length > 0 ? (
                   <>
-                    <div className="px-3 py-2 border-b border-slate-50">
+                    <div className="px-3 py-2 border-b border-white/[0.04]">
                       <input
                         type="text"
-                        className="w-full text-xs rounded-lg border border-slate-200 px-2.5 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
+                        className="w-full text-xs rounded-lg border border-white/[0.08] px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-primary-500/30"
                         placeholder="搜索模型 id…"
                         value={modelSearchQuery}
                         onChange={(e) => setModelSearchQuery(e.target.value)}
@@ -1957,13 +1957,13 @@ function App() {
                             const info = getModelDisplayInfo(id);
                             const priceInfo = getModelPrice(id);
                             return (
-                              <div key={id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${isAdded ? "bg-emerald-50 border-emerald-200/70" : "bg-white border-slate-100 hover:border-primary-200 hover:bg-primary-50/30"}`}>
+                              <div key={id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${isAdded ? "bg-emerald-500/10 border-emerald-500/20" : "bg-white/[0.06] border-white/[0.06] hover:border-primary-500/20 hover:bg-primary-500/[0.04]"}`}>
                                 <div className="flex-1 min-w-0">
-                                  <div className={`text-xs truncate ${isAdded ? "text-emerald-700 font-medium" : "text-slate-700"}`} title={id}>{id}</div>
+                                  <div className={`text-xs truncate ${isAdded ? "text-emerald-400 font-medium" : "text-slate-300"}`} title={id}>{id}</div>
                                   <div className="flex items-center gap-1 mt-0.5">
-                                    {info.categoryTag && <span className="px-1 py-0 rounded bg-slate-100 text-slate-500 text-[9px]">{info.categoryTag}</span>}
-                                    {info.vendorTag && <span className="px-1 py-0 rounded bg-primary-50 text-primary-600 text-[9px]">{info.vendorTag}</span>}
-                                    <span className={`px-1 py-0 rounded text-[9px] ${priceInfo.price === "询价" ? "bg-slate-100 text-slate-400" : "bg-emerald-50 text-emerald-600"}`}>{priceInfo.price}</span>
+                                    {info.categoryTag && <span className="px-1 py-0 rounded bg-white/[0.08] text-slate-500 text-[9px]">{info.categoryTag}</span>}
+                                    {info.vendorTag && <span className="px-1 py-0 rounded bg-primary-500/10 text-primary-400 text-[9px]">{info.vendorTag}</span>}
+                                    <span className={`px-1 py-0 rounded text-[9px] ${priceInfo.price === "询价" ? "bg-white/[0.08] text-slate-400" : "bg-emerald-500/10 text-emerald-400"}`}>{priceInfo.price}</span>
                                   </div>
                                 </div>
                                 {isAdded ? (
@@ -1989,7 +1989,7 @@ function App() {
               </div>
             </div>
 
-            <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between flex-shrink-0 bg-white">
+            <div className="px-5 py-3.5 border-t border-white/[0.06] flex items-center justify-between flex-shrink-0 bg-white/[0.06]">
               <span className="text-xs text-slate-400">修改会即时生效</span>
               <button type="button" className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition font-medium" onClick={() => {
                 // 同步到 modelList 状态
@@ -2045,7 +2045,7 @@ function App() {
                   <button
                     onClick={() => setHistoryLayout("list")}
                     title="列表视图"
-                    className={`px-1.5 py-0.5 rounded transition ${historyLayout === "list" ? "bg-white/90 text-primary-600" : "text-white/70 hover:text-white"}`}
+                    className={`px-1.5 py-0.5 rounded transition ${historyLayout === "list" ? "bg-white/90 text-primary-400" : "text-white/70 hover:text-white"}`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -2054,7 +2054,7 @@ function App() {
                   <button
                     onClick={() => setHistoryLayout("grid")}
                     title="网格视图"
-                    className={`px-1.5 py-0.5 rounded transition ${historyLayout === "grid" ? "bg-white/90 text-primary-600" : "text-white/70 hover:text-white"}`}
+                    className={`px-1.5 py-0.5 rounded transition ${historyLayout === "grid" ? "bg-white/90 text-primary-400" : "text-white/70 hover:text-white"}`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A.75.75 0 016 .75v3a.75.75 0 01-1.5 0V6.75A.75.75 0 013.75 6zm10.5 0A.75.75 0 0114.5 6v3a.75.75 0 01-1.5 0V6.75A.75.75 0 0114.25 6zM3.75 15.75a.75.75 0 01.75-.75h3a.75.75 0 010 1.5h-3a.75.75 0 01-.75-.75zM14.25 15a.75.75 0 00.75-.75h-3a.75.75 0 000 1.5h3a.75.75 0 00.75-.75z" />
@@ -2141,12 +2141,12 @@ function App() {
                                 <img
                                   src={firstImg.url}
                                   alt=""
-                                  className="w-full aspect-square object-cover bg-slate-700 cursor-zoom-in hover:opacity-90 transition"
+                                  className="w-full aspect-square object-cover bg-slate-800 cursor-zoom-in hover:opacity-90 transition"
                                   onDoubleClick={() => setHistoryFullPreview(firstImg)}
                                   title="双击查看大图"
                                 />
                               ) : (
-                            <div className="w-full aspect-square bg-slate-700/60 flex items-center justify-center">
+                            <div className="w-full aspect-square bg-slate-800/60 flex items-center justify-center">
                               {hasError ? (
                                 <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                               ) : (
@@ -2237,12 +2237,12 @@ function App() {
                             <img
                               src={firstImg.url}
                               alt=""
-                              className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-slate-700 cursor-zoom-in hover:ring-2 hover:ring-primary-400 transition"
+                              className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-slate-800 cursor-zoom-in hover:ring-2 hover:ring-primary-400 transition"
                               onDoubleClick={() => setHistoryFullPreview(firstImg)}
                               title="双击查看大图"
                             />
                           ) : (
-                            <div className="w-14 h-14 rounded-lg bg-slate-700/60 flex items-center justify-center flex-shrink-0">
+                            <div className="w-14 h-14 rounded-lg bg-slate-800/60 flex items-center justify-center flex-shrink-0">
                               {hasError ? (
                                 <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                               ) : (
@@ -2251,12 +2251,12 @@ function App() {
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">{entry.prompt}</p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-300 line-clamp-2 leading-relaxed">{entry.prompt}</p>
                             <div className="flex items-center gap-1 mt-1 flex-wrap">
-                              <span className="text-[9px] text-slate-400">{entry.time}</span>
-                              <span className="text-[9px] px-1 bg-slate-100 dark:bg-slate-700 rounded text-slate-500">{entry.model}</span>
-                              {entry.results.length > 0 && <span className="text-[9px] text-primary-500">{entry.results.length}张</span>}
-                              {isPending && <span className="text-[9px] text-amber-500 animate-pulse">生图中...</span>}
+                              <span className="text-[9px] text-slate-500">{entry.time}</span>
+                              <span className="text-[9px] px-1 bg-white/[0.06] rounded text-slate-500">{entry.model}</span>
+                              {entry.results.length > 0 && <span className="text-[9px] text-primary-400">{entry.results.length}张</span>}
+                              {isPending && <span className="text-[9px] text-amber-400 animate-pulse">生图中...</span>}
                               {hasError && <span className="text-[9px] text-red-400 line-clamp-1">{entry.error}</span>}
                             </div>
                           </div>
@@ -2282,7 +2282,7 @@ function App() {
                   });
                   setHistorySelected(new Set());
                 }}
-                className="px-2 py-1 rounded bg-red-500/70 text-white text-[11px] hover:bg-red-500 transition"
+                className="px-2 py-1 rounded bg-red-500/70 text-white text-[11px] hover:bg-red-500/100 transition"
               >删除</button>
               <button onClick={() => { setHistoryBatchMode(false); setHistorySelected(new Set()); }}
                 className="px-2 py-1 rounded bg-white/20 text-white/80 text-[11px] hover:bg-white/30 transition">取消</button>
@@ -2290,10 +2290,10 @@ function App() {
           )}
         </div>
 
-        {/* 右侧生成结果区 - 毛玻璃 等高布局，自适应剩余宽度 */}
+        {/* 右侧生成结果区 */}
         <section className={`flex-1 min-w-[200px] glass-card rounded-2xl flex flex-col overflow-hidden ${status === "running" ? "generating-pulse" : ""}`}>
-          <div className="px-4 py-3 border-b border-white/30 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2 text-sm text-slate-700">
+          <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2 text-sm text-slate-200">
               <span className="font-semibold">生成结果</span>
               {results.length > 0 && <span className="badge-primary">{results.length} 张</span>}
               {/* 生图完成：显示用时 */}
@@ -2308,16 +2308,16 @@ function App() {
               })()}
               {selectedImageIds.size > 0 && <span className="badge-success">已选 {selectedImageIds.size}</span>}
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
               {results.length > 0 && (
                 <>
-                  <button onClick={toggleSelectAll} className="px-2.5 py-1 rounded-lg border border-white/50 bg-white/40 hover:bg-white/70 transition text-xs btn-hover-lift">
+                  <button onClick={toggleSelectAll} className="px-2.5 py-1 rounded-lg glass-button text-xs btn-hover-lift">
                     {selectedImageIds.size === results.length ? "取消全选" : "全选"}
                   </button>
                   <button
                     onClick={handleBatchDownload}
                     disabled={selectedImageIds.size === 0 || downloadStatus === "downloading"}
-                    className="px-2.5 py-1 rounded-lg border border-white/50 bg-white/40 hover:bg-white/70 disabled:opacity-40 disabled:cursor-not-allowed transition text-xs btn-hover-lift"
+                    className="px-2.5 py-1 rounded-lg glass-button disabled:opacity-30 disabled:cursor-not-allowed text-xs btn-hover-lift"
                   >
                     {downloadStatus === "downloading" ? "下载中..." : "批量下载"}
                   </button>
@@ -2342,16 +2342,16 @@ function App() {
               </div>
             ) : results.length === 0 ? (
               /* 精美空状态 */
-              <div className="flex flex-col items-center justify-center text-slate-400 h-full px-8 py-12">
+              <div className="flex flex-col items-center justify-center text-slate-500 h-full px-8 py-12">
                 <div className="empty-placeholder w-56 h-40 flex flex-col items-center justify-center mb-6 group cursor-default">
-                  <div className="grid grid-cols-3 gap-2 mb-3 opacity-30">
-                    {["bg-purple-200","bg-blue-200","bg-pink-200","bg-amber-200","bg-green-200","bg-cyan-200"].map((c,i)=>(
+                  <div className="grid grid-cols-3 gap-2 mb-3 opacity-20">
+                    {["bg-purple-500/30","bg-blue-500/30","bg-pink-500/30","bg-amber-500/30","bg-emerald-500/30","bg-cyan-500/30"].map((c,i)=>(
                       <div key={i} className={`w-8 h-8 rounded-lg ${c}`} />
                     ))}
                   </div>
-                  <p className="text-xs text-slate-400 font-medium">你的作品将在这里展示</p>
+                  <p className="text-xs text-slate-500 font-medium">你的作品将在这里展示</p>
                 </div>
-                <p className="text-sm font-medium text-slate-500 mb-1">暂无生成结果</p>
+                <p className="text-sm font-medium text-slate-400 mb-1">暂无生成结果</p>
                 <p className="text-xs text-slate-400 text-center leading-relaxed max-w-[200px]">在右侧输入提示词，<br/>选择模型后点击「开始生图」</p>
               </div>
             ) : (
@@ -2429,7 +2429,7 @@ function App() {
 
                       {/* 返回默认界面按钮 */}
                       <button
-                        className="absolute top-2 left-2 w-8 h-8 rounded-full bg-slate-500/80 hover:bg-slate-600 text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-30"
+                        className="absolute top-2 left-2 w-8 h-8 rounded-full bg-white/[0.04]0/80 hover:bg-slate-600 text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-30"
                         onClick={(e) => { e.stopPropagation(); setResults([]); setResultActiveIdx(0); setSelectedImageIds(new Set()); }}
                         title="返回默认界面"
                       >
@@ -2455,9 +2455,9 @@ function App() {
                         </>
                       )}
                     </div>
-                    {/* 缩略图横条（多图时显示） */}
+                    {/* 缩略图横条 */}
                     {results.length > 1 && (
-                      <div className="flex-shrink-0 flex gap-1.5 px-2 py-2 overflow-x-auto app-scrollbar border-t border-white/20">
+                      <div className="flex-shrink-0 flex gap-1.5 px-2 py-2 overflow-x-auto app-scrollbar border-t border-white/[0.06]">
                         {results.map((img, idx) => {
                           // 扩展类型，支持 originalUrl（原图 URL）
                           const extImg = img as typeof img & { originalUrl?: string };
@@ -2466,7 +2466,7 @@ function App() {
                             <div key={img.id} className="relative flex-shrink-0">
                               <button
                                 onClick={() => setResultActiveIdx(idx)}
-                                className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${idx === safeIdx ? "border-primary-400 ring-1 ring-primary-300" : "border-transparent hover:border-white/60"}`}
+                                className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${idx === safeIdx ? "border-primary-400 ring-1 ring-primary-400/30" : "border-transparent hover:border-white/20"}`}
                               >
                                 <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
                               </button>
@@ -2547,19 +2547,18 @@ function App() {
 
         return (
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center"
-            style={{ background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }}
+            className="fixed inset-0 z-[70] flex items-center justify-center overlay-dark"
             onClick={() => setModelPickerOpen(false)}
           >
             <div
-              className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              className="bg-white/[0.06] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
               style={{ width: 860, maxWidth: "96vw", height: 580, maxHeight: "92vh" }}
               onClick={(e) => e.stopPropagation()}
             >
               {/* 头部 */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 flex-shrink-0">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06] flex-shrink-0">
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-800">选择模型</h3>
+                  <h3 className="text-sm font-semibold text-slate-100">选择模型</h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">共 {modelPickerList.length} 个模型 · 已选 {modelPickerSelected.size} 个</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2571,10 +2570,10 @@ function App() {
                       placeholder="搜索模型…"
                       value={modelPickerSearch}
                       onChange={(e) => setModelPickerSearch(e.target.value)}
-                      className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-300 w-44"
+                      className="pl-8 pr-3 py-1.5 text-xs border border-white/[0.08] rounded-lg bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500/30 w-44"
                     />
                   </div>
-                  <button onClick={() => setModelPickerOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                  <button onClick={() => setModelPickerOpen(false)} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition-colors">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
@@ -2583,14 +2582,14 @@ function App() {
               {/* 主体：左侧筛选 + 右侧列表 */}
               <div className="flex flex-1 overflow-hidden">
                 {/* 左侧筛选面板 */}
-                <div className="w-44 flex-shrink-0 border-r border-slate-100 overflow-y-auto py-3 px-2.5 flex flex-col gap-4">
+                <div className="w-44 flex-shrink-0 border-r border-white/[0.06] overflow-y-auto py-3 px-2.5 flex flex-col gap-4">
                   {/* 模型类型 */}
                   <div>
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 px-1">模型类型</p>
                     <div className="flex flex-col gap-0.5">
                       <button
                         onClick={() => setModelPickerCategoryTag(null)}
-                        className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerCategoryTag === null ? "bg-primary-50 text-primary-600 font-medium" : "text-slate-600 hover:bg-slate-50"}`}
+                        className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerCategoryTag === null ? "bg-primary-500/10 text-primary-400 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`}
                       >
                         全部类型
                       </button>
@@ -2598,7 +2597,7 @@ function App() {
                         <button
                           key={tag}
                           onClick={() => setModelPickerCategoryTag(modelPickerCategoryTag === tag ? null : tag)}
-                          className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerCategoryTag === tag ? "bg-primary-50 text-primary-600 font-medium" : "text-slate-600 hover:bg-slate-50"}`}
+                          className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerCategoryTag === tag ? "bg-primary-500/10 text-primary-400 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`}
                         >
                           {tag}
                         </button>
@@ -2613,7 +2612,7 @@ function App() {
                       <div className="flex flex-col gap-0.5">
                         <button
                           onClick={() => setModelPickerVendorTag(null)}
-                          className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerVendorTag === null ? "bg-violet-50 text-violet-600 font-medium" : "text-slate-600 hover:bg-slate-50"}`}
+                          className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerVendorTag === null ? "bg-violet-50 text-violet-600 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`}
                         >
                           全部厂商
                         </button>
@@ -2621,7 +2620,7 @@ function App() {
                           <button
                             key={tag}
                             onClick={() => setModelPickerVendorTag(modelPickerVendorTag === tag ? null : tag)}
-                            className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerVendorTag === tag ? "bg-violet-50 text-violet-600 font-medium" : "text-slate-600 hover:bg-slate-50"}`}
+                            className={`text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${modelPickerVendorTag === tag ? "bg-violet-50 text-violet-600 font-medium" : "text-slate-400 hover:bg-white/[0.04]"}`}
                           >
                             {tag}
                           </button>
@@ -2634,18 +2633,18 @@ function App() {
                 {/* 右侧模型列表 */}
                 <div className="flex-1 flex flex-col overflow-hidden">
                   {/* 列表头部：全选 + 计数 */}
-                  <div className="px-4 py-2 border-b border-slate-50 flex items-center justify-between flex-shrink-0">
+                  <div className="px-4 py-2 border-b border-white/[0.04] flex items-center justify-between flex-shrink-0">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={toggleAll}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-600 transition-colors"
+                        className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-400 transition-colors"
                       >
                         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
                           filteredModels.length > 0 && filteredModels.every((id) => modelPickerSelected.has(id))
                             ? "bg-primary-500 border-primary-500"
                             : filteredModels.some((id) => modelPickerSelected.has(id))
-                            ? "bg-primary-100 border-primary-300"
-                            : "border-slate-300 bg-white"
+                            ? "bg-primary-500/15 border-primary-500/30"
+                            : "border-white/[0.12] bg-white/[0.06]"
                         }`}>
                           {filteredModels.length > 0 && filteredModels.every((id) => modelPickerSelected.has(id)) && (
                             <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
@@ -2675,7 +2674,7 @@ function App() {
                     ) : (
                       filteredGroups.map((group) => (
                         <div key={group.category} className="mb-3">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-white py-0.5">{group.category}</p>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-white/[0.06] py-0.5">{group.category}</p>
                           <div className="grid grid-cols-2 gap-1">
                             {group.models.map((mid) => {
                               const info = getModelDisplayInfo(mid);
@@ -2687,20 +2686,20 @@ function App() {
                                   onClick={() => toggleModel(mid)}
                                   className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all ${
                                     selected
-                                      ? "border-primary-300 bg-primary-50 shadow-sm"
-                                      : "border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50"
+                                      ? "border-primary-500/30 bg-primary-500/10 shadow-sm"
+                                      : "border-white/[0.06] bg-white/[0.06] hover:border-white/[0.08] hover:bg-white/[0.04]"
                                   }`}
                                 >
                                   <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                                    selected ? "bg-primary-500 border-primary-500" : "border-slate-300 bg-white"
+                                    selected ? "bg-primary-500 border-primary-500" : "border-white/[0.12] bg-white/[0.06]"
                                   }`}>
                                     {selected && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-[11px] font-mono text-slate-700 truncate leading-tight">{mid}</p>
+                                    <p className="text-[11px] font-mono text-slate-300 truncate leading-tight">{mid}</p>
                                     <div className="flex items-center gap-1 mt-0.5">
                                       {info.vendorTag && <span className="text-[9px] text-violet-500 bg-violet-50 px-1 py-0.5 rounded font-medium leading-none">{info.vendorTag}</span>}
-                                      <span className="text-[9px] text-emerald-600 font-medium leading-none">{price.price}</span>
+                                      <span className="text-[9px] text-emerald-400 font-medium leading-none">{price.price}</span>
                                     </div>
                                   </div>
                                 </button>
@@ -2715,12 +2714,12 @@ function App() {
               </div>
 
               {/* 底部操作栏 */}
-              <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 flex-shrink-0 bg-slate-50/60">
-                <span className="text-xs text-slate-400">已选 <span className="font-semibold text-slate-700">{modelPickerSelected.size}</span> 个模型，点击确认后同步到 {modelPickerMode === "image" ? "Image" : "Chat"} 模型列表</span>
+              <div className="flex items-center justify-between px-5 py-3 border-t border-white/[0.06] flex-shrink-0 bg-white/[0.03]">
+                <span className="text-xs text-slate-400">已选 <span className="font-semibold text-slate-300">{modelPickerSelected.size}</span> 个模型，点击确认后同步到 {modelPickerMode === "image" ? "Image" : "Chat"} 模型列表</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setModelPickerOpen(false)}
-                    className="px-4 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-100 transition"
+                    className="px-4 py-1.5 rounded-lg border border-white/[0.08] text-slate-400 text-sm hover:bg-white/[0.08] transition"
                   >
                     取消
                   </button>
@@ -2777,17 +2776,17 @@ function App() {
         onClose={() => setHistoryFullPreview(null)}
       />
 
-      {/* 历史按钮 - 切换历史栏显示/隐藏 */}
+      {/* 历史按钮 */}
       <div
         className="fixed left-0 z-40 cursor-move"
         style={{ top: historyBtnPosition }}
         onMouseDown={() => setIsDraggingHistory(true)}
       >
         <button
-          className={`px-2.5 py-1.5 rounded-r-full text-white text-[11px] font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-1 bg-gradient-to-r ${
+          className={`px-2.5 py-1.5 rounded-r-lg text-white text-[11px] font-medium shadow-lg transition-all flex items-center gap-1.5 ${
             historyPanelOpen
-              ? "from-rose-500 to-red-600 ring-2 ring-red-300"
-              : "from-primary-500/80 to-purple-500/80 backdrop-blur-sm"
+              ? "bg-red-500/80 ring-1 ring-red-400/40"
+              : "bg-primary-500/60 backdrop-blur-sm hover:bg-primary-500/80"
           }`}
           onClick={(e) => {
             e.stopPropagation();
@@ -2814,8 +2813,7 @@ function App() {
       {/* ── 优化5：主界面模型选择弹窗 ──────────────────────────────────────── */}
       {mainModelPickerOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center"
-          style={{ background: "rgba(15,23,42,0.6)", backdropFilter: "blur(6px)" }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center overlay-dark"
           onClick={() => setMainModelPickerOpen(false)}
         >
           <div
@@ -2823,12 +2821,12 @@ function App() {
             style={{ width: 520, maxWidth: "96vw", maxHeight: "80vh" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 border-b border-white/30 flex items-center justify-between flex-shrink-0">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
               <div>
-                <h3 className="text-sm font-bold text-slate-800">生图模型管理</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">勾选后的模型将参与生图，取消勾选则跳过</p>
+                <h3 className="text-sm font-bold text-slate-100">生图模型管理</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">勾选后的模型将参与生图，取消勾选则跳过</p>
               </div>
-              <button onClick={() => setMainModelPickerOpen(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setMainModelPickerOpen(false)} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -2852,7 +2850,7 @@ function App() {
                   return (
                     <label
                       key={m.id}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${isChecked ? "bg-primary-50/80 border-primary-300" : "bg-white/60 border-white/40 hover:bg-white/80 hover:border-primary-200"}`}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${isChecked ? "bg-primary-500/10 border-primary-500/20" : "bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.1]"}`}
                     >
                       <input
                         type="checkbox"
@@ -2868,17 +2866,17 @@ function App() {
                         className="w-4 h-4 rounded text-primary-500 flex-shrink-0"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-mono truncate ${isChecked ? "text-primary-700 font-medium" : "text-slate-700"}`}>{m.modelId}</p>
-                        {m.label && m.label !== m.modelId && <p className="text-[10px] text-slate-400 truncate">{m.label}</p>}
+                        <p className={`text-sm font-mono truncate ${isChecked ? "text-primary-400 font-medium" : "text-slate-300"}`}>{m.modelId}</p>
+                        {m.label && m.label !== m.modelId && <p className="text-[10px] text-slate-500 truncate">{m.label}</p>}
                         {/* 价格信息 */}
-                        <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
                           {priceInfo.price !== "询价"
-                            ? <>单次：<span className="text-emerald-600 font-medium">{priceInfo.price}</span>{priceInfo.note && <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1 rounded">{priceInfo.note}</span>}</>
-                            : <span className="text-slate-300">暂无定价</span>
+                            ? <>单次：<span className="text-emerald-400 font-medium">{priceInfo.price}</span>{priceInfo.note && <span className="ml-1 text-[9px] bg-white/[0.06] text-slate-500 px-1 rounded">{priceInfo.note}</span>}</>
+                            : <span className="text-slate-400">暂无定价</span>
                           }
                         </p>
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${spec === "gemini" ? "bg-purple-50 text-purple-600 border border-purple-200" : "bg-blue-50 text-blue-600 border border-blue-200"}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${spec === "gemini" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"}`}>
                         {spec === "gemini" ? "Gemini" : "OpenAI"}
                       </span>
                     </label>
@@ -2886,12 +2884,12 @@ function App() {
                 });
               })()}
             </div>
-            <div className="px-5 py-3 border-t border-white/30 flex items-center justify-between flex-shrink-0">
-              <span className="text-xs text-slate-500">已勾选 <span className="font-semibold text-slate-700">{mainModelPickerSelected.size}</span> 个</span>
+            <div className="px-5 py-3 border-t border-white/[0.06] flex items-center justify-between flex-shrink-0">
+              <span className="text-xs text-slate-400">已勾选 <span className="font-semibold text-slate-200">{mainModelPickerSelected.size}</span> 个</span>
               <div className="flex gap-2">
-                <button className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition" onClick={() => setMainModelPickerOpen(false)}>取消</button>
+                <button className="px-4 py-2 rounded-xl glass-button text-slate-300 text-sm transition" onClick={() => setMainModelPickerOpen(false)}>取消</button>
                 <button
-                  className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition"
+                  className="px-5 py-2 rounded-xl gradient-button text-white text-sm font-medium"
                   onClick={() => {
                     const cfg = getApiConfig();
                     const selectedModels = cfg.imageModels.filter((m) => mainModelPickerSelected.has(m.id) && m.modelId.trim());
@@ -2918,20 +2916,20 @@ function App() {
         >
           <div
             className="rounded-2xl shadow-2xl flex flex-col overflow-hidden popup-enter"
-            style={{ width: 580, maxWidth: "96vw", maxHeight: "80vh", background: "rgba(255,255,255,0.98)", border: "1px solid #e2e8f0" }}
+            style={{ width: 580, maxWidth: "96vw", maxHeight: "80vh", background: "rgba(18, 18, 26, 0.95)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* 标题栏 */}
-            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-indigo-50 to-blue-50">
+            <div className="px-5 py-3.5 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
               <div>
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <svg className="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                   API 供应商管理
-                  {cfgDraft.apiVendors?.length > 0 && <span className="text-[11px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-medium">{cfgDraft.apiVendors.length} 个</span>}
+                  {cfgDraft.apiVendors?.length > 0 && <span className="text-[11px] bg-primary-500/10 text-primary-400 px-1.5 py-0.5 rounded-full font-medium">{cfgDraft.apiVendors.length} 个</span>}
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">在上方填写信息后点击「保存」即可添加；点击 ✏️ 可编辑各项信息</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">在上方填写信息后点击「保存」即可添加；点击 ✏️ 可编辑各项信息</p>
               </div>
-              <button onClick={() => { setVendorDialogOpen(false); setVendorEditingId(null); }} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => { setVendorDialogOpen(false); setVendorEditingId(null); }} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -2939,10 +2937,10 @@ function App() {
             {/* 供应商列表 */}
             <div className="flex-1 overflow-y-auto app-scrollbar p-4 min-h-0">
               {cfgDraft.apiVendors.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
-                  <svg className="w-10 h-10 mx-auto mb-3 opacity-25" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                <div className="text-center py-12 text-slate-500 text-xs border border-dashed border-white/[0.08] rounded-xl">
+                  <svg className="w-10 h-10 mx-auto mb-3 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                   <p className="font-medium text-slate-400">暂无供应商</p>
-                  <p className="mt-1 text-slate-300">在「模型接口配置」填写 Base URL、API Key 和供应商名称后点击「保存」即可添加</p>
+                  <p className="mt-1 text-slate-400">在「模型接口配置」填写 Base URL、API Key 和供应商名称后点击「保存」即可添加</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -2954,18 +2952,18 @@ function App() {
                       <div
                         key={vendor.id}
                         className={`rounded-xl border transition-all ${
-                          isEditing ? "border-amber-300 bg-amber-50/40 shadow-sm"
-                          : isActive ? "border-primary-200 bg-primary-50/40 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-slate-300"
+                          isEditing ? "border-amber-500/30 bg-amber-500/[0.06] shadow-sm"
+                          : isActive ? "border-primary-500/20 bg-primary-500/[0.06] shadow-sm"
+                          : "border-white/[0.08] bg-white/[0.06] hover:border-white/[0.12]"
                         }`}
                       >
                         {/* 展示行 */}
                         <div className="flex items-start gap-3 px-3.5 py-2.5">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className={`text-sm font-semibold truncate ${isActive ? "text-primary-700" : "text-slate-700"}`}>{vendor.name}</p>
-                              {isActive && <span className="text-[10px] bg-primary-100 text-primary-600 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">当前使用</span>}
-                              {isDefault && <span className="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 flex items-center gap-0.5"><svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>默认</span>}
+                              <p className={`text-sm font-semibold truncate ${isActive ? "text-primary-400" : "text-slate-300"}`}>{vendor.name}</p>
+                              {isActive && <span className="text-[10px] bg-primary-500/15 text-primary-400 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">当前使用</span>}
+                              {isDefault && <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 flex items-center gap-0.5"><svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>默认</span>}
                             </div>
                             <p className="text-[10px] text-slate-400 font-mono truncate mt-0.5">{vendor.baseUrl}</p>
                             {vendor.apiKey && (
@@ -2979,7 +2977,7 @@ function App() {
                             {/* 设为默认 */}
                             <button
                               title={isDefault ? "已是默认供应商" : "设为默认（启动时自动应用）"}
-                              className={`p-1.5 rounded-lg border transition ${isDefault ? "border-emerald-200 bg-emerald-50 text-emerald-500" : "border-slate-200 text-slate-400 hover:border-emerald-200 hover:text-emerald-500 hover:bg-emerald-50"}`}
+                              className={`p-1.5 rounded-lg border transition ${isDefault ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500" : "border-white/[0.08] text-slate-400 hover:border-emerald-500/20 hover:text-emerald-500 hover:bg-emerald-500/10"}`}
                               onClick={() => {
                                 const updated = setDefaultApiVendor(isDefault ? "" : vendor.id);
                                 setCfgDraft((d) => ({ ...d, apiVendors: updated.apiVendors }));
@@ -2990,7 +2988,7 @@ function App() {
                             {/* 切换使用 */}
                             <button
                               title="切换为当前使用的供应商"
-                              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition border ${isActive ? "border-primary-200 bg-primary-50 text-primary-600 hover:bg-primary-100" : "border-slate-200 bg-white text-slate-600 hover:border-primary-200 hover:text-primary-600 hover:bg-primary-50"}`}
+                              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition border ${isActive ? "border-primary-500/20 bg-primary-500/10 text-primary-400 hover:bg-primary-500/15" : "border-white/[0.08] bg-white/[0.06] text-slate-400 hover:border-primary-500/20 hover:text-primary-400 hover:bg-primary-500/10"}`}
                               onClick={() => {
                                 const updated = switchApiVendor(vendor.id);
                                 setCfgDraft((d) => ({
@@ -3007,7 +3005,7 @@ function App() {
                             {/* 编辑 */}
                             <button
                               title="编辑此供应商"
-                              className={`p-1.5 rounded-lg border transition ${isEditing ? "border-amber-300 bg-amber-100 text-amber-600" : "border-slate-200 text-slate-400 hover:border-amber-200 hover:text-amber-500 hover:bg-amber-50"}`}
+                              className={`p-1.5 rounded-lg border transition ${isEditing ? "border-amber-500/30 bg-amber-500/15 text-amber-400" : "border-white/[0.08] text-slate-400 hover:border-amber-200 hover:text-amber-500 hover:bg-amber-500/10"}`}
                               onClick={() => {
                                 if (isEditing) {
                                   setVendorEditingId(null);
@@ -3034,12 +3032,12 @@ function App() {
                                     if (vendorEditingId === vendor.id) setVendorEditingId(null);
                                   }}
                                 >是</button>
-                                <button className="px-2 py-1 rounded-lg text-xs border border-slate-200 text-slate-500 hover:bg-slate-50 transition" onClick={() => setVendorDeleteConfirm(null)}>否</button>
+                                <button className="px-2 py-1 rounded-lg text-xs border border-white/[0.08] text-slate-500 hover:bg-white/[0.04] transition" onClick={() => setVendorDeleteConfirm(null)}>否</button>
                               </div>
                             ) : (
                               <button
                                 title="删除此供应商"
-                                className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition"
+                                className="p-1.5 rounded-lg border border-white/[0.08] text-slate-400 hover:text-red-500 hover:border-red-500/20 hover:bg-red-500/10 transition"
                                 onClick={() => setVendorDeleteConfirm(vendor.id)}
                               >
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -3053,19 +3051,19 @@ function App() {
                             <div className="grid grid-cols-2 gap-2 mt-2.5 mb-2">
                               <div>
                                 <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">供应商名称</label>
-                                <input type="text" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400" value={vendorNameInput} onChange={(e) => setVendorNameInput(e.target.value)} />
+                                <input type="text" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400" value={vendorNameInput} onChange={(e) => setVendorNameInput(e.target.value)} />
                               </div>
                               <div>
                                 <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">Base URL</label>
-                                <input type="url" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400 font-mono" value={vendorUrlInput} onChange={(e) => setVendorUrlInput(e.target.value)} />
+                                <input type="url" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400 font-mono" value={vendorUrlInput} onChange={(e) => setVendorUrlInput(e.target.value)} />
                               </div>
                               <div>
                                 <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">API Key（可选）</label>
-                                <input type="password" autoComplete="off" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400 font-mono" value={vendorApiKeyInput} onChange={(e) => setVendorApiKeyInput(e.target.value)} />
+                                <input type="password" autoComplete="off" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400 font-mono" value={vendorApiKeyInput} onChange={(e) => setVendorApiKeyInput(e.target.value)} />
                               </div>
                               <div>
                                 <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">备注（可选）</label>
-                                <input type="text" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400" value={vendorRemarkInput} onChange={(e) => setVendorRemarkInput(e.target.value)} />
+                                <input type="text" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-400" value={vendorRemarkInput} onChange={(e) => setVendorRemarkInput(e.target.value)} />
                               </div>
                             </div>
                             <div className="flex gap-2">
@@ -3087,7 +3085,7 @@ function App() {
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                 保存修改
                               </button>
-                              <button className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 text-slate-500 hover:bg-slate-100 transition" onClick={() => setVendorEditingId(null)}>取消</button>
+                              <button className="px-3 py-1.5 rounded-lg text-xs border border-white/[0.08] text-slate-500 hover:bg-white/[0.08] transition" onClick={() => setVendorEditingId(null)}>取消</button>
                             </div>
                           </div>
                         )}
@@ -3098,7 +3096,7 @@ function App() {
               )}
             </div>
 
-            <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between flex-shrink-0 bg-slate-50/60">
+            <div className="px-5 py-3 border-t border-white/[0.06] flex items-center justify-between flex-shrink-0 bg-white/[0.03]">
               <p className="text-[10px] text-slate-400">⭐ 设为默认 = 下次打开时自动应用该供应商</p>
               <button
                 className="px-5 py-2 rounded-xl bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition shadow-sm"
@@ -3130,11 +3128,11 @@ function App() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* 标题栏 */}
-            <div className="px-5 py-3 border-b border-slate-200/60 flex items-center justify-between bg-white/40">
-              <h3 className="text-sm font-semibold text-slate-800">📋 历史记录管理</h3>
+            <div className="px-5 py-3 border-b border-white/[0.05] flex items-center justify-between bg-white/40">
+              <h3 className="text-sm font-semibold text-slate-100">📋 历史记录管理</h3>
               <button
                 type="button"
-                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition-colors"
                 onClick={() => { setManageDialogOpen(false); setSelectedPromptHistory(new Set()); }}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3147,7 +3145,7 @@ function App() {
             <div className="px-5 pt-3 pb-0 flex items-center gap-1 bg-white/20">
               <button
                 type="button"
-                className={`px-3 py-1.5 rounded-t-lg text-xs font-medium transition-all ${historyTab === "input" ? "bg-white text-primary-600 border border-slate-200 border-b-white -mb-px" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"}`}
+                className={`px-3 py-1.5 rounded-t-lg text-xs font-medium transition-all ${historyTab === "input" ? "bg-white/[0.06] text-primary-400 border border-white/[0.08] border-b-white -mb-px" : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"}`}
                 onClick={() => { setHistoryTab("input"); }}
               >
                 📝 输入历史 <span className="ml-1 text-[10px] opacity-70">{promptHistory.length}</span>
@@ -3158,11 +3156,11 @@ function App() {
             {(() => {
               const selCount = selectedPromptHistory.size;
               return selCount > 0 ? (
-                <div className="px-5 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+                <div className="px-5 py-2 bg-blue-500/10 border-b border-blue-500/15 flex items-center gap-2">
                   <span className="text-xs text-blue-600 font-medium">已选择 {selCount} 项</span>
                   <button
                     type="button"
-                    className="px-2 py-1 rounded-lg text-[11px] border border-blue-200 text-blue-600 hover:bg-blue-100 transition"
+                    className="px-2 py-1 rounded-lg text-[11px] border border-blue-500/20 text-blue-600 hover:bg-blue-500/15 transition"
                     onClick={() => {
                       setSelectedPromptHistory(new Set(promptHistory.map((_, i) => i)));
                     }}
@@ -3171,7 +3169,7 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    className="px-2 py-1 rounded-lg text-[11px] border border-blue-200 text-blue-600 hover:bg-blue-100 transition"
+                    className="px-2 py-1 rounded-lg text-[11px] border border-blue-500/20 text-blue-600 hover:bg-blue-500/15 transition"
                     onClick={() => {
                       setSelectedPromptHistory(prev => {
                         const all = new Set(promptHistory.map((_, i) => i));
@@ -3213,11 +3211,11 @@ function App() {
                     {promptHistory.map((p, i) => (
                       <div
                         key={i}
-                        className={`group flex items-start gap-2 bg-white/50 rounded-lg border transition-all p-2.5 hover:border-primary-200 ${selectedPromptHistory.has(i) ? "border-blue-300 bg-blue-50/30" : "border-slate-100"}`}
+                        className={`group flex items-start gap-2 bg-white/50 rounded-lg border transition-all p-2.5 hover:border-primary-500/20 ${selectedPromptHistory.has(i) ? "border-blue-300 bg-blue-500/[0.04]" : "border-white/[0.06]"}`}
                       >
                         <input
                           type="checkbox"
-                          className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-300 cursor-pointer flex-shrink-0"
+                          className="mt-0.5 w-4 h-4 rounded border-white/[0.12] text-primary-500 focus:ring-primary-500/30 cursor-pointer flex-shrink-0"
                           checked={selectedPromptHistory.has(i)}
                           onChange={(e) => {
                             setSelectedPromptHistory(prev => {
@@ -3228,7 +3226,7 @@ function App() {
                           }}
                         />
                         <div
-                          className="flex-1 text-[11px] text-slate-600 line-clamp-2 cursor-pointer hover:text-primary-600 min-w-0"
+                          className="flex-1 text-[11px] text-slate-400 line-clamp-2 cursor-pointer hover:text-primary-400 min-w-0"
                           onClick={() => { setPrompt(p); setManageDialogOpen(false); }}
                           title="点击应用此提示词"
                         >
@@ -3236,7 +3234,7 @@ function App() {
                         </div>
                         <button
                           type="button"
-                          className="p-1 rounded hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+                          className="p-1 rounded hover:bg-red-500/10 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
                           title="删除"
                           onClick={() => {
                             setPromptHistory(prev => prev.filter((_, idx) => idx !== i));
@@ -3254,7 +3252,7 @@ function App() {
             </div>
 
             {/* 底部状态栏 */}
-            <div className="px-5 py-2.5 border-t border-slate-200/60 bg-slate-50/60 flex items-center justify-end flex-shrink-0">
+            <div className="px-5 py-2.5 border-t border-white/[0.05] bg-white/[0.03] flex items-center justify-end flex-shrink-0">
               <div className="flex items-center gap-3 text-[10px] text-slate-400">
                 <span>📝 输入历史 {promptHistory.length}</span>
               </div>
@@ -3287,14 +3285,14 @@ function App() {
 
       {/* 拖动条 */}
         <div
-          className="w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center group hover:bg-primary-100/50"
+          className="w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center group hover:bg-white/[0.04]"
           onMouseDown={() => setIsDragging(true)}
           title="拖动调节宽度"
         >
-          <div className="w-0.5 h-12 bg-slate-200 group-hover:bg-primary-400 rounded-full transition-colors" />
+          <div className="w-0.5 h-12 bg-white/[0.08] group-hover:bg-primary-500/60 rounded-full transition-colors" />
         </div>
 
-        {/* 右侧控制栏 - 玻璃拟态 - 全高 flex-col 无滚动 */}
+        {/* 右侧控制栏 */}
         <aside
           className="flex-shrink-0 flex flex-col gap-2 overflow-hidden"
           style={{ width: rightPanelWidth, height: "100%", maxHeight: "100%" }}
@@ -3303,20 +3301,20 @@ function App() {
           <div className="glass-card rounded-xl px-3 pt-2.5 pb-2 flex flex-col gap-1.5 flex-shrink-0">
             {/* 标题行 */}
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700">提示词 Prompt</span>
+              <span className="text-xs font-semibold text-slate-300">提示词</span>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   disabled={!prompt.trim()}
-                  className="px-2 py-0.5 rounded-lg border text-[11px] btn-hover-lift transition-all border-slate-200 bg-white/60 text-slate-600 hover:border-primary-200 hover:text-primary-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-2 py-0.5 rounded-lg glass-button text-[11px] btn-hover-lift transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   onClick={handlePromptOptimize}
                   title="打开提示词优化助手"
                 >
-                  ✨ 优化
+                  优化
                 </button>
               </div>
             </div>
-            {/* 主提示词输入框 - 加高 */}
+            {/* 主提示词输入框 */}
             <textarea
               className="w-full text-sm rounded-xl glass-input px-3 py-2 resize-none app-scrollbar"
               style={{ minHeight: 120, maxHeight: 200 }}
@@ -3327,7 +3325,7 @@ function App() {
             {/* 提示词历史下拉 */}
             <div className="flex items-center gap-1">
               <select
-                className="flex-1 min-w-[140px] text-xs rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-300"
+                className="flex-1 min-w-[140px] text-xs rounded-lg glass-input px-2 py-1.5"
                 value={historyTemplateValue}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -3382,11 +3380,11 @@ function App() {
                   </optgroup>
                 )}
               </select>
-              {/* 管理按钮：打开历史管理弹窗 */}
+              {/* 管理按钮 */}
               <button
                 type="button"
                 title="管理历史"
-                className="flex-shrink-0 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-500 hover:text-primary-600 hover:border-primary-200 hover:bg-primary-50 transition text-[11px]"
+                className="flex-shrink-0 px-2 py-1.5 rounded-lg glass-button text-slate-400 hover:text-primary-400 transition text-[11px]"
                 onClick={() => { setManageDialogOpen(true); }}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3394,8 +3392,8 @@ function App() {
                 </svg>
               </button>
             </div>
-            {/* 反向提示词 - 历史记录 */}
-            <div className="border border-slate-200/60 rounded-lg overflow-hidden">
+            {/* 反向提示词 */}
+            <div className="border border-white/[0.06] rounded-lg overflow-hidden">
               <textarea
                 className="w-full text-xs glass-input px-2.5 py-2 resize-none app-scrollbar rounded-none border-0"
                 style={{ height: 68 }}
@@ -3410,22 +3408,22 @@ function App() {
           <div className="glass-card rounded-xl overflow-hidden flex-shrink-0">
             <button
               type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-white/30 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04] transition-colors"
               onClick={() => setRefImgOpen((v) => !v)}
             >
               <span className="flex items-center gap-1.5">
                 <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 参考图
-                {referenceImages.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-primary-100 text-primary-600 text-[10px] font-medium">{referenceImages.length}</span>}
+                {referenceImages.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-primary-500/15 text-primary-400 text-[10px] font-medium">{referenceImages.length}</span>}
               </span>
-              <svg className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${refImgOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              <svg className={`w-3 h-3 text-slate-500 transition-transform duration-200 ${refImgOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
             <div className={`transition-all duration-200 overflow-hidden ${refImgOpen ? "max-h-52" : "max-h-0"}`}>
               <div className="px-3 pb-3 grid grid-cols-4 gap-2">
                 {[0, 1, 2, 3].map((index) => (
                   <label
                     key={index}
-                    className="aspect-square max-h-24 border border-dashed border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition flex flex-col items-center justify-center overflow-hidden relative"
+                    className="aspect-square max-h-24 border border-dashed border-white/[0.1] rounded-lg cursor-pointer bg-white/[0.03] hover:bg-white/[0.06] transition flex flex-col items-center justify-center overflow-hidden relative"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => handleReferenceSlotDrop(index, e)}
                   >
@@ -3444,7 +3442,7 @@ function App() {
                         <img src={referencePreviewUrls[index]!} alt="" className="absolute inset-0 w-full h-full object-cover" />
                         <button
                           type="button"
-                          className="absolute top-0 right-0 w-5 h-5 flex items-center justify-center rounded-bl bg-black/60 text-white text-xs hover:bg-red-500 transition-colors"
+                          className="absolute top-0 right-0 w-5 h-5 flex items-center justify-center rounded-bl bg-black/60 text-white text-xs hover:bg-red-500/100 transition-colors"
                           title="删除图片"
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setReferenceSlot(index, null); }}
                         >×</button>
@@ -3461,12 +3459,12 @@ function App() {
 
           {/* ── 生图设置 ── */}
           <div className="glass-card rounded-xl px-3 py-2.5 flex flex-col gap-2 flex-shrink-0">
-            <div className="text-xs font-semibold text-slate-700">生图参数</div>
+            <div className="text-xs font-semibold text-slate-300">生图参数</div>
             {/* 第一行：比例下拉 + 分辨率按钮组 */}
             <div className="flex items-center gap-2">
               {/* 比例下拉 */}
               <div className="flex flex-col gap-0.5 flex-1">
-                <span className="text-slate-400 text-[10px]">宽高比</span>
+                <span className="text-slate-500 text-[10px]">宽高比</span>
                 <AspectRatioSelect
                   value={resolutionPreset}
                   onChange={setResolutionPreset}
@@ -3474,16 +3472,16 @@ function App() {
               </div>
               {/* 分辨率按钮组 */}
               <div className="flex flex-col gap-0.5">
-                <span className="text-slate-400 text-[10px]">分辨率</span>
+                <span className="text-slate-500 text-[10px]">分辨率</span>
                 <div className="flex gap-1">
                   {SIZE_TIERS.map((t) => (
                     <button
                       key={t.id}
                       type="button"
-                      className={`px-3 py-1.5 rounded border text-[11px] font-medium transition ${
+                      className={`px-3 py-1.5 rounded-lg border text-[11px] font-medium transition ${
                         sizeTier === t.id
-                          ? "border-primary-500 bg-primary-50 text-primary-700"
-                          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                          ? "border-primary-500/30 bg-primary-500/10 text-primary-400"
+                          : "border-white/[0.08] text-slate-400 hover:bg-white/[0.06]"
                       }`}
                       onClick={() => setSizeTier(t.id as SizeTierId)}
                     >{t.label}</button>
@@ -3495,11 +3493,11 @@ function App() {
             <div className="flex items-center gap-2">
               {/* 模型下拉 */}
               <div className="flex flex-col gap-0.5 flex-1">
-                <span className="text-slate-400 text-[10px]">模型</span>
+                <span className="text-slate-500 text-[10px]">模型</span>
                 <select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="border border-slate-200 rounded-md px-1.5 py-1.5 text-[11px] bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-300 w-full truncate"
+                  className="border border-white/[0.08] rounded-lg px-1.5 py-1.5 text-[11px] bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-primary-500/30 text-slate-300 w-full truncate"
                   title={model}
                 >
                   {[...new Set(model ? [model, ...modelList] : modelList)].map((id) => (
@@ -3509,11 +3507,11 @@ function App() {
               </div>
               {/* 数量下拉 */}
               <div className="flex flex-col gap-0.5">
-                <span className="text-slate-400 text-[10px]">数量</span>
+                <span className="text-slate-500 text-[10px]">数量</span>
                 <select
                   value={batchSize}
                   onChange={(e) => setBatchSize(Number(e.target.value))}
-                  className="border border-slate-200 rounded-md px-1.5 py-1.5 text-[11px] bg-slate-50 focus:outline-none focus:ring-1 focus:ring-primary-300 w-16"
+                  className="border border-white/[0.08] rounded-lg px-1.5 py-1.5 text-[11px] bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-primary-500/30 text-slate-300 w-16"
                 >
                   {[1, 2, 4].map((n) => (
                     <option key={n} value={n}>{n}</option>
@@ -3521,15 +3519,15 @@ function App() {
                 </select>
               </div>
             </div>
-            {/* 尺寸 + 已选模型管理（同行） */}
+            {/* 尺寸 + 已选模型管理 */}
             <div className="flex items-center justify-between text-[10px]">
-              <span className="text-slate-400 tabular-nums">{width} × {height} px</span>
+              <span className="text-slate-500 tabular-nums">{width} × {height} px</span>
               <button
                 type="button"
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition font-medium border ${
                   modelList.length > 0
-                    ? "text-primary-600 bg-primary-50 hover:bg-primary-100 border-primary-200 shadow-sm"
-                    : "text-slate-400 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                    ? "text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 border-primary-500/20"
+                    : "text-slate-500 bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08]"
                 }`}
                 onClick={() => {
                   const cfg = getApiConfig();
@@ -3554,9 +3552,9 @@ function App() {
             <button
               onClick={handleGenerate}
               disabled={status === "running"}
-              className={`w-full h-10 rounded-full text-white text-sm font-semibold shadow-lg transition-all relative overflow-hidden ${
+              className={`w-full h-10 rounded-xl text-white text-sm font-semibold transition-all relative overflow-hidden ${
                 status === "running"
-                  ? "bg-gradient-to-r from-primary-400 to-primary-500 cursor-not-allowed opacity-80 generating-pulse"
+                  ? "bg-primary-500/40 cursor-not-allowed opacity-70 generating-pulse"
                   : "gradient-button"
               }`}
             >
@@ -3582,13 +3580,13 @@ function App() {
           {/* ── 日志 ── */}
           <div className="glass-card rounded-xl flex flex-col overflow-hidden flex-1 min-h-0" style={{ maxHeight: 160 }}>
             {/* 标题栏 */}
-            <div className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-white/20">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+            <div className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-white/[0.06]">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
                 <span className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                  status === "running" ? "bg-green-500 animate-pulse"
-                  : logEntries.length > 0 && logEntries[logEntries.length - 1]?.error ? "bg-red-500"
-                  : logEntries.length > 0 ? "bg-blue-400"
-                  : "bg-slate-300"
+                  status === "running" ? "bg-green-400 animate-pulse"
+                  : logEntries.length > 0 && logEntries[logEntries.length - 1]?.error ? "bg-red-400"
+                  : logEntries.length > 0 ? "bg-primary-400"
+                  : "bg-slate-600"
                 }`} />
                 日志
                 {logEntries.length > 0 && <span className="text-[10px] text-slate-400">({logEntries.length})</span>}
@@ -3598,7 +3596,7 @@ function App() {
                 <button
                   type="button"
                   title="查看详细日志"
-                  className="p-1 rounded hover:bg-white/40 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="p-1 rounded hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors"
                   onClick={() => useUiStore.getState().setShowDetailedLog(true)}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3610,7 +3608,7 @@ function App() {
                   <button
                     type="button"
                     title="清空日志"
-                    className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                    className="p-1 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
                     onClick={() => setLogEntries([])}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3621,14 +3619,14 @@ function App() {
               </div>
             </div>
             {/* 日志内容 */}
-            <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar p-2 text-[11px] font-mono text-slate-600 space-y-2">
+            <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar p-2 text-[11px] font-mono text-slate-400 space-y-2">
               {logEntries.length === 0 ? (
                 <p className="text-slate-400 italic">生图后将显示请求与返回信息…</p>
               ) : (
                 logEntries.slice(-50).map((entry, i) => (
                   <div
                     key={i}
-                    className="border-b border-white/30 pb-1.5 last:border-0 cursor-pointer rounded px-1 hover:bg-white/30 transition-colors"
+                    className="border-b border-white/[0.06] pb-1.5 last:border-0 cursor-pointer rounded px-1 hover:bg-white/[0.04] transition-colors"
                     title="双击查看详情"
                     onDoubleClick={() => {
                       useUiStore.getState().setSelectedLogEntry(entry);
@@ -3636,10 +3634,10 @@ function App() {
                     }}
                   >
                     <span className="text-slate-400">[{entry.time}]</span>
-                    {entry.endpoint && <p className="mt-0.5 text-indigo-400 truncate text-[10px]">→ {entry.endpoint}</p>}
-                    {entry.request && <pre className="mt-0.5 whitespace-pre-wrap break-all text-slate-600">{entry.request}</pre>}
-                    {entry.response && <p className="mt-0.5 text-green-600">✓ {entry.response}</p>}
-                    {entry.error && <p className="mt-0.5 text-red-500">✗ {entry.error}</p>}
+                    {entry.endpoint && <p className="mt-0.5 text-primary-400 truncate text-[10px]">→ {entry.endpoint}</p>}
+                    {entry.request && <pre className="mt-0.5 whitespace-pre-wrap break-all text-slate-400">{entry.request}</pre>}
+                    {entry.response && <p className="mt-0.5 text-emerald-400">✓ {entry.response}</p>}
+                    {entry.error && <p className="mt-0.5 text-red-400">✗ {entry.error}</p>}
                   </div>
                 ))
               )}
