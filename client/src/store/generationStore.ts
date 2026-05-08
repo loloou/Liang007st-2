@@ -19,6 +19,7 @@ import {
 } from "../utils/resolutionPresets";
 import { downloadImage, downloadImages } from "../utils/download";
 import { createThumbnail } from "../utils/imageUtils";
+import { putImage, clearOldImages } from "../utils/indexedDB";
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -488,6 +489,25 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
           })
         );
         const validImages = imagesWithThumbs.filter((img) => img?.url);
+
+        // 存储原图到 IndexedDB（不受 localStorage 5MB 限制）
+        try {
+          await Promise.all(images.map(async (img) => {
+            if (!img?.url) return;
+            await putImage({
+              id: img.id,
+              url: img.url,
+              thumbnail: validImages.find((v) => v.id === img.id)?.url,
+              prompt,
+              model,
+              width: finalWidth,
+              height: finalHeight,
+              createdAt: Date.now(),
+            });
+          }));
+          // 清理超过 200 张的旧图
+          await clearOldImages(200);
+        } catch { /* IndexedDB 不可用时静默降级 */ }
 
         const durationMs = Date.now() - genStartTime;
         const durationSec = Math.round(durationMs / 1000);

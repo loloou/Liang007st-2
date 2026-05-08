@@ -29,7 +29,6 @@ import {
 } from "./api/settings";
 import { testChatModel, testImageModel, fetchModelList } from "./api/modelConfig";
 import {
-  RESOLUTION_PRESETS,
   SIZE_TIERS,
   getResolution,
   loadImageDimensions,
@@ -50,6 +49,7 @@ import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode } from "./ut
 import { createThumbnail } from "./utils/imageUtils";
 import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
+import { WhiteboardCanvas } from "./components/Whiteboard";
 
 type GenerationStatus = "idle" | "running";
 
@@ -124,12 +124,12 @@ function App() {
       apiValidateJson: s.apiValidateJson ?? true
     };
   });
-  const [apiCheckStatus, setApiCheckStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
-  const [apiCheckMessage, setApiCheckMessage] = useState("");
-  const [testApiStatus, setTestApiStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
-  const [testApiMessage, setTestApiMessage] = useState("");
-  const [modelsFetchStatus, setModelsFetchStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [modelsFetchError, setModelsFetchError] = useState("");
+  const [_apiCheckStatus, _setApiCheckStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
+  const [_apiCheckMessage, _setApiCheckMessage] = useState("");
+  const [_testApiStatus, _setTestApiStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [_testApiMessage, _setTestApiMessage] = useState("");
+  const [_modelsFetchStatus, _setModelsFetchStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [_modelsFetchError, _setModelsFetchError] = useState("");
   const [modelSelectOpen, setModelSelectOpen] = useState(false);
   const [fetchedModelList, setFetchedModelList] = useState<string[]>([]);
   const [selectedModelIdsInModal, setSelectedModelIdsInModal] = useState<string[]>([]);
@@ -146,7 +146,7 @@ function App() {
   });
   const [filterCategoryTag, setFilterCategoryTag] = useState<string | null>(null);
   const [filterVendorTag, setFilterVendorTag] = useState<string | null>(null);
-  const [filterMode, setFilterMode] = useState<"union" | "intersect">("union");
+  const [_filterMode, _setFilterMode] = useState<"union" | "intersect">("union");
   const [selectedModelManageOpen, setSelectedModelManageOpen] = useState(false);
   // 选择模型弹窗可拖拽缩放尺寸
   const [modelModalSize, setModelModalSize] = useState({ w: 880, h: 620 });
@@ -174,7 +174,7 @@ function App() {
   }[]>([]);
   const [balanceStatus, setBalanceStatus] = useState<"idle" | "loading" | "ok" | "fail">("idle");
   const [balanceMessage, setBalanceMessage] = useState("");
-  const [showAbout, setShowAbout] = useState(false);
+  const [_showAbout, _setShowAbout] = useState(false);
   const [theme, setThemeState] = useState<ThemeMode>(() => getTheme());
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [performanceMonitorOpen, setPerformanceMonitorOpen] = useState(false);
@@ -183,6 +183,7 @@ function App() {
   const balanceBtnRef = useRef<HTMLButtonElement>(null);
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [balancePopupOpen, setBalancePopupOpen] = useState(false);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
 
 
   const [generationHistory, setGenerationHistory] = useState<{
@@ -275,7 +276,7 @@ function App() {
   // 编辑模式：存放正在编辑的供应商 id（null = 新增模式）
   const [vendorEditingId, setVendorEditingId] = useState<string | null>(null);
   // Global Config 快速保存供应商
-  const [globalSaveVendorRemark, setGlobalSaveVendorRemark] = useState("");
+  const [_globalSaveVendorRemark, _setGlobalSaveVendorRemark] = useState("");
   const [globalSaveVendorName, setGlobalSaveVendorName] = useState("");
   const [globalSaveVendorToast, setGlobalSaveVendorToast] = useState(false);
   // 供应商名称下拉
@@ -417,7 +418,7 @@ function App() {
     if (!isDragging) return;
     const onMove = (e: MouseEvent) => {
       const newWidth = window.innerWidth - e.clientX;
-      setRightPanelWidth((w) => Math.min(RIGHT_PANEL_MAX, Math.max(RIGHT_PANEL_MIN, newWidth)));
+      setRightPanelWidth((_w) => Math.min(RIGHT_PANEL_MAX, Math.max(RIGHT_PANEL_MIN, newWidth)));
     };
     const onUp = () => setIsDragging(false);
     document.addEventListener("mousemove", onMove);
@@ -663,7 +664,7 @@ function App() {
   useEffect(() => { handleGenerateRef.current = handleGenerate; });
 
   // 切换图片选中状态
-  const toggleImageSelection = (id: string) => {
+  const _toggleImageSelection = (id: string) => {
     setSelectedImageIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -685,7 +686,7 @@ function App() {
   };
 
   // 下载单张图片
-  const handleDownloadSingle = async (img: GeneratedImage) => {
+  const _handleDownloadSingle = async (img: GeneratedImage) => {
     try {
       setDownloadStatus("downloading");
       await downloadImage(img.url, `generated_${img.id}.png`);
@@ -819,7 +820,7 @@ function App() {
   }, [isDraggingHistory]);
 
   // 删除历史记录
-  const handleDeleteHistory = (id: string) => {
+  const _handleDeleteHistory = (id: string) => {
     setGenerationHistory((prev) => {
       const filtered = prev.filter((h) => h.id !== id);
       saveHistory(filtered);
@@ -832,12 +833,12 @@ function App() {
   const manageModalResizing = useRef(false);
   const manageModalResizeStart = useRef({ mouseX: 0, mouseY: 0, w: 640, h: 520 });
 
-  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [_isOptimizing, _setIsOptimizing] = useState(false);
   // ── 优化5：提示词优化独立弹窗 ─────────────────────────────────────────────
   const [promptOptimizeDialogOpen, setPromptOptimizeDialogOpen] = useState(false);
 
   // 折叠状态
-  const [negPromptOpen, setNegPromptOpen] = useState(true);
+  const [_negPromptOpen, setNegPromptOpen] = useState(true);
   const [refImgOpen, setRefImgOpen] = useState(true);
 
   // 小屏响应式：窗口宽度 < 1280px 时折叠参考图和反向提示词
@@ -955,6 +956,12 @@ function App() {
               onClick={() => useUiStore.getState().setShowAbout(true)}
             >
               关于
+            </button>
+            <button
+              className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${whiteboardOpen ? "ring-1 ring-primary-500/30 text-primary-400" : ""}`}
+              onClick={() => setWhiteboardOpen(!whiteboardOpen)}
+            >
+              白板
             </button>
           </div>
         <button
@@ -2429,7 +2436,7 @@ function App() {
 
                       {/* 返回默认界面按钮 */}
                       <button
-                        className="absolute top-2 left-2 w-8 h-8 rounded-full bg-white/[0.04]0/80 hover:bg-slate-600 text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-30"
+                        className="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/80 hover:bg-slate-600 text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-30"
                         onClick={(e) => { e.stopPropagation(); setResults([]); setResultActiveIdx(0); setSelectedImageIds(new Set()); }}
                         title="返回默认界面"
                       >
@@ -2500,6 +2507,11 @@ function App() {
 
       {/* 详细日志弹窗 */}
       <DetailedLogDialog />
+
+      {/* 白板 */}
+      {whiteboardOpen && (
+        <WhiteboardCanvas onClose={() => setWhiteboardOpen(false)} />
+      )}
 
 
 
