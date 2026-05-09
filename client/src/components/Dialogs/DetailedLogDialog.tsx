@@ -118,10 +118,10 @@ const DetailedLogDialog: React.FC = () => {
                   {/* Request Summary */}
                   {entry.request && (
                     <div className="mb-2">
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
                         Request Summary
                       </div>
-                      <pre className="text-xs bg-white/80 border border-white/[0.08] rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-slate-400">
+                      <pre className="text-xs bg-slate-800/60 border border-white/[0.06] rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-slate-300">
                         {entry.request}
                       </pre>
                     </div>
@@ -135,7 +135,7 @@ const DetailedLogDialog: React.FC = () => {
                           <div className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider mb-1">
                             Endpoint
                             {entry.spec && (
-                              <span className="ml-2 normal-case font-normal text-indigo-400">
+                              <span className="ml-2 normal-case font-normal text-indigo-300">
                                 ({entry.spec === "gemini" ? "Gemini 规范" : "OpenAI 规范"})
                               </span>
                             )}
@@ -145,22 +145,22 @@ const DetailedLogDialog: React.FC = () => {
                               </span>
                             )}
                             {entry.jsonValid === false && (
-                              <span className="ml-2 normal-case font-normal text-amber-500">
+                              <span className="ml-2 normal-case font-normal text-amber-400">
                                 ⚠️ 非JSON格式
                               </span>
                             )}
                           </div>
-                          <div className="text-xs bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-2.5 py-2 font-mono text-indigo-700 break-all">
+                          <div className="text-xs bg-indigo-500/10 border border-indigo-500/20 rounded-lg px-2.5 py-2 font-mono text-indigo-300 break-all">
                             {entry.endpoint}
                           </div>
                         </div>
                       )}
                       {entry.requestBody && (
                         <div>
-                          <div className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider mb-1">
+                          <div className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider mb-1">
                             Request Body (Full)
                           </div>
-                          <pre className="text-xs bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-blue-700 max-h-48">
+                          <pre className="text-xs bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-blue-300 max-h-48">
                             {entry.requestBody}
                           </pre>
                         </div>
@@ -174,7 +174,7 @@ const DetailedLogDialog: React.FC = () => {
                       <div className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider mb-1">
                         Response
                       </div>
-                      <pre className="text-xs bg-white/80 border border-emerald-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-emerald-400">
+                      <pre className="text-xs bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-emerald-300">
                         {entry.response}
                       </pre>
                     </div>
@@ -183,10 +183,10 @@ const DetailedLogDialog: React.FC = () => {
                   {/* 完整响应体 */}
                   {entry.responseBody && (
                     <div className="mb-2">
-                      <div className="text-[10px] font-semibold text-teal-600 uppercase tracking-wider mb-1">
+                      <div className="text-[10px] font-semibold text-teal-400 uppercase tracking-wider mb-1">
                         Response Body (Full)
                       </div>
-                      <pre className="text-xs bg-teal-500/10 border border-teal-200 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-teal-700 max-h-64">
+                      <pre className="text-xs bg-teal-500/10 border border-teal-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-teal-300 max-h-64">
                         {entry.responseBody}
                       </pre>
                     </div>
@@ -195,10 +195,10 @@ const DetailedLogDialog: React.FC = () => {
                   {/* 错误内容 */}
                   {entry.error && (
                     <div>
-                      <div className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-1">
+                      <div className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-1">
                         Error
                       </div>
-                      <pre className="text-xs bg-white/80 border border-red-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-red-400">
+                      <pre className="text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-red-300">
                         {entry.error}
                       </pre>
                       {entry.httpErrorBody && (
@@ -206,7 +206,7 @@ const DetailedLogDialog: React.FC = () => {
                           <div className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-1">
                             HTTP Error Body
                           </div>
-                          <pre className="text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-red-500">
+                          <pre className="text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-all font-mono text-red-300">
                             {entry.httpErrorBody}
                           </pre>
                         </div>

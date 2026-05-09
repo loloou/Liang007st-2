@@ -405,7 +405,7 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
       try {
         set({ progressPct: 60 });
       const referenceImages = state.referenceSlots.filter((f): f is File => f != null);
-      const result = await generateImages({
+      let result = await generateImages({
         prompt,
         negativePrompt: negativePrompt || undefined,
         batchSize,
@@ -416,6 +416,36 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
         resolutionPreset,
         sizeTier,
       });
+
+      // 智能降级：模型不支持参考图时，去掉参考图重试
+      if (result.error && referenceImages.length > 0) {
+        const errMsg = result.error.toLowerCase();
+        const isImageUnsupported =
+          errMsg.includes("does not support image input") ||
+          errMsg.includes("does not support image") ||
+          (errMsg.includes("cannot read") && errMsg.includes("image"));
+        if (isImageUnsupported) {
+          result = await generateImages({
+            prompt,
+            negativePrompt: negativePrompt || undefined,
+            batchSize,
+            width: finalWidth,
+            height: finalHeight,
+            model,
+            referenceImages: [],
+            resolutionPreset,
+            sizeTier,
+          });
+          if (!result.error) {
+            // 降级成功，提示用户
+            const warnMsg = "⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。生成结果不含参考图。";
+            set({ error: warnMsg });
+            setTimeout(() => {
+              if (get().error === warnMsg) set({ error: null });
+            }, 8000);
+          }
+        }
+      }
 
       // 检查 generateImages 是否返回了错误（不再通过 throw 传递）
       if (result.error) {

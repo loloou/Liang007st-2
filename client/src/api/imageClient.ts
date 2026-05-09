@@ -92,25 +92,13 @@ function buildEndpoint(baseUrl: string, spec: ApiSpec, modelId: string): string 
   return buildOpenAIEndpoint(baseUrl);
 }
 
-/** OpenAI 支持的固定尺寸列表（按宽高比分组） */
-const OPENAI_SUPPORTED_SIZES = [
-  { label: "1:1",  width: 1024, height: 1024 },
-  { label: "land", width: 1792, height: 1024 },
-  { label: "port", width: 1024, height: 1792 },
-] as const;
-type OpenAISizeLabel = (typeof OPENAI_SUPPORTED_SIZES)[number]["label"];
-
 /**
- * 任意宽高 → OpenAI API 支持的最近尺寸字符串
- * OpenAI 不支持任意尺寸如 3840×2160，必须映射到固定档位
+ * 任意宽高 → OpenAI API 尺寸字符串
+ * 直接传 width×height，让服务端决定是否支持
+ * 若服务端不支持会返回错误，用户可降档
  */
 function toOpenAISizeString(width: number, height: number): string {
-  const isPortrait  = height > width;
-  const isLandscape = width > height;
-
-  if (width === height) return "1024x1024";
-  if (isLandscape)     return "1792x1024";
-  return "1024x1792";
+  return `${width}x${height}`;
 }
 
 /**
