@@ -49,6 +49,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
   const [showModelWarning, setShowModelWarning] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [quickConnect, setQuickConnect] = useState<{ x: number; y: number; flowX: number; flowY: number; sourceNodeId: string } | null>(null);
+  const [dblClickMenu, setDblClickMenu] = useState<{ x: number; y: number; flowX: number; flowY: number } | null>(null);
   const connectingSourceRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rf = useReactFlow();
@@ -74,6 +75,8 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "Escape") {
         if (contextMenu) { setContextMenu(null); return; }
+        if (dblClickMenu) { setDblClickMenu(null); return; }
+        if (quickConnect) { setQuickConnect(null); return; }
         if (useCanvasStore.getState().lightboxUrl) { useCanvasStore.getState().setLightboxUrl(null); return; }
         onClose();
         return;
@@ -136,6 +139,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
   const handlePaneClick = useCallback(() => {
     setContextMenu(null);
     setQuickConnect(null);
+    setDblClickMenu(null);
     useCanvasStore.getState().selectNode(null);
   }, [setContextMenu]);
 
@@ -144,6 +148,18 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
     setContextMenu(null);
     setQuickConnect(null);
   }, [setContextMenu]);
+
+  const handleContainerDoubleClick = useCallback((event: React.MouseEvent) => {
+    const target = event.target as HTMLElement;
+    // 只在画布空白区域双击时触发（不在节点或控件上）
+    const isPane = target.classList.contains("react-flow__pane") ||
+                   target.classList.contains("react-flow__background") ||
+                   target.closest(".react-flow__pane") !== null;
+    if (!isPane) return;
+    event.preventDefault();
+    const flowPos = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    setDblClickMenu({ x: event.clientX, y: event.clientY, flowX: flowPos.x, flowY: flowPos.y });
+  }, [rf]);
 
   const handleConnectStart = useCallback((_event: unknown, params: { nodeId?: string | null }) => {
     connectingSourceRef.current = params.nodeId || null;
@@ -189,6 +205,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
       className="fixed inset-0 z-[9999] bg-[#0a0a0f]"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
+      onDoubleClick={handleContainerDoubleClick}
     >
       <ReactFlow
         nodes={nodes}
@@ -395,6 +412,71 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
           onClose={() => setQuickConnect(null)}
         />
       )}
+
+      {/* 双击画布弹出添加节点菜单 */}
+      {dblClickMenu && (() => {
+        const menuItems = [
+          {
+            kind: "image" as const,
+            label: "图片节点",
+            desc: "上传或粘贴图片",
+            color: "text-indigo-400",
+            bg: "hover:bg-indigo-500/10",
+            icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+          },
+          {
+            kind: "text" as const,
+            label: "提示词节点",
+            desc: "输入文本提示词",
+            color: "text-amber-400",
+            bg: "hover:bg-amber-500/10",
+            icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
+          },
+          {
+            kind: "generate" as const,
+            label: "AI 生成节点",
+            desc: "输入提示词并执行生成",
+            color: "text-purple-400",
+            bg: "hover:bg-purple-500/10",
+            icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+          },
+        ];
+        const handleAdd = (kind: "image" | "text" | "generate") => {
+          addNode(kind, { x: dblClickMenu.flowX, y: dblClickMenu.flowY });
+          setDblClickMenu(null);
+        };
+        // 防止菜单超出屏幕
+        const mx = Math.min(dblClickMenu.x, window.innerWidth - 220);
+        const my = Math.min(dblClickMenu.y, window.innerHeight - 240);
+        return (
+          <div
+            className="fixed z-[10000] rounded-2xl border border-white/[0.08] bg-slate-900/98 backdrop-blur-xl shadow-2xl overflow-hidden"
+            style={{ left: mx, top: my, width: 200 }}
+          >
+            <div className="px-3 py-2 border-b border-white/[0.06]">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">添加节点</span>
+            </div>
+            <div className="p-1.5">
+              {menuItems.map((item) => (
+                <button
+                  key={item.kind}
+                  onClick={() => handleAdd(item.kind)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition text-left ${item.bg}`}
+                >
+                  <span className={item.color}>{item.icon}</span>
+                  <div>
+                    <p className={`text-xs font-medium ${item.color}`}>{item.label}</p>
+                    <p className="text-[9px] text-slate-600">{item.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="px-3 py-1.5 border-t border-white/[0.06]">
+              <p className="text-[8px] text-slate-700 text-center">ESC 关闭 · 点击空白处关闭</p>
+            </div>
+          </div>
+        );
+      })()}
 
       {contextMenu && (
         <ContextMenu

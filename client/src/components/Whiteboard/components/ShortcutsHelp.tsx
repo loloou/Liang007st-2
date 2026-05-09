@@ -15,6 +15,7 @@ const SHORTCUTS = [
   { keys: ["Ctrl", "L"], desc: "自动布局" },
   { keys: ["Ctrl", "0"], desc: "适应视图" },
   { keys: ["Escape"], desc: "取消选择 / 关闭面板" },
+  { keys: ["双击空白区域"], desc: "添加节点菜单" },
   { keys: ["双击标签"], desc: "重命名节点" },
   { keys: ["拖拽节点角落"], desc: "调整节点大小" },
   { keys: ["右键节点"], desc: "节点操作菜单" },
