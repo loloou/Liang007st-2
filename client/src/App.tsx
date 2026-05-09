@@ -2371,8 +2371,8 @@ function App() {
                 const activeImg = results[safeIdx];
                 // 扩展类型，支持 originalUrl（原图 URL）
                 const extendedImg = activeImg as typeof activeImg & { originalUrl?: string };
-                // 优先用缩略图（base64，稳定），备用原图 URL（可能已失效）
-                const activeImgUrl = activeImg.url || extendedImg.originalUrl;
+                // 优先用原图 URL（高清），备用缩略图 URL
+                const activeImgUrl = extendedImg.originalUrl || activeImg.url;
                 const isSelected = selectedImageIds.has(activeImg.id);
                 return (
                   <div className="w-full h-full flex flex-col">
@@ -2468,6 +2468,7 @@ function App() {
                         {results.map((img, idx) => {
                           // 扩展类型，支持 originalUrl（原图 URL）
                           const extImg = img as typeof img & { originalUrl?: string };
+                          // 缩略图条：优先用缩略图（快速加载），备用原图
                           const thumbUrl = img.url || extImg.originalUrl;
                           return (
                             <div key={img.id} className="relative flex-shrink-0">
