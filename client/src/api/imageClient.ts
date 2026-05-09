@@ -94,11 +94,25 @@ function buildEndpoint(baseUrl: string, spec: ApiSpec, modelId: string): string 
 
 /**
  * 任意宽高 → OpenAI API 尺寸字符串
- * 直接传 width×height，让服务端决定是否支持
- * 若服务端不支持会返回错误，用户可降档
+ * 大多数兼容 API 支持：512/1024/1536/2048/4096 等档位
+ * 若传入尺寸不在支持列表中，返回最接近的标准尺寸
  */
 function toOpenAISizeString(width: number, height: number): string {
-  return `${width}x${height}`;
+  // 标准支持尺寸（大多数 OpenAI 兼容 API）
+  const SIZES = [512, 768, 1024, 1536, 2048, 4096];
+
+  function snap(v: number): number {
+    let best = SIZES[0];
+    for (const s of SIZES) {
+      if (Math.abs(s - v) < Math.abs(best - v)) best = s;
+    }
+    // 不超过 4096
+    return Math.min(best, 4096);
+  }
+
+  const sw = snap(width);
+  const sh = snap(height);
+  return `${sw}x${sh}`;
 }
 
 /**

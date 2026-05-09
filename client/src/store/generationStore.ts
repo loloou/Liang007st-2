@@ -423,7 +423,12 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
         const isImageUnsupported =
           errMsg.includes("does not support image input") ||
           errMsg.includes("does not support image") ||
-          (errMsg.includes("cannot read") && errMsg.includes("image"));
+          errMsg.includes("image input is not supported") ||
+          errMsg.includes("vision") && errMsg.includes("not support") ||
+          errMsg.includes("multimodal") && errMsg.includes("not support") ||
+          (errMsg.includes("cannot read") && errMsg.includes("image")) ||
+          (errMsg.includes("invalid") && errMsg.includes("image_url")) ||
+          (errMsg.includes("unsupported") && errMsg.includes("image"));
         if (isImageUnsupported) {
           result = await generateImages({
             prompt,
@@ -485,6 +490,18 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
           checkImg.onload = () => {
             const { naturalWidth: aw, naturalHeight: ah } = checkImg;
             if (aw > 0 && ah > 0) {
+              // 分辨率尺寸校验：实际尺寸远小于请求尺寸时警告
+              const requestedMin = Math.min(finalWidth, finalHeight);
+              const actualMin = Math.min(aw, ah);
+              if (actualMin < requestedMin * 0.6) {
+                const warnMsg = `⚠️ 分辨率降级：请求 ${sizeTier}（${finalWidth}×${finalHeight}），实际返回 ${aw}×${ah}。当前 API 或模型可能不支持所选分辨率，已自动降至 API 支持的最大尺寸。`;
+                set({ error: warnMsg });
+                setTimeout(() => {
+                  if (get().error === warnMsg) set({ error: null });
+                }, 12000);
+              }
+
+              // 比例校验
               const diff = Math.abs(aw / ah - finalWidth / finalHeight) / (finalWidth / finalHeight);
               if (diff > 0.05) {
                 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
