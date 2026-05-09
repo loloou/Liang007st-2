@@ -98,21 +98,15 @@ function buildEndpoint(baseUrl: string, spec: ApiSpec, modelId: string): string 
  * 若传入尺寸不在支持列表中，返回最接近的标准尺寸
  */
 function toOpenAISizeString(width: number, height: number): string {
-  // 标准支持尺寸（大多数 OpenAI 兼容 API）
   const SIZES = [512, 768, 1024, 1536, 2048, 4096];
-
   function snap(v: number): number {
     let best = SIZES[0];
     for (const s of SIZES) {
       if (Math.abs(s - v) < Math.abs(best - v)) best = s;
     }
-    // 不超过 4096
     return Math.min(best, 4096);
   }
-
-  const sw = snap(width);
-  const sh = snap(height);
-  return `${sw}x${sh}`;
+  return `${snap(width)}x${snap(height)}`;
 }
 
 /**
@@ -158,6 +152,14 @@ function toGeminiImageSize(sizeTier?: string): string | undefined {
   if (!sizeTier) return undefined;
   const map: Record<string, string> = { "1K": "1K", "2K": "2K", "4K": "4K" };
   return map[sizeTier];
+}
+
+/** 从像素尺寸推导 Gemini imageSize（当 sizeTier 未传入时的 fallback） */
+function toGeminiImageSizeFromPixels(width: number, height: number): string {
+  const maxSide = Math.max(width, height);
+  if (maxSide >= 3000) return "4K";
+  if (maxSide >= 1500) return "2K";
+  return "1K";
 }
 
 /** File → Base64 data URL 字符串（去掉前缀，只留 base64 数据） */
@@ -417,16 +419,12 @@ async function buildGeminiBody(params: GenerateParams): Promise<Record<string, u
 
   // ── aspectRatio：精确映射到 Gemini 支持的 10 种标准比例 ──────────────────
   const aspectRatio = toAspectRatio(params.width, params.height, params.resolutionPreset);
-  const imageSize = toGeminiImageSize(params.sizeTier);
+  // imageSize：优先用 sizeTier，fallback 从像素值推导（防止传参丢失）
+  const imageSize = toGeminiImageSize(params.sizeTier) ?? toGeminiImageSizeFromPixels(params.width, params.height);
+  console.log(`[buildGeminiBody] sizeTier=${params.sizeTier}, imageSize=${imageSize}, pixels=${params.width}×${params.height}`);
   // Gemini 官方规范：aspectRatio 和 imageSize 必须放在 generationConfig.imageConfig 内
-  const generationConfig: Record<string, unknown> = {
-    // 纯图生图模型不带 responseModalities（或仅 IMAGE），带 TEXT 会导致挂起超时
-  };
-  generationConfig.imageConfig = { aspectRatio };
-  // imageSize 仅在非空时传入（1K/2K/4K）
-  if (imageSize) {
-    (generationConfig.imageConfig as Record<string, unknown>).imageSize = imageSize;
-  }
+  const generationConfig: Record<string, unknown> = {};
+  generationConfig.imageConfig = { aspectRatio, imageSize };
 
   return {
     contents: [{
@@ -487,256 +485,179 @@ export async function generateImages(params: GenerateParams): Promise<GenerateRe
 
   const endpoint = buildEndpoint(API_BASE_URL, spec, resolvedModel);
 
-  // ── Gemini 规范：每次只返回 1 张，需循环调用 batchSize 次 ──────────────
-  // 修复：使用 Promise.allSettled 并发调用，某张失败不影响其他；
-  //       通过 params 透传已快照的参数，避免子调用重读 localStorage 导致配置不一致
-  if (spec === "gemini" && params.batchSize > 1) {
-    const tasks = Array.from({ length: params.batchSize }, (_, i) =>
-      generateImages({ ...params, batchSize: 1 }).then((r) => ({
-        ...r,
-        images: r.images.map((img) => ({ ...img, id: `${i}-${img.id}` }))
-      }))
-    );
-    const settled = await Promise.allSettled(tasks);
-
-    const allImages: GeneratedImage[] = [];
-    let lastResult: GenerateResult | null = null;
-    let failedCount = 0;
-
-    for (const s of settled) {
-      if (s.status === "fulfilled" && !s.value.error) {
-        allImages.push(...s.value.images);
-        lastResult = s.value;
-      } else {
-        failedCount++;
-        if (!lastResult) lastResult = s.status === "fulfilled" ? s.value : null;
+  // ── OpenAI 规范：自动降级重试 ──────────────────────────────────────────
+  // 当 API 返回 400/422 错误且请求尺寸较大时，自动用更小的尺寸重试
+  if (spec === "openai") {
+    const result = await doGenerateOpenAI(params, resolvedModel, endpoint, apiKey);
+    // 如果失败且可能是尺寸原因，尝试降级重试
+    if (result.error && result.httpStatus && (result.httpStatus === 400 || result.httpStatus === 422)) {
+      const errLower = result.error.toLowerCase();
+      const sizeRelated = errLower.includes("size") || errLower.includes("dimension") ||
+        errLower.includes("resolution") || errLower.includes("width") || errLower.includes("height") ||
+        errLower.includes("invalid") || errLower.includes("bad request") || errLower.includes("param");
+      if (sizeRelated && (params.width > 1536 || params.height > 1536)) {
+        // 降级到 1536x1536 范围重试
+        const scale = Math.min(1536 / params.width, 1536 / params.height, 1);
+        const retryParams = {
+          ...params,
+          width: Math.round(params.width * scale),
+          height: Math.round(params.height * scale),
+        };
+        const retryResult = await doGenerateOpenAI(retryParams, resolvedModel, endpoint, apiKey);
+        if (!retryResult.error) {
+          retryResult.responseSummary = `⚠️ 原始请求尺寸 ${params.width}×${params.height} 被 API 拒绝（HTTP ${result.httpStatus}），已自动降级到 ${retryParams.width}×${retryParams.height} 成功生成。\n\n原始错误：${result.error}\n\n${retryResult.responseSummary}`;
+        }
+        return retryResult;
       }
     }
-
-    // 全部失败时返回第一个错误结果
-    if (allImages.length === 0 && lastResult) {
-      return { ...lastResult, images: [], responseSummary: `共调用 ${params.batchSize} 次，成功 0 张，失败 ${failedCount} 张` };
-    }
-
-    return {
-      images: allImages,
-      endpoint: lastResult?.endpoint ?? "",
-      spec,
-      requestBodyJson: lastResult?.requestBodyJson ?? "",
-      httpStatus: lastResult?.httpStatus ?? 200,
-      responseSummary: `共调用 ${params.batchSize} 次，成功 ${allImages.length} 张${failedCount > 0 ? `，失败 ${failedCount} 张` : ""}`,
-      jsonValid: lastResult?.jsonValid ?? true
-    };
+    return result;
   }
 
-  // ── 构造请求体 ──────────────────────────────────────────
-  let requestBody: Record<string, unknown>;
-  if (spec === "gemini") {
-    requestBody = await buildGeminiBody(params);
-  } else {
-    requestBody = await buildOpenAIBody(params, resolvedModel);
-  }
+  // Gemini 规范
+  return doGenerateGemini(params, resolvedModel, endpoint, apiKey);
+}
 
-  // ── 请求头 ──────────────────────────────────────────────
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    Accept: "application/json"
-  };
+// ── 内部实现：单次 API 调用 ────────────────────────────────────────────────
+
+/** 构建请求头 */
+function buildHeaders(apiKey: string): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json", Accept: "application/json" };
   if (apiKey?.trim()) headers["Authorization"] = `Bearer ${apiKey.trim()}`;
+  return headers;
+}
 
-  // 请求体 JSON 字符串（用于日志，参考图 base64 截断）
-  const requestBodyForLog = JSON.stringify(requestBody, (key, value) => {
-    // Gemini inlineData.data
-    if (key === "data" && typeof value === "string" && value.length > 100) {
-      return `[base64 data, ${value.length} chars]`;
-    }
-    // OpenAI image_url data URI
+/** 构建请求体日志（截断 base64） */
+function buildRequestBodyForLog(requestBody: Record<string, unknown>): string {
+  return JSON.stringify(requestBody, (key, value) => {
+    if (key === "data" && typeof value === "string" && value.length > 100) return `[base64 data, ${value.length} chars]`;
     if (key === "url" && typeof value === "string" && value.startsWith("data:")) {
       const base64 = value.split(",")[1] ?? "";
-      if (base64.length > 100) {
-        return `data:${value.split(",")[0]};base64,[${base64.length} chars]`;
-      }
+      if (base64.length > 100) return `data:${value.split(",")[0]};base64,[${base64.length} chars]`;
     }
     return value;
   }, 2);
+}
 
-  // ── 请求 + 超时（600s）──────────────────────────────────
+/** 执行单次 HTTP 请求并解析响应 */
+async function doFetchAndParse(
+  endpoint: string,
+  spec: ApiSpec,
+  requestBody: Record<string, unknown>,
+  headers: HeadersInit,
+  resolvedModel: string
+): Promise<GenerateResult> {
+  const requestBodyForLog = buildRequestBodyForLog(requestBody);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 600_000);
 
   let resp: Response;
   let rawText: string;
   try {
-    resp = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: controller.signal
-    });
-    // 修复：resp.text() 也可能抛异常（网络中断等），必须在 finally 中清理 timer
+    resp = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(requestBody), signal: controller.signal });
     rawText = await resp.text();
   } catch (err) {
     clearTimeout(timer);
     if (err instanceof DOMException && err.name === "AbortError") {
       const specLabel = spec === "gemini" ? "Gemini 规范" : "OpenAI 规范";
-      const displayEndpoint = endpoint || "(未构建)";
-      return errResult(
-        endpoint, spec, requestBodyForLog,
-        `❌ API 对接失败：请求超时（600s）\n` +
-        `\n📌 错误详情：接口 ${displayEndpoint} 在 600 秒内未响应\n\n` +
-        `🔍 排查建议：\n` +
-        `· 确认接口地址是否正确且可访问\n` +
-        `· 检查服务器端是否存在负载过高或死循环\n` +
-        `· 验证网络代理 / VPN 设置是否影响连接\n` +
-        `· 尝试用浏览器直接访问该地址测试\n\n` +
-        `🌐 请求地址：${displayEndpoint}\n` +
-        `📦 规范类型：${specLabel}`
-      );
+      return errResult(endpoint, spec, requestBodyForLog,
+        `❌ API 对接失败：请求超时（600s）\n\n📌 错误详情：接口 ${endpoint || "(未构建)"} 在 600 秒内未响应\n\n🔍 排查建议：\n· 确认接口地址是否正确且可访问\n· 检查服务器端是否存在负载过高或死循环\n· 验证网络代理 / VPN 设置是否影响连接\n\n🌐 请求地址：${endpoint}\n📦 规范类型：${specLabel}`);
     }
-    return errResult(
-      endpoint, spec, requestBodyForLog,
-      `API 对接失败：网络请求异常，请检查接口地址 / 密钥是否正确。\n详情：${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
+    return errResult(endpoint, spec, requestBodyForLog,
+      `API 对接失败：网络请求异常，请检查接口地址 / 密钥是否正确。\n详情：${err instanceof Error ? err.message : String(err)}`);
   } finally {
     clearTimeout(timer);
   }
+
   const contentType = resp.headers.get("content-type") ?? "";
   const httpStatus = resp.status;
 
-  // HTML 响应 → 地址/密钥有误
   if (contentType.includes("text/html") || isHtmlContent(rawText)) {
-    return errResult(
-      endpoint, spec, requestBodyForLog,
-      `API 返回了 HTML 页面而非 JSON，请确认：\n` +
-      `· 接口地址是否正确（当前：${endpoint}）\n` +
-      `· API 密钥是否有效\n` +
-      `· 接口路径 / 格式是否匹配\n` +
-      `HTTP ${resp.status}  Content-Type: ${contentType || "未知"}`,
-      resp.status, rawText.slice(0, 500)
-    );
+    return errResult(endpoint, spec, requestBodyForLog,
+      `API 返回了 HTML 页面而非 JSON，请确认：\n· 接口地址是否正确（当前：${endpoint}）\n· API 密钥是否有效\n· 接口路径 / 格式是否匹配\nHTTP ${resp.status}  Content-Type：${contentType || "未知"}`,
+      resp.status, rawText.slice(0, 500));
   }
 
-  // 非 2xx 错误：按状态码分类给出具体排查提示
   if (!resp.ok) {
     const parsed = safeParseJson(rawText);
     const detail = extractErrorMessage(parsed, rawText || `HTTP ${resp.status}`);
     const rawSnippet = rawText.slice(0, 200);
-
     const specLabel = spec === "gemini" ? "Gemini 规范" : "OpenAI 规范";
-    const specPath  = spec === "gemini"
-      ? "/v1beta/models/.../generateContent"
-      : "/v1/images/generations";
+    const specPath = spec === "gemini" ? "/v1beta/models/.../generateContent" : "/v1/images/generations";
 
     let hint = "";
     switch (resp.status) {
-      case 400: // Bad Request
-        hint = `请求参数有误，请检查：\n` +
-          `· 提示词是否包含特殊字符或过长\n` +
-          `· 分辨率 / 比例参数是否符合 ${specLabel} 支持范围\n` +
-          `· 模型 ID（${resolvedModel || "未指定"}）是否正确`;
+      case 400:
+        hint = `请求参数有误，请检查：\n· 提示词是否包含特殊字符或过长\n· 分辨率 / 比例参数是否符合 ${specLabel} 支持范围\n· 模型 ID（${resolvedModel || "未指定"}）是否正确`;
         break;
-      case 401:
-      case 403:
-        hint = `认证失败，请检查：\n` +
-          `· API 密钥是否已填写且有效\n` +
-          `· 密钥是否已过期或被禁用\n` +
-          `· 是否开通了对应模型的访问权限`;
+      case 401: case 403:
+        hint = `认证失败，请检查：\n· API 密钥是否已填写且有效\n· 密钥是否已过期或被禁用\n· 是否开通了对应模型的访问权限`;
         break;
       case 404:
-        hint = `接口地址不存在，请确认：\n` +
-          `· BaseUrl 是否正确（当前：${endpoint.replace(/\/[^/]+\/?$/, "")}）\n` +
-          `· 模型 ID 是否存在（当前：${resolvedModel || "未指定"}）`;
+        hint = `接口地址不存在，请确认：\n· BaseUrl 是否正确（当前：${endpoint.replace(/\/[^/]+\/?$/, "")}）\n· 模型 ID 是否存在（当前：${resolvedModel || "未指定"}）`;
         break;
-      case 408:
-        hint = "请求超时，请检查网络连接或接口是否响应缓慢";
-        break;
+      case 408: hint = "请求超时，请检查网络连接或接口是否响应缓慢"; break;
       case 429:
-        hint = `请求被限流（Too Many Requests），请：\n` +
-          `· 稍等片刻后重试\n` +
-          `· 降低生图频率或减少 batchSize\n` +
-          `· 检查 API 配额是否已用尽`;
+        hint = `请求被限流（Too Many Requests），请：\n· 稍等片刻后重试\n· 降低生图频率或减少 batchSize\n· 检查 API 配额是否已用尽`;
         break;
-      case 500:
-      case 502:
-      case 503:
-      case 504:
-        hint = `上游服务异常（HTTP ${resp.status}），请：\n` +
-          `· 等待片刻后重试\n` +
-          `· 联系 API 提供方确认服务状态`;
+      case 500: case 502: case 503: case 504:
+        hint = `上游服务异常（HTTP ${resp.status}），请：\n· 等待片刻后重试\n· 联系 API 提供方确认服务状态`;
         break;
       default:
-        hint = `请检查：\n` +
-          `· 接口地址是否正确（${specPath}）\n` +
-          `· API 密钥是否有效\n` +
-          `· 接口服务是否支持 ${specLabel}`;
+        hint = `请检查：\n· 接口地址是否正确（${specPath}）\n· API 密钥是否有效\n· 接口服务是否支持 ${specLabel}`;
     }
 
-    return errResult(
-      endpoint, spec, requestBodyForLog,
-      `❌ API 对接失败（HTTP ${resp.status}）\n` +
-      `📌 错误详情：${detail}\n\n` +
-      `🔍 排查建议：\n${hint}\n\n` +
-      `🌐 请求地址：${endpoint}\n` +
-      `📦 规范类型：${specLabel}\n` +
-      `🤖 模型 ID：${resolvedModel || "未指定"}\n` +
-      (rawSnippet ? `📨 响应内容：${rawSnippet}` : ""),
-      resp.status, rawText.slice(0, 500)
-    );
+    return errResult(endpoint, spec, requestBodyForLog,
+      `❌ API 对接失败（HTTP ${resp.status}）\n📌 错误详情：${detail}\n\n🔍 排查建议：\n${hint}\n\n🌐 请求地址：${endpoint}\n📦 规范类型：${specLabel}\n🤖 模型 ID：${resolvedModel || "未指定"}\n${rawSnippet ? `📨 响应内容：${rawSnippet}` : ""}`,
+      resp.status, rawText.slice(0, 500));
   }
 
   // 解析 JSON
   const data = safeParseJson(rawText);
   if (!data) {
-    return errResult(
-      endpoint, spec, requestBodyForLog,
-      `API 返回内容无法解析为 JSON。\n` +
-      `响应预览：${rawText.slice(0, 300)}\n` +
-      `请求地址：${endpoint}`,
-      resp.status, rawText.slice(0, 500)
-    );
+    return errResult(endpoint, spec, requestBodyForLog,
+      `API 返回内容无法解析为 JSON。\n响应预览：${rawText.slice(0, 300)}\n请求地址：${endpoint}`,
+      resp.status, rawText.slice(0, 500));
   }
 
   // 按规范提取图片
-  let images = spec === "gemini"
-    ? extractImagesGemini(data)
-    : extractImagesOpenAI(data);
-
+  let images = spec === "gemini" ? extractImagesGemini(data) : extractImagesOpenAI(data);
   if (!images) {
-    const hint = spec === "gemini"
-      ? "期望 candidates[].content.parts[].inlineData.data"
-      : "期望 data[].url 或 images[]";
-    // 尝试用另一规范解析（容错）
-    const fallback = spec === "gemini"
-      ? extractImagesOpenAI(data)
-      : extractImagesGemini(data);
+    const hint = spec === "gemini" ? "期望 candidates[].content.parts[].inlineData.data" : "期望 data[].url 或 images[]";
+    const fallback = spec === "gemini" ? extractImagesOpenAI(data) : extractImagesGemini(data);
     if (fallback && fallback.length > 0) {
       images = fallback;
     } else {
-      return errResult(
-        endpoint, spec, requestBodyForLog,
-        `API 返回数据结构不符合预期（${hint}）。\n` +
-        `实际返回：${rawText.slice(0, 300)}`,
-        resp.status, rawText.slice(0, 500)
-      );
+      return errResult(endpoint, spec, requestBodyForLog,
+        `API 返回数据结构不符合预期（${hint}）。\n实际返回：${rawText.slice(0, 300)}`,
+        resp.status, rawText.slice(0, 500));
     }
   }
 
-  // 构建响应摘要（截断 base64，避免过长）
+  // Gemini 特殊处理：HTTP 200 但返回空图 + 文本含错误信息
+  // 例如: "Cannot read image.png (this model does not support image input)"
+  if (images.length === 0 && spec === "gemini") {
+    const textLower = rawText.toLowerCase();
+    const hasError =
+      textLower.includes("cannot read") ||
+      textLower.includes("does not support image") ||
+      textLower.includes("not support") && textLower.includes("image") ||
+      textLower.includes("error") && textLower.includes("image");
+    if (hasError) {
+      return errResult(endpoint, spec, requestBodyForLog,
+        rawText.slice(0, 500),
+        resp.status, rawText.slice(0, 500));
+    }
+  }
+
   let jsonValid = false;
   const responseSummary = (() => {
     try {
       const parsed2 = JSON.parse(rawText) as Record<string, unknown>;
       jsonValid = true;
-      // 截断 inlineData.data (Gemini base64 图片)
       const cleaned = JSON.stringify(parsed2, (key, value) => {
-        if (key === "data" && typeof value === "string" && value.length > 100) {
-          return `[base64 image, ${value.length} chars]`;
-        }
-        if (key === "b64_json" && typeof value === "string" && value.length > 100) {
-          return `[base64 image, ${value.length} chars]`;
-        }
+        if (key === "data" && typeof value === "string" && value.length > 100) return `[base64 image, ${value.length} chars]`;
+        if (key === "b64_json" && typeof value === "string" && value.length > 100) return `[base64 image, ${value.length} chars]`;
         return value;
       }, 2);
       return cleaned.slice(0, 2000) + (cleaned.length > 2000 ? "\n… (已截断)" : "");
@@ -746,15 +667,60 @@ export async function generateImages(params: GenerateParams): Promise<GenerateRe
     }
   })();
 
-  return {
-    images,
-    endpoint,
-    spec,
-    requestBodyJson: requestBodyForLog,
-    httpStatus,
-    responseSummary,
-    jsonValid
-  };
+  return { images, endpoint, spec, requestBodyJson: requestBodyForLog, httpStatus, responseSummary, jsonValid };
+}
+
+/** OpenAI 规范：单次生图 */
+async function doGenerateOpenAI(
+  params: GenerateParams, resolvedModel: string, endpoint: string, apiKey: string
+): Promise<GenerateResult> {
+  const requestBody = await buildOpenAIBody(params, resolvedModel);
+  const headers = buildHeaders(apiKey);
+  return doFetchAndParse(endpoint, "openai", requestBody, headers, resolvedModel);
+}
+
+/** Gemini 规范：单次生图（支持 batchSize > 1 时并发调用） */
+async function doGenerateGemini(
+  params: GenerateParams, resolvedModel: string, endpoint: string, apiKey: string
+): Promise<GenerateResult> {
+  // Gemini 每次只返回 1 张，需循环调用 batchSize 次
+  if (params.batchSize > 1) {
+    const tasks = Array.from({ length: params.batchSize }, (_, i) =>
+      doGenerateGemini({ ...params, batchSize: 1 }, resolvedModel, endpoint, apiKey).then((r) => ({
+        ...r,
+        images: r.images.map((img) => ({ ...img, id: `${i}-${img.id}` }))
+      }))
+    );
+    const settled = await Promise.allSettled(tasks);
+    const allImages: GeneratedImage[] = [];
+    let lastResult: GenerateResult | null = null;
+    let failedCount = 0;
+    for (const s of settled) {
+      if (s.status === "fulfilled" && !s.value.error) {
+        allImages.push(...s.value.images);
+        lastResult = s.value;
+      } else {
+        failedCount++;
+        if (!lastResult) lastResult = s.status === "fulfilled" ? s.value : null;
+      }
+    }
+    if (allImages.length === 0 && lastResult) {
+      return { ...lastResult, images: [], responseSummary: `共调用 ${params.batchSize} 次，成功 0 张，失败 ${failedCount} 张` };
+    }
+    return {
+      images: allImages,
+      endpoint: lastResult?.endpoint ?? "",
+      spec: "gemini" as ApiSpec,
+      requestBodyJson: lastResult?.requestBodyJson ?? "",
+      httpStatus: lastResult?.httpStatus ?? 200,
+      responseSummary: `共调用 ${params.batchSize} 次，成功 ${allImages.length} 张${failedCount > 0 ? `，失败 ${failedCount} 张` : ""}`,
+      jsonValid: lastResult?.jsonValid ?? true
+    };
+  }
+
+  const requestBody = await buildGeminiBody(params);
+  const headers = buildHeaders(apiKey);
+  return doFetchAndParse(endpoint, "gemini", requestBody, headers, resolvedModel);
 }
 
 // ── 测试对接接口 ──────────────────────────────────────────

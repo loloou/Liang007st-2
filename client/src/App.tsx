@@ -468,11 +468,8 @@ function App() {
     const isRatioRetry = ratioMismatchRetried.current;
     ratioMismatchRetried.current = false;
 
-    // ── 优化3：校验并修正尺寸参数 ──────────────────────────────────────────
-    const { width: expectedW, height: expectedH } = getResolution(resolutionPreset, sizeTier, referenceSize);
-    // 自动修正请求时的 width/height，确保与界面设置一致
-    const finalWidth = expectedW;
-    const finalHeight = expectedH;
+    // ── 校验并修正尺寸参数 ──────────────────────────────────────────
+    const { width: finalWidth, height: finalHeight } = getResolution(resolutionPreset, sizeTier, referenceSize);
 
     const reqInfo = {
       prompt: prompt,
@@ -505,7 +502,7 @@ function App() {
       return updated;
     });
 
-    const result = await generateImages({
+    let result = await generateImages({
       prompt,
       negativePrompt: negativePrompt || undefined,
       batchSize,
@@ -516,6 +513,38 @@ function App() {
       resolutionPreset,
       sizeTier
     });
+
+    // 智能降级：模型不支持参考图时，去掉参考图重试
+    if (result.error && referenceImages.length > 0) {
+      const errMsg = result.error.toLowerCase();
+      const isImageUnsupported =
+        errMsg.includes("does not support image input") ||
+        errMsg.includes("does not support image") ||
+        errMsg.includes("image input is not supported") ||
+        (errMsg.includes("vision") && errMsg.includes("not support")) ||
+        (errMsg.includes("multimodal") && errMsg.includes("not support")) ||
+        (errMsg.includes("cannot read") && errMsg.includes("image")) ||
+        (errMsg.includes("invalid") && errMsg.includes("image_url")) ||
+        (errMsg.includes("unsupported") && errMsg.includes("image"));
+      if (isImageUnsupported) {
+        result = await generateImages({
+          prompt,
+          negativePrompt: negativePrompt || undefined,
+          batchSize,
+          width: finalWidth,
+          height: finalHeight,
+          model,
+          referenceImages: [],
+          resolutionPreset,
+          sizeTier,
+        });
+        if (!result.error) {
+          const warnMsg = "⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。";
+          setError(warnMsg);
+          setTimeout(() => setError((prev) => prev === warnMsg ? null : prev), 8000);
+        }
+      }
+    }
 
     // 失败时：把完整上下文写入 logEntries（endpoint + requestBody 都能拿到）
     if (result.error) {
@@ -557,41 +586,44 @@ function App() {
       setResults(images);
       setResultActiveIdx(0);
 
-      // ── 优化3：校验返回图片比例 ─────────────────────────────────────────
+      // ── 分辨率校验 ─────────────────────────────────────────
       if (images.length > 0) {
         const firstUrl = images[0].url;
         if (firstUrl && !firstUrl.startsWith("data:")) {
-          // 通过创建Image对象检测实际尺寸（仅对 URL 类型图片）
           const img = new Image();
+          img.crossOrigin = "anonymous";
           img.onload = () => {
             const actualW = img.naturalWidth;
             const actualH = img.naturalHeight;
             if (actualW > 0 && actualH > 0) {
+              // 比例校验
               const actualRatioVal = actualW / actualH;
               const expectedRatioVal = finalWidth / finalHeight;
               const diff = Math.abs(actualRatioVal - expectedRatioVal) / expectedRatioVal;
-              if (diff > 0.05) {
-                // 比例误差超过5%则提示；若已经是"重试后"的结果则不再弹窗（防循环）
-                if (isRatioRetry) return;
+              if (diff > 0.05 && !isRatioRetry) {
                 const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
                 const g1 = gcd(actualW, actualH);
                 const g2 = gcd(finalWidth, finalHeight);
-                const actualRatioStr = `${actualW / g1}:${actualH / g1}`;
-                const expectedRatioStr = `${finalWidth / g2}:${finalHeight / g2}`;
                 setRatioMismatchDialog({
-                  actualRatio: actualRatioStr,
-                  expectedRatio: expectedRatioStr,
+                  actualRatio: `${actualW / g1}:${actualH / g1}`,
+                  expectedRatio: `${finalWidth / g2}:${finalHeight / g2}`,
                   onConfirm: () => {
                     setRatioMismatchDialog(null);
-                    // 标记这次是比例重试，避免再次弹窗
                     ratioMismatchRetried.current = true;
-                    // 重新生成（使用 ref 避免闭包陷阱）
                     setTimeout(() => handleGenerateRef.current(), 100);
                   }
                 });
               }
+
+              // 分辨率降级警告
+              if (actualW < finalWidth * 0.6 || actualH < finalHeight * 0.6) {
+                const warnMsg = `⚠️ 分辨率降级：请求 ${finalWidth}×${finalHeight}，API 实际返回 ${actualW}×${actualH}。\n当前 API 可能不支持所选分辨率，请检查 API 的 imageSize 参数支持情况。`;
+                setError(warnMsg);
+                setTimeout(() => setError((prev) => prev === warnMsg ? null : prev), 15000);
+              }
             }
           };
+          img.onerror = () => {};
           img.src = firstUrl;
         }
       }
@@ -3597,12 +3629,12 @@ function App() {
               <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
                 <span className={`w-1.5 h-1.5 rounded-full transition-colors ${
                   status === "running" ? "bg-green-400 animate-pulse"
-                  : logEntries.length > 0 && logEntries[logEntries.length - 1]?.error ? "bg-red-400"
-                  : logEntries.length > 0 ? "bg-primary-400"
+                  : generationHistory.length > 0 && generationHistory[0]?.error ? "bg-red-400"
+                  : generationHistory.length > 0 ? "bg-primary-400"
                   : "bg-slate-600"
                 }`} />
                 日志
-                {logEntries.length > 0 && <span className="text-[10px] text-slate-400">({logEntries.length})</span>}
+                {generationHistory.length > 0 && <span className="text-[10px] text-slate-400">({generationHistory.length})</span>}
               </span>
               <div className="flex items-center gap-1">
                 {/* 详情按钮 */}
@@ -3617,12 +3649,12 @@ function App() {
                   </svg>
                 </button>
                 {/* 清空按钮 */}
-                {logEntries.length > 0 && (
+                {generationHistory.length > 0 && (
                   <button
                     type="button"
                     title="清空日志"
                     className="p-1 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
-                    onClick={() => setLogEntries([])}
+                    onClick={() => setGenerationHistory([])}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -3631,26 +3663,30 @@ function App() {
                 )}
               </div>
             </div>
-            {/* 日志内容 */}
+            {/* 日志内容 - 统一使用 generationHistory 作为数据源 */}
             <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar p-2 text-[11px] font-mono text-slate-400 space-y-2">
-              {logEntries.length === 0 ? (
+              {generationHistory.length === 0 ? (
                 <p className="text-slate-400 italic">生图后将显示请求与返回信息…</p>
               ) : (
-                logEntries.slice(-50).map((entry, i) => (
+                generationHistory.slice(0, 50).map((entry) => (
                   <div
-                    key={i}
+                    key={entry.id}
                     className="border-b border-white/[0.06] pb-1.5 last:border-0 cursor-pointer rounded px-1 hover:bg-white/[0.04] transition-colors"
                     title="双击查看详情"
                     onDoubleClick={() => {
-                      useUiStore.getState().setSelectedLogEntry(entry);
+                      useUiStore.getState().setSelectedLogEntry({
+                        time: entry.time,
+                        request: JSON.stringify({ prompt: entry.prompt?.slice(0, 100), model: entry.model, width: entry.width, height: entry.height, batchSize: entry.batchSize }, null, 2),
+                        response: entry.results?.length > 0 ? `成功，返回 ${entry.results.length} 张图` : undefined,
+                        error: entry.error,
+                      });
                       useUiStore.getState().setShowDetailedLog(true);
                     }}
                   >
                     <span className="text-slate-400">[{entry.time}]</span>
-                    {entry.endpoint && <p className="mt-0.5 text-primary-400 truncate text-[10px]">→ {entry.endpoint}</p>}
-                    {entry.request && <pre className="mt-0.5 whitespace-pre-wrap break-all text-slate-400">{entry.request}</pre>}
-                    {entry.response && <p className="mt-0.5 text-emerald-400">✓ {entry.response}</p>}
-                    {entry.error && <p className="mt-0.5 text-red-400">✗ {entry.error}</p>}
+                    {entry.model && <p className="mt-0.5 text-primary-400 truncate text-[10px]">→ {entry.model} · {entry.width}×{entry.height}</p>}
+                    {entry.results?.length > 0 && <p className="mt-0.5 text-emerald-400">✓ 成功，返回 {entry.results.length} 张图</p>}
+                    {entry.error && <p className="mt-0.5 text-red-400">✗ {entry.error.slice(0, 120)}</p>}
                   </div>
                 ))
               )}

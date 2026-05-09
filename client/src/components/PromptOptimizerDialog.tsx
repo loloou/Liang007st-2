@@ -1546,7 +1546,7 @@ export default function PromptOptimizerDialog({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               历史记录
-              {records.length > 0 && <span className="px-1 bg-blue-500/15 text-blue-600 rounded text-[9px] font-bold">{records.length}</span>}
+              {records.length > 0 && <span className="px-1 bg-blue-500/15 text-blue-400 rounded text-[9px] font-bold">{records.length}</span>}
             </button>
             <button
               onClick={() => setShowFavorites(!showFavorites)}
@@ -1589,7 +1589,7 @@ export default function PromptOptimizerDialog({
                <div className="flex-shrink-0 px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.04] flex items-center justify-between">
                  <div className="flex items-center gap-2">
                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">原始提示词</span>
-                   <span className="text-[10px] text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded">输入区</span>
+                   <span className="text-[10px] text-slate-300 bg-slate-700 px-1.5 py-0.5 rounded">输入区</span>
                  </div>
                  <div className="flex items-center gap-1.5">
                    {specimenTypes.length > 0 && specimenTypes.some(t => t !== "none") && (
@@ -1617,7 +1617,7 @@ export default function PromptOptimizerDialog({
                         <span className="text-xs font-bold text-emerald-400">标本类型选择</span>
                         {/* 当前模板关联提示 */}
                         {currentSpecimenHint && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
                             💡 当前模板: {currentSpecimenHint.hint}
                           </span>
                         )}
@@ -1647,7 +1647,7 @@ export default function PromptOptimizerDialog({
                                   isSelected
                                     ? "border-emerald-400 bg-emerald-500/15 text-emerald-400"
                                     : isRecommended && currentSpecimenHint?.recommended
-                                      ? "border-blue-300 bg-blue-500/10 text-blue-600 hover:border-blue-400 hover:bg-blue-500/15"
+                                      ? "border-blue-300 bg-blue-500/10 text-blue-400 hover:border-blue-400 hover:bg-blue-500/15"
                                       : "border-white/[0.08] bg-white/[0.06] text-slate-500 hover:border-emerald-300 hover:text-emerald-400"
                                 }`}
                                 title={isRecommended && currentSpecimenHint ? `${currentSpecimenHint.hint} - 推荐配合此模板使用` : s.label}
@@ -1919,7 +1919,7 @@ export default function PromptOptimizerDialog({
                               }
                             }
                             setShowSpecimenPanel(true);
-                          }} className="text-[9px] text-blue-600 hover:text-blue-800 font-medium underline">配置</button>
+                          }} className="text-[9px] text-blue-400 hover:text-blue-300 font-medium underline">配置</button>
                           <button onClick={() => handleInsertRecommendation(type)} className="text-[9px] text-emerald-400 hover:text-emerald-800 font-medium underline">插入</button>
                           <button onClick={() => handleIgnoreRecommendation(type)} className="text-[9px] text-slate-400 hover:text-slate-400">✕</button>
                         </div>
@@ -2052,7 +2052,7 @@ export default function PromptOptimizerDialog({
                        onClick={() => setShowScoreDetail(!showScoreDetail)}
                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition ${
                          promptScore.score >= 80 ? "bg-green-100 text-emerald-400 hover:bg-green-200" :
-                         promptScore.score >= 60 ? "bg-blue-500/15 text-blue-700 hover:bg-blue-200" :
+                         promptScore.score >= 60 ? "bg-blue-500/15 text-blue-400 hover:bg-blue-500/20" :
                          promptScore.score >= 40 ? "bg-amber-500/15 text-amber-700 hover:bg-amber-200" :
                          "bg-red-100 text-red-400 hover:bg-red-200"
                        }`}
@@ -2079,7 +2079,7 @@ export default function PromptOptimizerDialog({
                   <div className="flex items-center gap-2">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
                       promptScore.score >= 80 ? "bg-green-100 text-emerald-400" :
-                      promptScore.score >= 60 ? "bg-blue-500/15 text-blue-700" :
+                      promptScore.score >= 60 ? "bg-blue-500/15 text-blue-400" :
                       promptScore.score >= 40 ? "bg-amber-500/15 text-amber-700" :
                       "bg-red-100 text-red-400"
                     }`}>
@@ -2101,7 +2101,7 @@ export default function PromptOptimizerDialog({
                   {promptScore.breakdown.map(b => (
                     <div key={b.label} className="flex items-center gap-2">
                       <span className="text-[10px] text-slate-500 w-16 flex-shrink-0">{b.label}</span>
-                      <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             b.score / b.max >= 0.8 ? "bg-emerald-500/100" :
@@ -2141,7 +2141,7 @@ export default function PromptOptimizerDialog({
                   {activeTemplate && <span className="text-[10px] text-blue-500 bg-blue-500/15 px-1.5 py-0.5 rounded">{activeTemplate.name}</span>}
                   {optimizeTime && <span className="text-[10px] text-slate-400">{optimizeTime}</span>}
                   {stats && stats.totalChanges > 0 && (
-                    <span className="text-[10px] text-blue-600 bg-blue-500/15 px-1.5 py-0.5 rounded font-medium">{stats.totalChanges} 处修改</span>
+                    <span className="text-[10px] text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded font-medium">{stats.totalChanges} 处修改</span>
                   )}
                 </div>
                 {optimizedPrompt && (
@@ -2149,7 +2149,7 @@ export default function PromptOptimizerDialog({
                     <button onClick={handleToggleFavorite} className={`text-[10px] px-2 py-0.5 rounded transition ${favorites.find(f => f.optimizedPrompt === optimizedPrompt) ? "bg-amber-500/15 text-amber-400" : "text-slate-400 hover:text-amber-500"}`} title="收藏">
                       {favorites.find(f => f.optimizedPrompt === optimizedPrompt) ? "★ 已收藏" : "☆ 收藏"}
                     </button>
-                    <button onClick={() => setIsEditingOutput(!isEditingOutput)} className={`text-[10px] px-2 py-0.5 rounded transition ${isEditingOutput ? "bg-blue-500/15 text-blue-600" : "text-slate-400 hover:text-blue-500"}`}>
+                    <button onClick={() => setIsEditingOutput(!isEditingOutput)} className={`text-[10px] px-2 py-0.5 rounded transition ${isEditingOutput ? "bg-blue-500/15 text-blue-400" : "text-slate-400 hover:text-blue-500"}`}>
                       {isEditingOutput ? "锁定编辑" : "解锁编辑"}
                     </button>
                     <button onClick={handleCopy} className="text-[10px] text-slate-400 hover:text-blue-500 transition">复制</button>
@@ -2228,13 +2228,13 @@ export default function PromptOptimizerDialog({
             <div className="flex-shrink-0 border-t border-white/[0.08]" style={{ maxHeight: 280 }}>
               <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-white/[0.04]">
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setActiveDetailTab("overview")} className={`px-3 py-1 rounded text-xs font-medium transition ${activeDetailTab === "overview" ? "bg-blue-500/15 text-blue-700" : "text-slate-500 hover:bg-white/[0.06]"}`}>修改总览</button>
-                  <button onClick={() => setActiveDetailTab("details")} className={`px-3 py-1 rounded text-xs font-medium transition ${activeDetailTab === "details" ? "bg-blue-500/15 text-blue-700" : "text-slate-500 hover:bg-white/[0.06]"}`}>逐行修改明细 ({diffResult.details.length})</button>
+                  <button onClick={() => setActiveDetailTab("overview")} className={`px-3 py-1 rounded text-xs font-medium transition ${activeDetailTab === "overview" ? "bg-blue-500/15 text-blue-400" : "text-slate-500 hover:bg-white/[0.06]"}`}>修改总览</button>
+                  <button onClick={() => setActiveDetailTab("details")} className={`px-3 py-1 rounded text-xs font-medium transition ${activeDetailTab === "details" ? "bg-blue-500/15 text-blue-400" : "text-slate-500 hover:bg-white/[0.06]"}`}>逐行修改明细 ({diffResult.details.length})</button>
                 </div>
                 {activeDetailTab === "details" && (
                   <div className="flex items-center gap-1">
                     {(["all", "added", "removed", "replaced"] as const).map(ft => (
-                      <button key={ft} onClick={() => setFilterType(ft)} className={`px-2 py-0.5 rounded text-[10px] transition ${filterType === ft ? "bg-blue-500/15 text-blue-700 font-medium" : "text-slate-400 hover:bg-white/[0.06]"}`}>
+                      <button key={ft} onClick={() => setFilterType(ft)} className={`px-2 py-0.5 rounded text-[10px] transition ${filterType === ft ? "bg-blue-500/15 text-blue-400 font-medium" : "text-slate-400 hover:bg-white/[0.06]"}`}>
                         {ft === "all" ? "全部" : ft === "added" ? "新增" : ft === "removed" ? "删除" : "替换"}
                       </button>
                     ))}
@@ -2257,7 +2257,7 @@ export default function PromptOptimizerDialog({
                       <div className="text-[10px] text-slate-400 mt-1">删除内容（字符）</div>
                     </div>
                     <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
-                      <div className="text-2xl font-bold text-blue-600">{stats.replacedCount}</div>
+                      <div className="text-2xl font-bold text-blue-400">{stats.replacedCount}</div>
                       <div className="text-[10px] text-slate-400 mt-1">替换处数</div>
                     </div>
                     <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
@@ -2270,12 +2270,12 @@ export default function PromptOptimizerDialog({
                     {filteredDetails.map((detail) => (
                       <div key={detail.changeIndex} className={`px-4 py-2.5 hover:bg-white/[0.04] cursor-pointer transition ${highlightedChange === detail.changeIndex ? "bg-blue-500/10" : ""}`} onClick={() => handleJumpToChange(detail.changeIndex)}>
                         <div className="flex items-start gap-3">
-                          <span className={`flex-shrink-0 w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center mt-0.5 ${detail.type === "added" ? "bg-green-100 text-emerald-400" : detail.type === "removed" ? "bg-red-100 text-red-500" : "bg-blue-500/15 text-blue-600"}`}>
+                          <span className={`flex-shrink-0 w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center mt-0.5 ${detail.type === "added" ? "bg-green-100 text-emerald-400" : detail.type === "removed" ? "bg-red-100 text-red-500" : "bg-blue-500/15 text-blue-400"}`}>
                             {detail.changeIndex + 1}
                           </span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${detail.type === "added" ? "bg-green-100 text-emerald-400" : detail.type === "removed" ? "bg-red-100 text-red-400" : "bg-blue-500/15 text-blue-700"}`}>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${detail.type === "added" ? "bg-green-100 text-emerald-400" : detail.type === "removed" ? "bg-red-100 text-red-400" : "bg-blue-500/15 text-blue-400"}`}>
                                 {detail.type === "added" ? "新增" : detail.type === "removed" ? "删除" : "替换"}
                               </span>
                               {detail.original && <span className="text-[10px] text-slate-400 truncate max-w-[200px]">原：{detail.original.slice(0, 60)}</span>}
@@ -2301,7 +2301,7 @@ export default function PromptOptimizerDialog({
           <div className="flex items-center gap-3">
             <span className="text-[10px] text-slate-400">输入 <span className="font-mono font-medium text-slate-400">{inputPrompt.length}</span> 字符</span>
             {optimizedPrompt && <span className="text-[10px] text-slate-400">输出 <span className="font-mono font-medium text-slate-400">{optimizedPrompt.length}</span> 字符</span>}
-            {stats && <span className="text-[10px] text-blue-600 bg-blue-500/10 px-1.5 py-0.5 rounded">{stats.totalChanges} 处差异</span>}
+            {stats && <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">{stats.totalChanges} 处差异</span>}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handleReset} className="px-3 py-2 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition">重置</button>
@@ -2373,7 +2373,7 @@ export default function PromptOptimizerDialog({
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-slate-100">{tpl.name}</span>
                             {tpl.isDefault && <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-medium">默认</span>}
-                            {selectedTemplateId === tpl.id && <span className="text-[9px] bg-blue-500/15 text-blue-600 px-1.5 py-0.5 rounded font-medium">当前使用</span>}
+                            {selectedTemplateId === tpl.id && <span className="text-[9px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded font-medium">当前使用</span>}
                           </div>
                           {tpl.description && <p className="text-[10px] text-slate-400 mt-0.5 truncate">{tpl.description}</p>}
                           <p className="text-[10px] text-slate-300 mt-1 font-mono truncate">{tpl.systemPrompt.slice(0, 120)}...</p>
@@ -2432,7 +2432,7 @@ export default function PromptOptimizerDialog({
             </div>
             {/* 拖拽手柄 */}
             <div
-              className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize hover:bg-blue-200/50 transition-colors rounded-bl-xl"
+              className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize hover:bg-blue-500/20/50 transition-colors rounded-bl-xl"
               onMouseDown={handleTplResizeStart}
               title="拖动调整大小"
             >
@@ -2558,7 +2558,7 @@ export default function PromptOptimizerDialog({
             )}
             {/* 拖拽手柄 */}
             <div
-              className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize hover:bg-blue-200/50 transition-colors rounded-bl-xl"
+              className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize hover:bg-blue-500/20/50 transition-colors rounded-bl-xl"
               onMouseDown={handleHistResizeStart}
               title="拖动调整大小"
             >
@@ -2604,7 +2604,7 @@ export default function PromptOptimizerDialog({
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] text-slate-400">{new Date(fav.timestamp).toLocaleString("zh-CN")}{fav.templateName ? ` · ${fav.templateName}` : ""}</span>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleApplyFavorite(fav)} className="text-[10px] text-blue-600 hover:text-blue-700 font-medium">套用</button>
+                          <button onClick={() => handleApplyFavorite(fav)} className="text-[10px] text-blue-400 hover:text-blue-400 font-medium">套用</button>
                           <button onClick={() => setFavorites(prev => prev.filter(f => f.id !== fav.id))} className="text-[10px] text-red-400 hover:text-red-400">移除</button>
                         </div>
                       </div>

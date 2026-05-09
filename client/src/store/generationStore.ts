@@ -225,8 +225,8 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
       } catch { return []; }
     })(),
 
-    ratioMismatchDialog: null,
-    _elapsedTimerRef: null,
+  ratioMismatchDialog: null,
+  _elapsedTimerRef: null,
 
     // ── setters ─────────────────────────────────────────────────────────────
     setPrompt: (v) => set({ prompt: v }),
@@ -494,11 +494,11 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
               const requestedMin = Math.min(finalWidth, finalHeight);
               const actualMin = Math.min(aw, ah);
               if (actualMin < requestedMin * 0.6) {
-                const warnMsg = `⚠️ 分辨率降级：请求 ${sizeTier}（${finalWidth}×${finalHeight}），实际返回 ${aw}×${ah}。当前 API 或模型可能不支持所选分辨率，已自动降至 API 支持的最大尺寸。`;
+                const warnMsg = `⚠️ 分辨率降级：请求 ${sizeTier}（${finalWidth}×${finalHeight}），实际返回 ${aw}×${ah}。API 可能不支持所选分辨率。`;
                 set({ error: warnMsg });
                 setTimeout(() => {
                   if (get().error === warnMsg) set({ error: null });
-                }, 12000);
+                }, 15000);
               }
 
               // 比例校验
