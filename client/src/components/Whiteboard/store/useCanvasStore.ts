@@ -7,6 +7,7 @@ import {
 import { generateImages } from "../../../api/imageClient";
 import { getApiConfig } from "../../../api/settings";
 import { getResolution, type ResolutionPresetId } from "../../../utils/resolutionPresets";
+import { useGenerationStore } from "../../../store/generationStore";
 
 export type NodeKind = "image" | "text" | "generate";
 
@@ -42,9 +43,6 @@ export interface ChatMessage {
 
 const STORAGE_KEY = "liang007_canvas_v5";
 const CHAT_KEY = "liang007_canvas_chat_v5";
-const MODEL_KEY = "liang007_canvas_model";
-const ASPECT_KEY = "liang007_canvas_aspect";
-
 const genId = () => `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 function getCanvasSize(aspect: string): { w: number; h: number } {
@@ -80,23 +78,6 @@ function loadChat(): ChatMessage[] {
   return [];
 }
 
-function getInitialModel(): string {
-  try {
-    const saved = localStorage.getItem(MODEL_KEY);
-    if (saved) return saved;
-    const cfg = getApiConfig();
-    return cfg.imageModels[0]?.modelId || "";
-  } catch { return ""; }
-}
-
-function getInitialAspect(): string {
-  try {
-    const saved = localStorage.getItem(ASPECT_KEY);
-    if (saved) return saved;
-  } catch { /* ignore */ }
-  return "1:1";
-}
-
 interface CanvasStore {
   nodes: CanvasNode[];
   edges: Edge[];
@@ -105,9 +86,6 @@ interface CanvasStore {
   lightboxUrl: string | null;
   chatHistory: ChatMessage[];
   chatPanelOpen: boolean;
-  selectedModel: string;
-  aspectRatio: string;
-  batchSize: number;
 
   // 撤销/重做
   historyPast: Array<{ nodes: CanvasNode[]; edges: Edge[] }>;
@@ -127,10 +105,6 @@ interface CanvasStore {
   removeNode: (id: string) => void;
   duplicateNode: (id: string) => void;
   selectNode: (id: string | null) => void;
-
-  setSelectedModel: (m: string) => void;
-  setAspectRatio: (a: string) => void;
-  setBatchSize: (n: number) => void;
 
   runGenerate: (nodeId: string) => Promise<void>;
   runGenerateFromPrompt: (prompt: string, refUrls?: string[], negativePrompt?: string) => Promise<void>;
@@ -168,9 +142,6 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
   lightboxUrl: null,
   chatHistory: loadChat(),
   chatPanelOpen: false,
-  selectedModel: getInitialModel(),
-  aspectRatio: getInitialAspect(),
-  batchSize: 1,
   historyPast: [],
   historyFuture: [],
 
@@ -298,18 +269,6 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
 
   selectNode: (id) => set({ selectedNodeId: id }),
 
-  setSelectedModel: (m) => {
-    set({ selectedModel: m });
-    try { localStorage.setItem(MODEL_KEY, m); } catch { /* ignore */ }
-  },
-
-  setAspectRatio: (a) => {
-    set({ aspectRatio: a });
-    try { localStorage.setItem(ASPECT_KEY, a); } catch { /* ignore */ }
-  },
-
-  setBatchSize: (n) => set({ batchSize: Math.max(1, Math.min(4, n)) }),
-
   runGenerate: async (nodeId) => {
     const node = get().nodes.find((n) => n.id === nodeId);
     if (!node) return;
@@ -320,8 +279,9 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
 
     get().updateNode(nodeId, { status: "running", progress: 10, lastError: undefined });
 
-    const model = get().selectedModel || getApiConfig().imageModels[0]?.modelId || "";
-    const aspect = get().aspectRatio;
+    const genState = useGenerationStore.getState();
+    const model = genState.model || getApiConfig().imageModels[0]?.modelId || "";
+    const aspect = genState.resolutionPreset;
     const size = getCanvasSize(aspect);
 
     const refUrls: string[] = [];
@@ -349,17 +309,19 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
       referenceImages,
       negativePrompt: negativePrompt || undefined,
       resolutionPreset: aspect as any,
+      sizeTier: genState.sizeTier,
     });
 
     // 智能降级：如果模型不支持参考图，去掉后重试
     if (result.error && referenceImages.length > 0 && isImageInputUnsupportedError(result.error)) {
-      get().updateNode(nodeId, { progress: 60, lastError: "当前模型不支持参考图，已切换到纯文生图模式" });
+      get().updateNode(nodeId, { progress: 60, lastError: "当前模型不支持参考图，已切换为纯文生图模式" });
       result = await generateImages({
         prompt, model, batchSize: 1,
         width: size.w, height: size.h,
         referenceImages: [],
         negativePrompt: negativePrompt || undefined,
         resolutionPreset: aspect as any,
+        sizeTier: genState.sizeTier,
       });
     }
 
@@ -415,10 +377,11 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
     set({ chatHistory: histAfterUser });
     saveChat(histAfterUser);
 
-    const model = get().selectedModel || getApiConfig().imageModels[0]?.modelId || "";
-    const aspect = get().aspectRatio;
+    const genState = useGenerationStore.getState();
+    const model = genState.model || getApiConfig().imageModels[0]?.modelId || "";
+    const aspect = genState.resolutionPreset;
     const size = getCanvasSize(aspect);
-    const batchCount = get().batchSize;
+    const batchCount = genState.batchSize;
 
     const referenceImages: File[] = [];
     for (const url of refUrls ?? []) {
@@ -447,6 +410,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
       referenceImages,
       negativePrompt: negativePrompt || undefined,
       resolutionPreset: aspect as any,
+      sizeTier: genState.sizeTier,
     });
 
     if (result.error && referenceImages.length > 0 && isImageInputUnsupportedError(result.error)) {
@@ -457,6 +421,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         referenceImages: [],
         negativePrompt: negativePrompt || undefined,
         resolutionPreset: aspect as any,
+        sizeTier: genState.sizeTier,
       });
     }
 

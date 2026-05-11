@@ -49,7 +49,7 @@ import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode } from "./ut
 import { createThumbnail } from "./utils/imageUtils";
 import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
-import { WhiteboardCanvas } from "./components/Whiteboard";
+import InfiniteCanvas from "./components/InfiniteCanvas";
 
 type GenerationStatus = "idle" | "running";
 
@@ -328,6 +328,9 @@ function App() {
     setWidth(w);
     setHeight(h);
   }, [resolutionPreset, sizeTier, referenceSize]);
+
+  // 同步主界面参数到 store（供无限画布读取）
+  useEffect(() => { useGenerationStore.setState({ model, batchSize, resolutionPreset, sizeTier }); }, [model, batchSize, resolutionPreset, sizeTier]);
 
   const setReferenceSlot = (index: number, file: File | null) => {
     setReferenceSlots((prev) => {
@@ -2556,7 +2559,7 @@ function App() {
 
       {/* 无限画布 */}
       {whiteboardOpen && (
-        <WhiteboardCanvas onClose={() => setWhiteboardOpen(false)} />
+        <InfiniteCanvas onClose={() => setWhiteboardOpen(false)} />
       )}
 
 

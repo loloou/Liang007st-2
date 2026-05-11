@@ -7,6 +7,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useCanvasStore } from "./store/useCanvasStore";
 import { getApiConfig } from "../../api/settings";
+import { useGenerationStore } from "../../store/generationStore";
 import ImageNode from "./nodes/ImageNode";
 import TextNode from "./nodes/TextNode";
 import GenerateNode from "./nodes/GenerateNode";
@@ -38,7 +39,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
     nodes, edges, onNodesChange, onEdgesChange, onConnect,
     selectedNodeId, removeNode, loadFromStorage,
     contextMenu, setContextMenu, addNode,
-    selectedModel, setSelectedModel, chatPanelOpen, setChatPanelOpen,
+    chatPanelOpen, setChatPanelOpen,
     canUndo, canRedo, undo, redo, runAllGenerateNodes, autoLayout,
   } = useCanvasStore();
 
@@ -62,8 +63,11 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
       const models = cfg.imageModels.map((m) => m.modelId).filter(Boolean);
       if (models.length === 0) {
         setShowModelWarning(true);
-      } else if (!selectedModel || !models.includes(selectedModel)) {
-        setSelectedModel(models[0]);
+      } else {
+        const currentModel = useGenerationStore.getState().model;
+        if (!currentModel || !models.includes(currentModel)) {
+          useGenerationStore.setState({ model: models[0] });
+        }
       }
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps

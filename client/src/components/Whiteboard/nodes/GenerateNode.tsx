@@ -1,6 +1,7 @@
 import React, { memo, useState } from "react";
 import { Handle, Position, type NodeProps, NodeResizer } from "@xyflow/react";
 import { useCanvasStore, type CanvasNodeData } from "../store/useCanvasStore";
+import { useGenerationStore } from "../../../store/generationStore";
 
 const STATUS_COLORS: Record<string, string> = {
   idle: "text-slate-500", queued: "text-blue-400",
@@ -18,8 +19,8 @@ const GenerateNode: React.FC<NodeProps> = ({ id, data, selected }) => {
   const selectNode = useCanvasStore((s) => s.selectNode);
   const removeNode = useCanvasStore((s) => s.removeNode);
   const duplicateNode = useCanvasStore((s) => s.duplicateNode);
-  const selectedModel = useCanvasStore((s) => s.selectedModel);
-  const aspectRatio = useCanvasStore((s) => s.aspectRatio);
+  const selectedModel = useGenerationStore((s) => s.model);
+  const aspectRatio = useGenerationStore((s) => s.resolutionPreset);
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelInput, setLabelInput] = useState(d.label || "AI 生成");
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useCanvasStore } from "../store/useCanvasStore";
 import { getApiConfig } from "../../../api/settings";
 import { ASPECT_LIST } from "../store/useCanvasStore";
+import { useGenerationStore } from "../../../store/generationStore";
 
 const ASPECTS = ASPECT_LIST;
 
@@ -16,10 +17,15 @@ const PromptBar: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
-    runGenerateFromPrompt, selectedModel, setSelectedModel,
-    aspectRatio, setAspectRatio, chatPanelOpen, setChatPanelOpen, chatHistory,
-    batchSize, setBatchSize,
+    runGenerateFromPrompt, chatPanelOpen, setChatPanelOpen, chatHistory,
   } = useCanvasStore();
+
+  const selectedModel = useGenerationStore((s) => s.model);
+  const aspectRatio = useGenerationStore((s) => s.resolutionPreset);
+  const batchSize = useGenerationStore((s) => s.batchSize);
+  const setSelectedModel = (m: string) => useGenerationStore.setState({ model: m });
+  const setAspectRatio = (a: string) => useGenerationStore.setState({ resolutionPreset: a as any });
+  const setBatchSize = (n: number) => useGenerationStore.setState({ batchSize: n });
 
   const modelList = (() => {
     try { return getApiConfig().imageModels.map((m) => ({ id: m.modelId, label: m.label || m.modelId })).filter((m) => m.id); }
