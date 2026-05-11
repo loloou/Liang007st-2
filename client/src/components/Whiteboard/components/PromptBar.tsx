@@ -1,9 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useCanvasStore } from "../store/useCanvasStore";
 import { getApiConfig } from "../../../api/settings";
-import { ASPECT_SIZES } from "../store/useCanvasStore";
+import { ASPECT_LIST } from "../store/useCanvasStore";
 
-const ASPECTS = Object.keys(ASPECT_SIZES) as Array<keyof typeof ASPECT_SIZES>;
+const ASPECTS = ASPECT_LIST;
 
 const PromptBar: React.FC = () => {
   const [prompt, setPrompt] = useState("");

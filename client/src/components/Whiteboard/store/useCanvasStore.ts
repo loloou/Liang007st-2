@@ -6,6 +6,7 @@ import {
 } from "@xyflow/react";
 import { generateImages } from "../../../api/imageClient";
 import { getApiConfig } from "../../../api/settings";
+import { getResolution, type ResolutionPresetId } from "../../../utils/resolutionPresets";
 
 export type NodeKind = "image" | "text" | "generate";
 
@@ -46,13 +47,10 @@ const ASPECT_KEY = "liang007_canvas_aspect";
 
 const genId = () => `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-const ASPECT_SIZES: Record<string, { w: number; h: number }> = {
-  "1:1": { w: 1024, h: 1024 },
-  "4:3": { w: 1024, h: 768 },
-  "3:4": { w: 768, h: 1024 },
-  "16:9": { w: 1280, h: 720 },
-  "9:16": { w: 720, h: 1280 },
-};
+function getCanvasSize(aspect: string): { w: number; h: number } {
+  const { width, height } = getResolution(aspect as ResolutionPresetId, "1K", null);
+  return { w: width, h: height };
+}
 
 function saveCanvas(nodes: CanvasNode[], edges: Edge[]) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, ts: Date.now() })); } catch { /* quota */ }
@@ -91,10 +89,10 @@ function getInitialModel(): string {
   } catch { return ""; }
 }
 
-function getInitialAspect(): keyof typeof ASPECT_SIZES {
+function getInitialAspect(): string {
   try {
     const saved = localStorage.getItem(ASPECT_KEY);
-    if (saved && saved in ASPECT_SIZES) return saved as keyof typeof ASPECT_SIZES;
+    if (saved) return saved;
   } catch { /* ignore */ }
   return "1:1";
 }
@@ -108,7 +106,7 @@ interface CanvasStore {
   chatHistory: ChatMessage[];
   chatPanelOpen: boolean;
   selectedModel: string;
-  aspectRatio: keyof typeof ASPECT_SIZES;
+  aspectRatio: string;
   batchSize: number;
 
   // 撤销/重做
@@ -131,7 +129,7 @@ interface CanvasStore {
   selectNode: (id: string | null) => void;
 
   setSelectedModel: (m: string) => void;
-  setAspectRatio: (a: keyof typeof ASPECT_SIZES) => void;
+  setAspectRatio: (a: string) => void;
   setBatchSize: (n: number) => void;
 
   runGenerate: (nodeId: string) => Promise<void>;
@@ -324,7 +322,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
 
     const model = get().selectedModel || getApiConfig().imageModels[0]?.modelId || "";
     const aspect = get().aspectRatio;
-    const size = ASPECT_SIZES[aspect];
+    const size = getCanvasSize(aspect);
 
     const refUrls: string[] = [];
     get().edges
@@ -419,7 +417,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
 
     const model = get().selectedModel || getApiConfig().imageModels[0]?.modelId || "";
     const aspect = get().aspectRatio;
-    const size = ASPECT_SIZES[aspect];
+    const size = getCanvasSize(aspect);
     const batchCount = get().batchSize;
 
     const referenceImages: File[] = [];
@@ -662,4 +660,5 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
   },
 }));
 
-export { ASPECT_SIZES };
+export const ASPECT_LIST = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+export { getCanvasSize };
