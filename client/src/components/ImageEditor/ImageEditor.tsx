@@ -4,12 +4,12 @@
 // 支持：图层管理、对象操作、精准坐标、蒙版导出、undo/redo
 // ═══════════════════════════════════════════════════════════════
 import React, {
-  useRef, useState, useEffect, useCallback, useMemo,
+  useRef, useState, useEffect, useCallback,
 } from "react";
 import { fabric } from "fabric";
 import { useEditorStore } from "../../store/editorStore";
 import type {
-  EditorTool, PinMarker, TextAddition,
+  EditorTool, BackgroundEdit, OutpaintDirection,
 } from "../../types/editor";
 import { buildEditorPayload } from "../../utils/editorPayload";
 
@@ -22,6 +22,15 @@ interface FabricIText extends fabric.IText {
 interface FabricGroup extends fabric.Group {
   _dataId?: string;
   _dataType?: "pin";
+}
+
+interface FabricCanvasWithFindTarget extends fabric.Canvas {
+  findTarget(e: MouseEvent): fabric.Object | undefined;
+}
+
+interface FabricObjectWithData extends fabric.Object {
+  _dataId?: string;
+  _dataType?: string;
 }
 
 // ─── 工具图标 ──────────────────────────────────────────────
@@ -159,42 +168,42 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const store = useEditorStore();
   const {
     // 状态
-    activeTool, scale,
+    activeTool, scale: _scale,
     pinStyle, pinColor, pinSize,
-    brushSize, brushColor, brushEraser,
+    brushSize, brushColor: _brushColor, brushEraser,
     fontFamily, fontSize, fontColor, fontWeight,
     letterSpacing, lineHeight, textOpacity, textAlign,
     textDirection, textRotation,
     textStroke, textShadow, textBgColor, textBgRadius,
-    smartDetect, fillMethod,
+    smartDetect: _smartDetect, fillMethod: _fillMethod,
     filter, outpaint, bgEdit,
     leftPanelOpen, rightPanelOpen,
-    historyOpen, past, future,
+    historyOpen: _historyOpen, past, future,
     submitPanelOpen, advancedParams,
     maskLayers, pins, textAdditions,
-    maskPromptVisible,
+    maskPromptVisible: _maskPromptVisible,
     advancedOpen,
     // setters
-    setTool, setActiveSubTab,
-    setScale, setPan, setPanning,
-    pushHistory, undo, redo, toggleHistory,
-    resetAll, toggleSubmitPanel, toggleAdvanced,
+    setTool, setActiveSubTab: _setActiveSubTab,
+    setScale, setPan: _setPan, setPanning: _setPanning,
+    pushHistory: _pushHistory, undo, redo, toggleHistory,
+    resetAll, toggleSubmitPanel, toggleAdvanced: _toggleAdvanced,
     setAdvancedParams,
     addPin, updatePin, removePin, setSelectedPin, clearPins,
     addText, updateText, removeText, setSelectedText, clearTexts,
-    addPathToMask, clearMaskLayer,
-    setMaskPrompt, setBrushSize, setBrushColor, setBrushEraser,
+    addPathToMask: _addPathToMask, clearMaskLayer,
+    setMaskPrompt: _setMaskPrompt, setBrushSize, setBrushColor: _setBrushColor, setBrushEraser,
     setPinStyle, setPinColor, setPinSize,
-    setFontFamily, setFontSize, setFontColor, setFontWeight,
-    setLetterSpacing, setLineHeight, setTextOpacity, setTextAlign,
-    setTextDirection, setTextRotation,
-    setTextStroke, setTextShadow, setTextBgColor, setTextBgRadius,
-    setSmartDetect, setFillMethod,
+    setFontFamily: _setFontFamily, setFontSize, setFontColor, setFontWeight: _setFontWeight,
+    setLetterSpacing, setLineHeight: _setLineHeight, setTextOpacity, setTextAlign,
+    setTextDirection: _setTextDirection, setTextRotation: _setTextRotation,
+    setTextStroke: _setTextStroke, setTextShadow: _setTextShadow, setTextBgColor: _setTextBgColor, setTextBgRadius: _setTextBgRadius,
+    setSmartDetect: _setSmartDetect, setFillMethod: _setFillMethod,
     setFilterPreset, setFilterAdjustments, resetFilter,
-    setOutpaint, setBgEdit, setCrop,
-    fitToWindow,
+    setOutpaint, setBgEdit, setCrop: _setCrop,
+    fitToWindow: _fitToWindow,
     toggleLeftPanel, toggleRightPanel,
-    setMaskPromptVisible,
+    setMaskPromptVisible: _setMaskPromptVisible,
     rebuildLayers,
     setImage,
     filterPresets,
@@ -203,8 +212,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   // ── Refs ────────────────────────────────────────────────────
   const containerRef   = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
-  const isDrawingRef    = useRef(false);
-  const currentPathRef  = useRef<fabric.Path | null>(null);
+  const _isDrawingRef    = useRef(false);
+  const _currentPathRef  = useRef<fabric.Path | null>(null);
   const historyStackRef = useRef<string[]>([]);
   const historyIdxRef  = useRef(0);
   const isRestoringRef  = useRef(false);
@@ -214,7 +223,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
 
   // ── 本地 UI 状态 ─────────────────────────────────────────────
   const [zoom, setZoom]       = useState(100);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [_isFullscreen, _setIsFullscreen] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [selectedPinId, setSelectedPinLocal] = useState<string | null>(null);
   const [editingPinNote, setEditingPinNote] = useState<string | null>(null);
@@ -230,16 +239,16 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const [imgW, setImgW] = useState(1024);
   const [imgH, setImgH] = useState(1024);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const [filterStrength, setFilterStrength] = useState(100);
+  const [_filterStrength, _setFilterStrength] = useState(100);
   const [adjValues, setAdjValues] = useState({
     brightness: 0, contrast: 0, saturation: 0,
     warmth: 0, tint: 0, highlights: 0, shadows: 0,
     clarity: 0, grain: 0, vignette: 0, fade: 0,
   });
   const [submitPrompt, setSubmitPrompt] = useState("");
-  const [advancedPrompt, setAdvancedPrompt] = useState("");
+  const [_advancedPrompt, _setAdvancedPrompt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [_selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   // ── 平移状态 ─────────────────────────────────────────────────
   const [isPanning, setIsPanning] = useState(false);
   const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
@@ -364,7 +373,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     if (!img) return;
 
     const cssFilter = FILTER_CSS[filter.preset] || "none";
-    const strength  = filter.presetStrength / 100;
+    const _strength  = filter.presetStrength / 100;
     const adj = filter.adjustments;
 
     // CSS filter 通过 container div 应用
@@ -424,7 +433,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     }
 
     if (activeToolRef.current === "erase") {
-      const target = (fc.findTarget as any)(opt.e) as fabric.Object | undefined;
+      const target = (fc as FabricCanvasWithFindTarget).findTarget(opt.e);
       if (target && target.data?.type === "mask") {
         fc.remove(target);
         rebuildLayersRef.current();
@@ -459,7 +468,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     fc.renderAll();
   }, []);
 
-  const handleCanvasMouseUp = useCallback((opt: fabric.IEvent<MouseEvent>) => {
+  const handleCanvasMouseUp = useCallback((_opt: fabric.IEvent<MouseEvent>) => {
     const fc = fabricCanvasRef.current;
     if (!fc) return;
 
@@ -472,7 +481,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     if ((activeToolRef.current === "brush" || activeToolRef.current === "erase") && fc.isDrawingMode) {
       const objects = fc.getObjects();
       const last = objects[objects.length - 1] as fabric.Path | undefined;
-      if (last && !(last as any).data?.type) {
+      if (last && !(last as FabricObjectWithData)._dataId && !last.data?.type) {
         last.data = { type: "mask", isErase: activeToolRef.current === "erase" };
         last.selectable = false;
         last.evented = false;
@@ -487,9 +496,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   const handleCanvasDoubleClick = useCallback((opt: fabric.IEvent<MouseEvent>) => {
     const fc = fabricCanvasRef.current;
     if (!fc) return;
-    const target = (fc.findTarget as any)(opt.e) as fabric.Object | undefined;
-    if (target && (target as any)._dataType === "pin") {
-      const pinId = (target as any)._dataId;
+    const target = (fc as FabricCanvasWithFindTarget).findTarget(opt.e) as FabricObjectWithData | undefined;
+    if (target && target._dataType === "pin") {
+      const pinId = target._dataId;
       if (pinId) {
         const pin = store.pins.find((p) => p.id === pinId);
         if (pin) {
@@ -551,9 +560,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       originX: "center", originY: "center",
       selectable: true,
       data: { type: "pin", id },
-    }, { // Fabric.js Group 构造支持 options
-      ...({} as any),
-    }) as any as FabricGroup;
+    }) as unknown as FabricGroup;
     group._dataId = id;
     group._dataType = "pin";
 
@@ -610,7 +617,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
       textAlign, originX: "left", originY: "top",
       editable: true,
       data: { type: "text", id },
-    } as any) as FabricIText;
+    } as fabric.ITextOptions) as FabricIText;
     itext._dataId = id;
     itext._isEditorText = true;
 
@@ -667,9 +674,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
         const sel = fc.getActiveObjects();
         if (!sel.length) return;
         sel.forEach((obj) => {
-          const oid = (obj as any)._dataId;
-          if (obj.data?.type === "pin" && oid) removePin(oid as string);
-          if (obj.data?.type === "text" && oid) removeText(oid as string);
+          const oid = (obj as FabricObjectWithData)._dataId;
+          if (obj.data?.type === "pin" && oid) removePin(oid);
+          if (obj.data?.type === "text" && oid) removeText(oid);
           if (obj.data?.type === "mask") fc.remove(obj);
         });
         fc.discardActiveObject();
@@ -689,7 +696,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     window.addEventListener("keyup", onKeyUp);
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
   }, [undo, redo, restoreFromHistory, setScale, setBrushSize, brushSize,
-      removePin, removeText, rebuildLayers, saveHistory, onClose, setTool, editingTextId]);
+      removePin, removeText, rebuildLayers, saveHistory, onClose, setTool, editingTextId, imgW, imgH]);
 
   // ── 提交逻辑 ───────────────────────────────────────────────
   const handleSubmit = useCallback(() => {
@@ -702,7 +709,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     const maskImage = exportMaskToBase64(fc, imgW, imgH);
 
     const markers = store.pins.map((pin) => {
-      const obj = fc.getObjects().find((o) => (o as any)._dataId === pin.id);
+      const obj = fc.getObjects().find((o) => (o as FabricObjectWithData)._dataId === pin.id);
       const coords = obj ? toImageCoords(fc, obj, imgW, imgH) : { x: pin.x, y: pin.y };
       return {
         id: pin.id,
@@ -714,7 +721,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     });
 
     const textLayers = store.textAdditions.map((t) => {
-      const itext = fc.getObjects().find((o) => (o as any)._dataId === t.id) as fabric.IText | undefined;
+      const itext = fc.getObjects().find((o) => (o as FabricObjectWithData)._dataId === t.id) as fabric.IText | undefined;
       return {
         id: t.id,
         content: itext?.text || t.content,
@@ -751,7 +758,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           outputHeight: imgH,
         },
       };
-      onConfirm(payload as any);
+      onConfirm(payload as unknown as ReturnType<typeof buildEditorPayload>);
     } else {
       const payload = buildEditorPayload({
         imageBase64: originalImage,
@@ -773,7 +780,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
           outputHeight: imgH,
         },
       });
-      (payload as any).compositePrompt = compositePrompt;
+      (payload as unknown as Record<string, unknown>).compositePrompt = compositePrompt;
       onConfirm(payload);
     }
 
@@ -1132,7 +1139,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                   <div className="flex gap-1">
                     {[["remove","抠图"],["replace","替换"],["blur","模糊"],["solid","纯色"]].map(([k,v]) => (
                       <button key={k}
-                        onClick={() => { setActiveBgTab(k); setBgEdit({ action: k as any, replacePrompt: bgPrompt }); }}
+                        onClick={() => { setActiveBgTab(k); setBgEdit({ action: k as BackgroundEdit["action"], replacePrompt: bgPrompt }); }}
                         className={`flex-1 py-1 rounded text-[10px] transition ${activeBgTab === k ? "bg-indigo-500 text-white" : "bg-white/10 text-white/60"}`}
                       >{v}</button>
                     ))}
@@ -1235,9 +1242,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
                     ].map(([dir, label]) => (
                       <button key={dir}
                         onClick={() => setOutpaintDirs((prev) =>
-                          prev.includes(dir as any) ? prev.filter((d) => d !== dir) : [...prev, dir as any]
+                          prev.includes(dir as OutpaintDirection) ? prev.filter((d) => d !== dir) : [...prev, dir as OutpaintDirection]
                         )}
-                        className={`py-1 rounded text-[10px] transition ${outpaintDirs.includes(dir as any) ? "bg-indigo-500 text-white" : "bg-white/10 text-white/60"}`}
+                        className={`py-1 rounded text-[10px] transition ${outpaintDirs.includes(dir as OutpaintDirection) ? "bg-indigo-500 text-white" : "bg-white/10 text-white/60"}`}
                       >{label}</button>
                     ))}
                   </div>

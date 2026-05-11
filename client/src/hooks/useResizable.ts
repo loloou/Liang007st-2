@@ -129,7 +129,7 @@ export function useDraggable(options: UseDraggableOptions = {}) {
   const onMouseUp = useCallback(() => {
     if (!isDragging.current) return;
     isDragging.current = false;
-    const current = dragStart.current;
+    const _current = dragStart.current;
     dragStart.current = null;
     onDragEnd?.(offset);
     onDragStart?.(); // reset

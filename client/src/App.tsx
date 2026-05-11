@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useUiStore } from "./store/uiStore";
 import { useGenerationStore, STORAGE_KEYS } from "./store/generationStore";
 import { generateImages, GeneratedImage } from "./api/imageClient";
 import { downloadImage, downloadImages } from "./utils/download";
-import PromptOptimizerDialog from "./components/PromptOptimizerDialog";
-import AboutDialog from "./components/Dialogs/AboutDialog";
+const PromptOptimizerDialog = lazy(() => import("./components/PromptOptimizerDialog"));
+const InfiniteCanvas = lazy(() => import("./components/InfiniteCanvas"));import AboutDialog from "./components/Dialogs/AboutDialog";
 import DetailedLogDialog from "./components/Dialogs/DetailedLogDialog";
 import RatioMismatchDialog from "./components/Dialogs/RatioMismatchDialog";
 import BalancePopup from "./components/BalancePopup";
@@ -49,36 +49,35 @@ import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode } from "./ut
 import { createThumbnail } from "./utils/imageUtils";
 import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
-import InfiniteCanvas from "./components/InfiniteCanvas";
 
 type GenerationStatus = "idle" | "running";
 
-const DEFAULT_SIZE_TIER: SizeTierId = "2K";
 const RIGHT_PANEL_MIN = 280;
 const RIGHT_PANEL_MAX = 640;
 const RIGHT_PANEL_DEFAULT = 340;
 
-function getInitialModelAndList() {
-  const s = getApiSettings();
-  // 只使用用户手动配置的模型，不再 fallback 到硬编码模型列表
-  const list = s.selectedModelIds?.length ? s.selectedModelIds : [];
-  const model = list[0] || "";
-  return { model, list: list as string[] };
-}
-
 function App() {
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
-  const [batchSize, setBatchSize] = useState(1);
+  const batchSize = useGenerationStore((s) => s.batchSize);
+  const setBatchSize = (v: number) => useGenerationStore.getState().setBatchSize(v);
   const [width, setWidth] = useState(768);
   const [height, setHeight] = useState(768);
-  const [resolutionPreset, setResolutionPreset] = useState<ResolutionPresetId>("original");
-  const [sizeTier, setSizeTier] = useState<SizeTierId>(DEFAULT_SIZE_TIER);
+  const resolutionPreset = useGenerationStore((s) => s.resolutionPreset);
+  const setResolutionPreset = (v: ResolutionPresetId) => useGenerationStore.getState().setResolutionPreset(v);
+  const sizeTier = useGenerationStore((s) => s.sizeTier);
+  const setSizeTier = (v: SizeTierId) => useGenerationStore.getState().setSizeTier(v);
   const [referenceSlots, setReferenceSlots] = useState<(File | null)[]>(() => [null, null, null, null]);
   const [referencePreviewUrls, setReferencePreviewUrls] = useState<(string | null)[]>(() => [null, null, null, null]);
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
-  const [model, setModel] = useState(() => getInitialModelAndList().model);
-  const [modelList, setModelList] = useState<string[]>(() => getInitialModelAndList().list);
+  const model = useGenerationStore((s) => s.model);
+  const setModel = (v: string) => useGenerationStore.getState().setModel(v);
+  const modelList = useGenerationStore((s) => s.modelList);
+  const setModelList = (v: string[] | ((prev: string[]) => string[])) => {
+    const store = useGenerationStore.getState();
+    const next = typeof v === "function" ? v(store.modelList) : v;
+    store.setModelList(next);
+  };
   const [results, setResults] = useState<GeneratedImage[]>([]);
   const [status, setStatus] = useState<GenerationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +130,7 @@ function App() {
   const [_modelsFetchStatus, _setModelsFetchStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [_modelsFetchError, _setModelsFetchError] = useState("");
   const [modelSelectOpen, setModelSelectOpen] = useState(false);
-  const [fetchedModelList, setFetchedModelList] = useState<string[]>([]);
+  const [fetchedModelList, _setFetchedModelList] = useState<string[]>([]);
   const [selectedModelIdsInModal, setSelectedModelIdsInModal] = useState<string[]>([]);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [rightPanelWidth, setRightPanelWidth] = useState(RIGHT_PANEL_DEFAULT);
@@ -152,7 +151,7 @@ function App() {
   const [modelModalSize, setModelModalSize] = useState({ w: 880, h: 620 });
   const modelModalResizing = useRef(false);
   const modelModalResizeStart = useRef({ mouseX: 0, mouseY: 0, w: 880, h: 620 });
-  const [logEntries, setLogEntries] = useState<{
+  const [_logEntries, setLogEntries] = useState<{
     time: string;
     request?: string;
     response?: string;
@@ -328,9 +327,6 @@ function App() {
     setWidth(w);
     setHeight(h);
   }, [resolutionPreset, sizeTier, referenceSize]);
-
-  // 同步主界面参数到 store（供无限画布读取）
-  useEffect(() => { useGenerationStore.setState({ model, batchSize, resolutionPreset, sizeTier }); }, [model, batchSize, resolutionPreset, sizeTier]);
 
   const setReferenceSlot = (index: number, file: File | null) => {
     setReferenceSlots((prev) => {
@@ -707,8 +703,7 @@ function App() {
     }
   };
 
-  // 保持 handleGenerateRef 始终指向最新的 handleGenerate 函数
-  // eslint-disable-next-line react-hooks/use-effect-requires-second-argument
+  // runs after every render intentionally — keeps ref pointing to latest closure
   useEffect(() => { handleGenerateRef.current = handleGenerate; });
 
   // 切换图片选中状态
@@ -904,7 +899,6 @@ function App() {
     checkSize();
     window.addEventListener("resize", checkSize);
     return () => window.removeEventListener("resize", checkSize);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 历史+模板合并下拉
@@ -1459,7 +1453,6 @@ function App() {
                                   <div className="flex items-center gap-1.5">
                                     {(["openai", "gemini"] as ApiSpec[]).map((sp) => {
                                       const activeSpec = resolveApiSpec(m, cfgDraft);
-                                      const isSelected = (m.apiSpec ? m.apiSpec : undefined) === sp || (!m.apiSpec && sp === cfgDraft.globalApiSpec) || (!m.apiSpec && !cfgDraft.globalApiSpec && sp === "openai");
                                       return (
                                         <button
                                           key={sp}
@@ -2050,7 +2043,8 @@ function App() {
                 // 同步到 modelList 状态
                 if (settingsForm.selectedModelIds.length) {
                   setModelList(settingsForm.selectedModelIds);
-                  setModel((m) => settingsForm.selectedModelIds.includes(m) ? m : settingsForm.selectedModelIds[0]);
+                  const cur = useGenerationStore.getState().model;
+                  setModel(settingsForm.selectedModelIds.includes(cur) ? cur : settingsForm.selectedModelIds[0]);
                   setApiSettings({ selectedModelIds: settingsForm.selectedModelIds, modelList: settingsForm.modelList });
                   // B3修复：同步到 cfgDraft.imageModels，防止设置弹窗和模型管理弹窗状态不一致
                   setCfgDraft((prev) => {
@@ -2251,7 +2245,7 @@ function App() {
                           if (historyBatchMode) {
                             setHistorySelected(prev => {
                               const next = new Set(prev);
-                              next.has(entry.id) ? next.delete(entry.id) : next.add(entry.id);
+                              if (next.has(entry.id)) { next.delete(entry.id); } else { next.add(entry.id); }
                               return next;
                             });
                           }
@@ -2421,7 +2415,7 @@ function App() {
                 const extendedImg = activeImg as typeof activeImg & { originalUrl?: string };
                 // 优先用原图 URL（高清），备用缩略图 URL
                 const activeImgUrl = extendedImg.originalUrl || activeImg.url;
-                const isSelected = selectedImageIds.has(activeImg.id);
+                const _isSelected = selectedImageIds.has(activeImg.id);
                 return (
                   <div className="w-full h-full flex flex-col">
                     {/* 主图区 - 填满结果区 */}
@@ -2559,7 +2553,9 @@ function App() {
 
       {/* 无限画布 */}
       {whiteboardOpen && (
-        <InfiniteCanvas onClose={() => setWhiteboardOpen(false)} />
+        <Suspense fallback={null}>
+          <InfiniteCanvas onClose={() => setWhiteboardOpen(false)} />
+        </Suspense>
       )}
 
 
@@ -2957,7 +2953,8 @@ function App() {
                     if (selectedModels.length > 0) {
                       const ids = selectedModels.map((m) => m.modelId);
                       setModelList(ids);
-                      setModel((prev) => ids.includes(prev) ? prev : ids[0]);
+                      const cur = useGenerationStore.getState().model;
+                      setModel(ids.includes(cur) ? cur : ids[0]);
                     }
                     setMainModelPickerOpen(false);
                   }}
@@ -3173,12 +3170,14 @@ function App() {
       )}
 
       {/* ── 优化5：提示词优化弹窗 ────────────────────────────────────────────── */}
-      <PromptOptimizerDialog
-        open={promptOptimizeDialogOpen}
-        onClose={() => setPromptOptimizeDialogOpen(false)}
-        originalPrompt={prompt.trim()}
-        onAdopt={(optimized) => setPrompt(optimized)}
-      />
+      <Suspense fallback={null}>
+        <PromptOptimizerDialog
+          open={promptOptimizeDialogOpen}
+          onClose={() => setPromptOptimizeDialogOpen(false)}
+          originalPrompt={prompt.trim()}
+          onAdopt={(optimized) => setPrompt(optimized)}
+        />
+      </Suspense>
 
       {/* ── 历史记录管理弹窗 ─────────────────────────────────────────────── */}
       {manageDialogOpen && (
@@ -3245,7 +3244,7 @@ function App() {
                     type="button"
                     className="px-3 py-1 rounded-lg text-[11px] bg-red-500 text-white hover:bg-red-600 transition"
                     onClick={() => {
-                      const toDel = [...selectedPromptHistory].sort((a, b) => b - a);
+                      const _toDel = [...selectedPromptHistory].sort((a, b) => b - a);
                       setPromptHistory(prev => prev.filter((_, i) => !selectedPromptHistory.has(i)));
                       setSelectedPromptHistory(new Set());
                     }}
@@ -3712,6 +3711,22 @@ function App() {
       </main>
 
       {/* 重复的提示词模板管理弹窗已删除，使用统一管理弹窗 */}
+
+      {/* 全局错误/提示 Toast */}
+      {error && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] max-w-xl w-full px-4"
+          onClick={() => setError(null)}
+        >
+          <div className="glass-popup rounded-xl px-4 py-3 flex items-start gap-3 border border-red-500/20 bg-red-500/10 cursor-pointer shadow-xl">
+            <svg className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <p className="text-xs text-red-300 whitespace-pre-wrap flex-1">{error}</p>
+            <button className="text-slate-500 hover:text-slate-300 text-sm leading-none flex-shrink-0">×</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

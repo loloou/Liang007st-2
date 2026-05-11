@@ -31,5 +31,7 @@ export default InfiniteCanvas;
 
 // ── 导出接口和工具 ───────────────────────────────────────────────────────────
 export type { CanvasGenerationParams, CanvasAdapter, InfiniteCanvasProps } from "./types";
+// eslint-disable-next-line react-refresh/only-export-components
 export { useInfiniteCanvas } from "./useInfiniteCanvas";
+// eslint-disable-next-line react-refresh/only-export-components
 export { useCanvasStore } from "../Whiteboard/store/useCanvasStore";

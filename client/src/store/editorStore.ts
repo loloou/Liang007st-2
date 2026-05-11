@@ -6,7 +6,7 @@ import {
   EditorTool, MaskLayer, MaskPath, PinMarker,
   TextAddition, TextReplacement, EraseRegion,
   BackgroundEdit, CropConfig, FilterState, OutpaintConfig,
-  EditorSnapshot, EditorLayer, LayerType,
+  EditorSnapshot, EditorLayer,
   ReferenceImage, FilterAdjustments,
 } from "../types/editor";
 
@@ -649,7 +649,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   // 滤镜
   setFilterPreset: (preset, strength) => {
     get().pushHistory();
-    set((s) => ({ filter: { ...s.filter, preset: preset as any, presetStrength: strength } }));
+    set((s) => ({ filter: { ...s.filter, preset: preset as import("../types/editor").FilterPreset, presetStrength: strength } }));
   },
 
   setFilterAdjustments: (adj) => {
@@ -739,7 +739,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   toggleLayerLock: (id) => {
     const s = get();
-    const update = (arr: any[]) => arr.map((l) => l.id === id ? { ...l, locked: !l.locked } : l);
+    const update = (arr: { id: string; locked?: boolean }[]) => arr.map((l) => l.id === id ? { ...l, locked: !l.locked } : l);
     if (id === "pins") set({ pins: update(s.pins) as PinMarker[] });
     else if (id === "texts") set({ textAdditions: update(s.textAdditions) as TextAddition[] });
     else if (id === "erase") set({ eraseRegions: update(s.eraseRegions) as EraseRegion[] });
@@ -787,7 +787,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
   resetAll: () => {
     get().pushHistory();
-    const initial = emptySnapshot();
+    const _initial = emptySnapshot();
     set({
       maskLayers: [], activeMaskLayerId: null,
       pins: [], selectedPinId: null,

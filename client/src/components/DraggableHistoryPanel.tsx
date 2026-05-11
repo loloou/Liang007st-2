@@ -26,7 +26,7 @@ interface DraggableHistoryPanelProps {
   historySelected: Set<string>;
   setHistorySelected: (v: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   /** 初始 Y 位置，跟随历史按钮 */
-  initialY?: number;
+  _initialY?: number;
 }
 
 const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
@@ -38,7 +38,7 @@ const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
   setHistoryBatchMode,
   historySelected,
   setHistorySelected,
-  initialY,
+  _initialY,
 }) => {
   // 仅用于 apply-entry 时的表单填充
   const setPrompt = useGenerationStore((s) => s.setPrompt);
@@ -368,8 +368,8 @@ const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
                                 if (!historyBatchMode) {
                                   setHistPreviewZoom(1);
                                   setHistPreviewOffset({ x: 0, y: 0 });
-                                  const originalUrl = (img as any).originalUrl;
-                                  const previewImg = originalUrl ? { ...img, url: originalUrl } : img;
+                                  const originalUrl = img.originalUrl;
+                                  const previewImg = (originalUrl ? { ...img, url: originalUrl } : img) as GeneratedImage;
                                   setHistFullPreview(previewImg);
                                 }
                               }}
@@ -391,8 +391,8 @@ const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
                               setHistPreviewZoom(1);
                               setHistPreviewOffset({ x: 0, y: 0 });
                               const img = entry.results[6];
-                              const originalUrl = (img as any).originalUrl;
-                              const previewImg = originalUrl ? { ...img, url: originalUrl } : img;
+                              const originalUrl = img.originalUrl;
+                              const previewImg = (originalUrl ? { ...img, url: originalUrl } : img) as GeneratedImage;
                               setHistFullPreview(previewImg);
                             }
                           }}
@@ -459,11 +459,11 @@ const DraggableHistoryPanel: React.FC<DraggableHistoryPanelProps> = ({
                               return;
                             }
                             const restoredResults = entry.results.map(img => {
-                              const originalUrl = (img as any).originalUrl;
+                              const originalUrl = img.originalUrl;
                               if (originalUrl) return { ...img, url: originalUrl };
                               return img;
                             });
-                            const validResults = restoredResults.filter((img): img is GeneratedImage => img && img.url);
+                            const validResults = restoredResults.filter((img): img is GeneratedImage => Boolean(img.url));
                             if (validResults.length === 0) {
                               setError("此记录的图片数据已失效");
                               return;

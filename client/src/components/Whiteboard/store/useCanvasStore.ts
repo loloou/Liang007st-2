@@ -308,11 +308,9 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
       width: size.w, height: size.h,
       referenceImages,
       negativePrompt: negativePrompt || undefined,
-      resolutionPreset: aspect as any,
+      resolutionPreset: aspect as import("../../../utils/resolutionPresets").ResolutionPresetId,
       sizeTier: genState.sizeTier,
     });
-
-    // 智能降级：如果模型不支持参考图，去掉后重试
     if (result.error && referenceImages.length > 0 && isImageInputUnsupportedError(result.error)) {
       get().updateNode(nodeId, { progress: 60, lastError: "当前模型不支持参考图，已切换为纯文生图模式" });
       result = await generateImages({
@@ -320,7 +318,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         width: size.w, height: size.h,
         referenceImages: [],
         negativePrompt: negativePrompt || undefined,
-        resolutionPreset: aspect as any,
+        resolutionPreset: aspect as import("../../../utils/resolutionPresets").ResolutionPresetId,
         sizeTier: genState.sizeTier,
       });
     }
@@ -409,7 +407,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
       width: size.w, height: size.h,
       referenceImages,
       negativePrompt: negativePrompt || undefined,
-      resolutionPreset: aspect as any,
+      resolutionPreset: aspect as import("../../../utils/resolutionPresets").ResolutionPresetId,
       sizeTier: genState.sizeTier,
     });
 
@@ -420,7 +418,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         width: size.w, height: size.h,
         referenceImages: [],
         negativePrompt: negativePrompt || undefined,
-        resolutionPreset: aspect as any,
+        resolutionPreset: aspect as import("../../../utils/resolutionPresets").ResolutionPresetId,
         sizeTier: genState.sizeTier,
       });
     }
@@ -625,5 +623,5 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
   },
 }));
 
-export const ASPECT_LIST = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+export const ASPECT_LIST = ["original", "1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "3:2", "2:3", "5:4", "4:5"];
 export { getCanvasSize };

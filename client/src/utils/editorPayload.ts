@@ -200,7 +200,7 @@ export function buildEditorPayload(
     .join("；");
 
   // 文字描述
-  const textInstructions = [
+  const _textInstructions = [
     ...textAdditions.map((t) => `新增文字 "${t.content}" 于坐标(${t.xPercent.toFixed(1)}%, ${t.yPercent.toFixed(1)}%)`),
     ...textReplacements.map((r) => `替换区域文字 "${r.originalTextHint}" → "${r.newText}"`),
   ].join("；");

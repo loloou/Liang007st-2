@@ -15,11 +15,11 @@
 import {
   getApiConfig,
   getActiveImageModel,
-  getApiSettings,
-  resolveApiSpec,
+  getApiSettings as _getApiSettings,
+  resolveApiSpec as _resolveApiSpec,
   type ApiSpec,
-  type ImageModel,
-  type ApiConfig
+  type ImageModel as _ImageModel,
+  type ApiConfig as _ApiConfig
 } from "./settings";
 import { type ResolutionPresetId, type SizeTierId } from "../utils/resolutionPresets";
 
@@ -42,6 +42,8 @@ export type GenerateParams = {
 export type GeneratedImage = {
   id: string;
   url: string;
+  /** 缩略图生成后保留的原始 URL（base64/外部 URL） */
+  originalUrl?: string;
 };
 
 // ── 常量 ──────────────────────────────────────────────────
@@ -341,7 +343,6 @@ async function buildOpenAIBody(params: GenerateParams, resolvedModel: string): P
 
   if (hasRef) {
     // 参考图存在：使用 messages 格式，支持 image_url
-    const messageParts: Record<string, unknown>[] = [];
 
     // 参考图 → base64 image_url
     const imageUrls: string[] = [];
@@ -479,7 +480,6 @@ export async function generateImages(params: GenerateParams): Promise<GenerateRe
   const cfg = getApiConfig();
   const activeInfo = getActiveImageModel(cfg);
   const apiKey = activeInfo.apiKey || "";
-  const apiValidateJson = cfg.apiValidateJson ?? true;
   const spec = activeInfo.spec;
 
   // model 优先用 UI 传入值，回退激活模型 modelId

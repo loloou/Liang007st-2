@@ -132,7 +132,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedNodeId, removeNode, onClose, contextMenu, setContextMenu, rf]);
+  }, [selectedNodeId, removeNode, onClose, contextMenu, setContextMenu, rf, autoLayout, dblClickMenu, quickConnect, redo, undo]);
 
   const handleNodeContextMenu = useCallback((event: React.MouseEvent, node: { id: string }) => {
     event.preventDefault();

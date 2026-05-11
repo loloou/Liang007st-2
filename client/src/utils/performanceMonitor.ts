@@ -26,7 +26,7 @@ export function getRealPerformanceData(): RealPerformanceData {
   };
 
   // 获取内存信息（Chrome 特有 API）
-  // @ts-ignore - performance.memory 是非标准 API
+  // @ts-expect-error - performance.memory 是非标准 API
   const memory = performance.memory;
   if (memory) {
     // 使用百分比表示内存使用率（used / total）

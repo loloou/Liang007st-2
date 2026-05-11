@@ -18,7 +18,7 @@
 import { create } from "zustand";
 import { getTheme, setTheme as persistTheme, type ThemeMode } from "../utils/theme";
 import type { GeneratedImage } from "../api/imageClient";
-import { getApiConfig, getApiSettings } from "../api/settings";
+import { getApiConfig } from "../api/settings";
 
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 

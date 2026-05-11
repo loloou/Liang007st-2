@@ -230,9 +230,6 @@ export function updateApiConfig(patch: Partial<ApiConfig>): ApiConfig {
  * 已单独设置了 baseUrl 的模型不受影响。
  */
 export function syncGlobalBaseUrl(newBaseUrl: string): ApiConfig {
-  const current = getApiConfig();
-  // 模型如果 baseUrl 为空（即继承全局），不需要改动（它们读取时走 resolveBaseUrl 自动取全局）
-  // 这里只更新全局字段
   return updateApiConfig({ globalBaseUrl: newBaseUrl });
 }
 
@@ -299,7 +296,6 @@ export function setApiSettings(settings: Record<string, unknown>): void {
 
 /** @deprecated */
 export function updateCurrentChannel(channel: { id: string; baseUrl?: string; apiKey?: string; name?: string }): void {
-  const cfg = getApiConfig();
   const patch: Partial<ApiConfig> = {};
   if (channel.baseUrl !== undefined) patch.globalBaseUrl = channel.baseUrl;
   if (channel.apiKey  !== undefined) patch.globalApiKey  = channel.apiKey;

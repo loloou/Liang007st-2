@@ -347,7 +347,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       vendorUrlInput,
       vendorApiKeyInput,
       vendorRemarkInput,
-      cfgDraft,
+      cfgDraft: _cfgDraft,
     } = get();
 
     const vendorData: Omit<ApiVendor, "id"> = {

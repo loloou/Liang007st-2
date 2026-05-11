@@ -59,7 +59,6 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
   const hasFallback = !!image.url;
   if (imgInitUrl.current !== primaryUrl) {
     imgInitUrl.current = primaryUrl;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     if (imageUrl !== primaryUrl) setImageUrl(primaryUrl);
     // 如果有原图且不是 data URI，背景懒加载
     if (originalUrl && !originalUrl.startsWith("data:")) {

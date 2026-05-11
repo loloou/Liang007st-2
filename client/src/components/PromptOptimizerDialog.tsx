@@ -16,7 +16,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { getApiConfig } from "../api/settings";
 import {
   SPECIMEN_CONFIGS,
-  HERB_DATABASE,
   SPECIMEN_TYPE_LIST,
   TEMPLATE_ICONS,
   TEMPLATE_SPECIMEN_HINTS,
@@ -25,7 +24,6 @@ import {
   generateSpecimenPrompt,
   type SpecimenType,
   type SpecimenParams,
-  type SpecimenConfig,
 } from "../data/specimenDatabase";
 import {
   computeDiff,
@@ -696,7 +694,7 @@ export default function PromptOptimizerDialog({
   const [optimizeError, setOptimizeError] = useState("");
   const [isEditingOutput, setIsEditingOutput] = useState(false);
   const [optimizeTime, setOptimizeTime] = useState("");
-  const [tokenUsage, setTokenUsage] = useState<{ prompt: number; completion: number; total: number } | null>(null);
+  const [_tokenUsage, setTokenUsage] = useState<{ prompt: number; completion: number; total: number } | null>(null);
 
   const [diffResult, setDiffResult] = useState<{ segments: DiffSegment[]; details: ModificationDetail[] } | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<"overview" | "details">("overview");
@@ -770,7 +768,7 @@ export default function PromptOptimizerDialog({
     } catch { return []; }
   });
   const [showCustomSpecimenDialog, setShowCustomSpecimenDialog] = useState(false);
-  const [editingCustomSpecimen, setEditingCustomSpecimen] = useState<CustomSpecimen | null>(null);
+  const [_editingCustomSpecimen, setEditingCustomSpecimen] = useState<CustomSpecimen | null>(null);
   const [newCustomSpecimen, setNewCustomSpecimen] = useState<CustomSpecimen>({ id: "", label: "", icon: "🔬", basePrompt: "", negativePrompt: "" });
 
   useEffect(() => {
@@ -924,7 +922,8 @@ export default function PromptOptimizerDialog({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, isOptimizing, inputPrompt, showTemplateManager, showTemplateEdit, showHistory, showFavorites, showShortcuts]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isOptimizing, inputPrompt, showTemplateManager, showTemplateEdit, showHistory, showFavorites, showShortcuts, onClose]);
 
   const activeTemplate = useMemo(() => {
     return templates.find(t => t.id === selectedTemplateId) || templates[0];
@@ -1070,7 +1069,7 @@ export default function PromptOptimizerDialog({
     } finally {
       setIsOptimizing(false);
     }
-  }, [inputPrompt, showToast, activeTemplate]);
+  }, [inputPrompt, showToast, activeTemplate, specimenParams, specimenTypes]);
 
   const handleCopy = useCallback(async () => {
     if (!optimizedPrompt.trim()) { showToast("没有可复制的内容", "info"); return; }
@@ -1443,7 +1442,7 @@ export default function PromptOptimizerDialog({
       return next;
     });
     showToast("模板已删除", "success");
-  }, [selectedTemplateId, showToast]);
+  }, [selectedTemplateId, showToast, templates]);
 
   const handleSetDefaultTemplate = useCallback((id: string) => {
     setTemplates(prev => prev.map(t => ({ ...t, isDefault: t.id === id })));

@@ -3,6 +3,7 @@ import { useCanvasStore } from "../store/useCanvasStore";
 import { getApiConfig } from "../../../api/settings";
 import { ASPECT_LIST } from "../store/useCanvasStore";
 import { useGenerationStore } from "../../../store/generationStore";
+import { SIZE_TIERS, RESOLUTION_PRESETS, type SizeTierId } from "../../../utils/resolutionPresets";
 
 const ASPECTS = ASPECT_LIST;
 
@@ -13,6 +14,9 @@ const PromptBar: React.FC = () => {
   const [refImages, setRefImages] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showAspectPicker, setShowAspectPicker] = useState(false);
+  const [showSizePicker, setShowSizePicker] = useState(false);
+  const [showBatchPicker, setShowBatchPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,9 +27,11 @@ const PromptBar: React.FC = () => {
   const selectedModel = useGenerationStore((s) => s.model);
   const aspectRatio = useGenerationStore((s) => s.resolutionPreset);
   const batchSize = useGenerationStore((s) => s.batchSize);
+  const sizeTier = useGenerationStore((s) => s.sizeTier);
   const setSelectedModel = (m: string) => useGenerationStore.setState({ model: m });
-  const setAspectRatio = (a: string) => useGenerationStore.setState({ resolutionPreset: a as any });
-  const setBatchSize = (n: number) => useGenerationStore.setState({ batchSize: n });
+  const setAspectRatio = (a: string) => useGenerationStore.getState().setResolutionPreset(a as import("../../../utils/resolutionPresets").ResolutionPresetId);
+  const setBatchSize = (n: number) => useGenerationStore.getState().setBatchSize(n);
+  const setSizeTier = (t: SizeTierId) => useGenerationStore.getState().setSizeTier(t);
 
   const modelList = (() => {
     try { return getApiConfig().imageModels.map((m) => ({ id: m.modelId, label: m.label || m.modelId })).filter((m) => m.id); }
@@ -51,7 +57,7 @@ const PromptBar: React.FC = () => {
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-    if (e.key === "Escape") setShowModelPicker(false);
+    if (e.key === "Escape") { setShowModelPicker(false); setShowAspectPicker(false); setShowSizePicker(false); setShowBatchPicker(false); }
   }, [handleSend]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -231,40 +237,111 @@ const PromptBar: React.FC = () => {
           </div>
 
           {/* 比例选择 */}
-          <div className="flex bg-white/[0.03] rounded-lg p-0.5 flex-shrink-0">
-            {ASPECTS.map((a) => (
-              <button
-                key={a}
-                onClick={() => setAspectRatio(a)}
-                className={`px-1.5 py-0.5 rounded text-[9px] transition ${
-                  aspectRatio === a
-                    ? "bg-indigo-500/20 text-indigo-400 font-bold"
-                    : "text-slate-600 hover:text-slate-400"
-                }`}
-              >
-                {a}
-              </button>
-            ))}
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => { setShowAspectPicker(!showAspectPicker); setShowSizePicker(false); setShowBatchPicker(false); }}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition text-xs text-slate-400"
+            >
+              <span>{RESOLUTION_PRESETS.find((p) => p.id === aspectRatio)?.label ?? aspectRatio}</span>
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showAspectPicker && (
+              <div className="absolute bottom-full mb-2 left-0 z-30 rounded-xl border border-white/[0.08] bg-slate-900/98 backdrop-blur-xl shadow-2xl min-w-[100px] max-h-60 overflow-y-auto">
+                <div className="px-3 py-2 border-b border-white/[0.06]">
+                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">比例</span>
+                </div>
+                {ASPECTS.map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => { setAspectRatio(a); setShowAspectPicker(false); }}
+                    className={`w-full px-3 py-2 text-left text-xs transition flex items-center gap-2 ${
+                      aspectRatio === a ? "bg-indigo-500/15 text-indigo-400" : "text-slate-300 hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {aspectRatio === a && (
+                      <svg className="w-3 h-3 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    <span>{RESOLUTION_PRESETS.find((p) => p.id === a)?.label ?? a}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 分辨率档位 */}
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => { setShowSizePicker(!showSizePicker); setShowAspectPicker(false); setShowBatchPicker(false); }}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition text-xs text-slate-400"
+            >
+              <span>{sizeTier}</span>
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showSizePicker && (
+              <div className="absolute bottom-full mb-2 left-0 z-30 rounded-xl border border-white/[0.08] bg-slate-900/98 backdrop-blur-xl shadow-2xl min-w-[90px]">
+                <div className="px-3 py-2 border-b border-white/[0.06]">
+                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">分辨率</span>
+                </div>
+                {SIZE_TIERS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setSizeTier(t.id); setShowSizePicker(false); }}
+                    className={`w-full px-3 py-2 text-left text-xs transition flex items-center gap-2 ${
+                      sizeTier === t.id ? "bg-indigo-500/15 text-indigo-400" : "text-slate-300 hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {sizeTier === t.id && (
+                      <svg className="w-3 h-3 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    <span>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 批量数量 */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <span className="text-[9px] text-slate-600">×</span>
-            <div className="flex bg-white/[0.03] rounded-lg p-0.5">
-              {[1, 2, 4].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setBatchSize(n)}
-                  className={`px-1.5 py-0.5 rounded text-[9px] transition ${
-                    batchSize === n
-                      ? "bg-indigo-500/20 text-indigo-400 font-bold"
-                      : "text-slate-600 hover:text-slate-400"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => { setShowBatchPicker(!showBatchPicker); setShowAspectPicker(false); setShowSizePicker(false); }}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.06] transition text-xs text-slate-400"
+            >
+              <span>×{batchSize}</span>
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showBatchPicker && (
+              <div className="absolute bottom-full mb-2 left-0 z-30 rounded-xl border border-white/[0.08] bg-slate-900/98 backdrop-blur-xl shadow-2xl min-w-[80px]">
+                <div className="px-3 py-2 border-b border-white/[0.06]">
+                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">批量</span>
+                </div>
+                {[1, 2, 4].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => { setBatchSize(n); setShowBatchPicker(false); }}
+                    className={`w-full px-3 py-2 text-left text-xs transition flex items-center gap-2 ${
+                      batchSize === n ? "bg-indigo-500/15 text-indigo-400" : "text-slate-300 hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {batchSize === n && (
+                      <svg className="w-3 h-3 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    <span>×{n}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <span className="text-[9px] text-slate-700 font-mono flex-shrink-0">{prompt.length}/1000</span>
