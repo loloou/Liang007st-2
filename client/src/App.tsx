@@ -1006,7 +1006,7 @@ function App() {
               className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${whiteboardOpen ? "ring-1 ring-primary-500/30 text-primary-400" : ""}`}
               onClick={() => setWhiteboardOpen(!whiteboardOpen)}
             >
-              白板
+              无限画布
             </button>
           </div>
         <button
@@ -2554,7 +2554,7 @@ function App() {
       {/* 详细日志弹窗 */}
       <DetailedLogDialog />
 
-      {/* 白板 */}
+      {/* 无限画布 */}
       {whiteboardOpen && (
         <WhiteboardCanvas onClose={() => setWhiteboardOpen(false)} />
       )}

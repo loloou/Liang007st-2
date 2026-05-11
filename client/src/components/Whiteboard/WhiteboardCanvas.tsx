@@ -385,7 +385,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
             </svg>
             <div className="flex-1">
               <p className="text-xs font-medium text-amber-300">尚未配置图像模型</p>
-              <p className="text-[10px] text-amber-200/70 mt-1">请关闭白板，进入「设置 → Image」添加并选中模型后再使用</p>
+              <p className="text-[10px] text-amber-200/70 mt-1">请关闭无限画布，进入「设置 → Image」添加并选中模型后再使用</p>
             </div>
             <button
               onClick={() => setShowModelWarning(false)}
