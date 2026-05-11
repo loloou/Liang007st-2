@@ -242,6 +242,8 @@ function App() {
   const historySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 比例不匹配弹窗防重入标记：用户点"重新生成"后，下一次结果不再触发弹窗
   const ratioMismatchRetried = useRef(false);
+  // 并发生成守卫（ref 比 state 更可靠，同步生效）
+  const isGeneratingRef = useRef(false);
   // 生成计时器 ref
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 存储最新的 handleGenerate 函数引用，避免闭包陷阱
@@ -434,6 +436,9 @@ function App() {
   }, [isDragging]);
 
   const handleGenerate = async () => {
+    if (isGeneratingRef.current) return;
+    isGeneratingRef.current = true;
+    try {
     if (!prompt.trim()) {
       const time = new Date().toLocaleTimeString("zh-CN");
       setLogEntries((prev) => [...prev.slice(-99), { time, error: "请输入提示词再开始生成。" }]);
@@ -521,11 +526,13 @@ function App() {
         errMsg.includes("does not support image input") ||
         errMsg.includes("does not support image") ||
         errMsg.includes("image input is not supported") ||
+        errMsg.includes("cannot read") ||
+        errMsg.includes("inform the user") ||
         (errMsg.includes("vision") && errMsg.includes("not support")) ||
         (errMsg.includes("multimodal") && errMsg.includes("not support")) ||
-        (errMsg.includes("cannot read") && errMsg.includes("image")) ||
         (errMsg.includes("invalid") && errMsg.includes("image_url")) ||
         (errMsg.includes("unsupported") && errMsg.includes("image"));
+      console.log(`[图片降级] error含图片关键词: ${isImageUnsupported}, error: ${errMsg.slice(0, 100)}`);
       if (isImageUnsupported) {
         result = await generateImages({
           prompt,
@@ -585,11 +592,12 @@ function App() {
     const images = result.images;
       setResults(images);
       setResultActiveIdx(0);
+      setPreviewImage(null);
 
       // ── 分辨率校验 ─────────────────────────────────────────
       if (images.length > 0) {
         const firstUrl = images[0].url;
-        if (firstUrl && !firstUrl.startsWith("data:")) {
+        if (firstUrl) {
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.onload = () => {
@@ -688,6 +696,11 @@ function App() {
       setStatus("idle");
     if (prompt.trim()) {
       setPromptHistory((prev) => [prompt.trim(), ...prev.filter((p) => p !== prompt.trim())].slice(0, 50));
+    }
+    } finally {
+      isGeneratingRef.current = false;
+      if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
+      setStatus("idle");
     }
   };
 
@@ -2109,7 +2122,7 @@ function App() {
               )}
               {generationHistory.length > 0 && !historyBatchMode && (
                 <button
-                  onClick={() => { if (confirm("确定要清空所有历史记录吗？")) { setGenerationHistory([]); } }}
+                  onClick={() => { if (confirm("确定要清空所有历史记录吗？")) { setGenerationHistory([]); saveHistory([]); } }}
                   className="text-white/60 hover:text-white text-[11px] px-1.5 py-1 rounded-lg hover:bg-red-500/40 transition"
                 >清空</button>
               )}
@@ -2851,7 +2864,7 @@ function App() {
         onDismiss={() => setRatioMismatchDialog(null)}
         onRegenerate={() => {
           setRatioMismatchDialog(null);
-          setTimeout(() => handleGenerate(), 100);
+          setTimeout(() => handleGenerateRef.current(), 100);
         }}
       />
 
@@ -3393,17 +3406,17 @@ function App() {
                       setBatchSize(entry.batchSize || 1);
                       // 尝试恢复图片结果（仅限有效的外部 URL）
                       if (entry.results && entry.results.length > 0) {
-                        const validResults = entry.results.filter(img => {
-                          if (!img || !img.url) return false;
+                        const validResults = entry.results.map(img => {
+                          if (!img || !img.url) return null;
+                          const extImg = img as typeof img & { originalUrl?: string };
                           if (img.url.startsWith('blob:') || img.url.startsWith('data:')) {
-                            if ((img as any).originalUrl && !(img as any).originalUrl.startsWith('blob:') && !(img as any).originalUrl.startsWith('data:')) {
-                              (img as any).url = (img as any).originalUrl;
-                              return true;
+                            if (extImg.originalUrl && !extImg.originalUrl.startsWith('blob:') && !extImg.originalUrl.startsWith('data:')) {
+                              return { ...img, url: extImg.originalUrl };
                             }
-                            return false;
+                            return null;
                           }
-                          return true;
-                        });
+                          return img;
+                        }).filter(Boolean) as typeof entry.results;
                         if (validResults.length > 0) {
                           setResults(validResults);
                           setResultActiveIdx(0);
@@ -3654,7 +3667,7 @@ function App() {
                     type="button"
                     title="清空日志"
                     className="p-1 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
-                    onClick={() => setGenerationHistory([])}
+                    onClick={() => { setGenerationHistory([]); saveHistory([]); }}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

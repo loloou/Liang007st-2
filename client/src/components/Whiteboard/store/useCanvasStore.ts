@@ -350,6 +350,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
       width: size.w, height: size.h,
       referenceImages,
       negativePrompt: negativePrompt || undefined,
+      resolutionPreset: aspect as any,
     });
 
     // 智能降级：如果模型不支持参考图，去掉后重试
@@ -360,6 +361,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         width: size.w, height: size.h,
         referenceImages: [],
         negativePrompt: negativePrompt || undefined,
+        resolutionPreset: aspect as any,
       });
     }
 
@@ -446,6 +448,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
       width: size.w, height: size.h,
       referenceImages,
       negativePrompt: negativePrompt || undefined,
+      resolutionPreset: aspect as any,
     });
 
     if (result.error && referenceImages.length > 0 && isImageInputUnsupportedError(result.error)) {
@@ -455,6 +458,7 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
         width: size.w, height: size.h,
         referenceImages: [],
         negativePrompt: negativePrompt || undefined,
+        resolutionPreset: aspect as any,
       });
     }
 

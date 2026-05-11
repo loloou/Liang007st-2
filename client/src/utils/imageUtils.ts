@@ -9,8 +9,9 @@ export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      let canvas: HTMLCanvasElement | null = null;
       try {
-        const canvas = document.createElement("canvas");
+        canvas = document.createElement("canvas");
         let { width, height } = img;
         if (width > height) {
           if (width > maxSize) { height = Math.round(height * maxSize / width); width = maxSize; }
@@ -25,7 +26,6 @@ export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<
             ctx.drawImage(img, 0, 0, width, height);
             resolve(canvas.toDataURL("image/jpeg", 0.7));
           } catch {
-            // tainted canvas（CORS 限制）— 降级返回空字符串，由调用方 fallback 到原图
             resolve("");
           }
         } else {
@@ -33,9 +33,10 @@ export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<
         }
       } catch {
         resolve("");
+      } finally {
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
       }
     };
-    // 加载失败时静默降级，不 reject（避免中断调用方流程）
     img.onerror = () => resolve("");
     img.src = imageUrl;
   });

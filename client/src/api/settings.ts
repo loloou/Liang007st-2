@@ -213,7 +213,7 @@ export function getApiConfig(): ApiConfig {
 }
 
 export function saveApiConfig(config: ApiConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch { /* quota exceeded */ }
 }
 
 export function updateApiConfig(patch: Partial<ApiConfig>): ApiConfig {

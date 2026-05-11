@@ -128,18 +128,18 @@ function toAspectRatio(width: number, height: number, presetId?: string): string
   const ratio = width / height;
 
   // 横向
-  if (ratio > 2.0)   return "21:9";  // ~2.333
-  if (ratio > 1.35)   return "16:9";  // ~1.778
-  if (ratio > 1.1)    return "5:4";   // 1.25
-  if (ratio > 1.02)   return "4:3";   // ~1.333
+  if (ratio > 2.0)   return "21:9";   // ~2.333
+  if (ratio > 1.54)  return "16:9";   // ~1.778
+  if (ratio > 1.41)  return "3:2";    // 1.5
+  if (ratio > 1.1)   return "5:4";    // 1.25
+  if (ratio > 1.02)  return "4:3";    // ~1.333
   // 正方形
   if (ratio >= 0.98) return "1:1";
 
-  // 纵向
-  if (ratio > 0.82)   return "3:2";   // ~1.5
-  if (ratio > 0.72)   return "4:5";   // 0.8
-  if (ratio > 0.62)   return "3:4";   // ~0.75
-  if (ratio > 0.45)   return "2:3";   // ~0.667
+  // 纵向（ratio < 1，返回的 aspectRatio 也是纵向）
+  if (ratio > 0.9)   return "4:5";    // 0.8
+  if (ratio > 0.77)  return "3:4";    // ~0.75
+  if (ratio > 0.61)  return "2:3";    // ~0.667
   return "9:16";                      // ~0.5625
 }
 
@@ -424,6 +424,11 @@ async function buildGeminiBody(params: GenerateParams): Promise<Record<string, u
   console.log(`[buildGeminiBody] sizeTier=${params.sizeTier}, imageSize=${imageSize}, pixels=${params.width}×${params.height}`);
   // Gemini 官方规范：aspectRatio 和 imageSize 必须放在 generationConfig.imageConfig 内
   const generationConfig: Record<string, unknown> = {};
+  // responseModalities 告诉 API 返回图片（部分 API 需要此字段才能出图）
+  // 纯图生图（有参考图且 prompt 为空）只请求 IMAGE，避免 TEXT 导致挂起
+  const hasImageParts = imageParts.length > 0;
+  const hasTextPrompt = params.prompt.trim().length > 0;
+  generationConfig.responseModalities = hasImageParts && !hasTextPrompt ? ["IMAGE"] : ["TEXT", "IMAGE"];
   generationConfig.imageConfig = { aspectRatio, imageSize };
 
   return {
@@ -493,8 +498,7 @@ export async function generateImages(params: GenerateParams): Promise<GenerateRe
     if (result.error && result.httpStatus && (result.httpStatus === 400 || result.httpStatus === 422)) {
       const errLower = result.error.toLowerCase();
       const sizeRelated = errLower.includes("size") || errLower.includes("dimension") ||
-        errLower.includes("resolution") || errLower.includes("width") || errLower.includes("height") ||
-        errLower.includes("invalid") || errLower.includes("bad request") || errLower.includes("param");
+        errLower.includes("resolution") || errLower.includes("width") || errLower.includes("height");
       if (sizeRelated && (params.width > 1536 || params.height > 1536)) {
         // 降级到 1536x1536 范围重试
         const scale = Math.min(1536 / params.width, 1536 / params.height, 1);
@@ -623,6 +627,19 @@ async function doFetchAndParse(
   // 按规范提取图片
   let images = spec === "gemini" ? extractImagesGemini(data) : extractImagesOpenAI(data);
   if (!images) {
+    // Gemini 特殊处理：API 返回 200 但文本含错误信息（如 "Cannot read image.png"）
+    if (spec === "gemini") {
+      const textLower = rawText.toLowerCase();
+      const hasError =
+        textLower.includes("cannot read") ||
+        textLower.includes("does not support image") ||
+        textLower.includes("not support") && textLower.includes("image") ||
+        textLower.includes("inform the user");
+      if (hasError) {
+        return errResult(endpoint, spec, requestBodyForLog,
+          rawText.slice(0, 500), resp.status, rawText.slice(0, 500));
+      }
+    }
     const hint = spec === "gemini" ? "期望 candidates[].content.parts[].inlineData.data" : "期望 data[].url 或 images[]";
     const fallback = spec === "gemini" ? extractImagesOpenAI(data) : extractImagesGemini(data);
     if (fallback && fallback.length > 0) {
@@ -630,22 +647,6 @@ async function doFetchAndParse(
     } else {
       return errResult(endpoint, spec, requestBodyForLog,
         `API 返回数据结构不符合预期（${hint}）。\n实际返回：${rawText.slice(0, 300)}`,
-        resp.status, rawText.slice(0, 500));
-    }
-  }
-
-  // Gemini 特殊处理：HTTP 200 但返回空图 + 文本含错误信息
-  // 例如: "Cannot read image.png (this model does not support image input)"
-  if (images.length === 0 && spec === "gemini") {
-    const textLower = rawText.toLowerCase();
-    const hasError =
-      textLower.includes("cannot read") ||
-      textLower.includes("does not support image") ||
-      textLower.includes("not support") && textLower.includes("image") ||
-      textLower.includes("error") && textLower.includes("image");
-    if (hasError) {
-      return errResult(endpoint, spec, requestBodyForLog,
-        rawText.slice(0, 500),
         resp.status, rawText.slice(0, 500));
     }
   }
@@ -704,8 +705,14 @@ async function doGenerateGemini(
         if (!lastResult) lastResult = s.status === "fulfilled" ? s.value : null;
       }
     }
-    if (allImages.length === 0 && lastResult) {
-      return { ...lastResult, images: [], responseSummary: `共调用 ${params.batchSize} 次，成功 0 张，失败 ${failedCount} 张` };
+    if (allImages.length === 0) {
+      const errMsg = lastResult?.error || `所有 ${params.batchSize} 次调用均失败`;
+      return {
+        ...(lastResult || { images: [], endpoint: "", spec: "gemini" as ApiSpec, requestBodyJson: "", httpStatus: 0, responseSummary: "", jsonValid: false }),
+        images: [],
+        error: errMsg,
+        responseSummary: `共调用 ${params.batchSize} 次，成功 0 张，失败 ${failedCount} 张`
+      };
     }
     return {
       images: allImages,
