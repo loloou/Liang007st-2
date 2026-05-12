@@ -57,7 +57,7 @@ const ControlPanel: React.FC<Props> = ({
   onOptimize,
 }) => {
   const [refImgOpen, setRefImgOpen] = useState(true);
-  const [showPromptHistory, setShowPromptHistory] = useState(false);
+  const [showPromptHistory, setShowPromptHistory] = useState(true);
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const handleReferenceSlotDrop = (index: number, e: React.DragEvent) => {
