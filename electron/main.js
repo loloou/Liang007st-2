@@ -5,12 +5,23 @@ const fs = require('fs');
 let mainWindow = null;
 
 // ── 便携模式：把用户数据放在 exe 同目录的 .liang007-data 文件夹里 ──────────────
-// 这样整个 exe 移动到哪里，数据就跟着去哪里，真正绿色便携
+// electron-builder portable 模式下 app.getPath('exe') 指向临时解压目录，
+// 必须用 PORTABLE_EXECUTABLE_DIR 环境变量获取真正的 exe 所在目录。
 function initPortableUserData() {
-  // exe 所在目录（asar 解压后 getPath('exe') 仍指向 exe）
-  const exeDir = path.dirname(app.getPath('exe'));
+  // 优先使用 electron-builder portable 设置的环境变量
+  let exeDir = process.env.PORTABLE_EXECUTABLE_DIR;
 
-  // 在 exe 同目录建隐藏文件夹存数据
+  // fallback：尝试从 exe 路径获取（非 portable 模式或旧版 electron-builder）
+  if (!exeDir) {
+    try {
+      exeDir = path.dirname(app.getPath('exe'));
+    } catch {
+      return;
+    }
+  }
+
+  if (!exeDir) return;
+
   const portableDataDir = path.join(exeDir, '.liang007-data');
 
   if (!fs.existsSync(portableDataDir)) {
