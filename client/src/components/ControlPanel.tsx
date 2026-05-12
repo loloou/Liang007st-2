@@ -5,8 +5,7 @@
  * 所有状态通过 props 传入，保持与主界面同步。
  */
 import React, { useState, useRef } from "react";
-import { getApiConfig } from "../api/settings";
-import { SIZE_TIERS, getResolution, type SizeTierId, type ResolutionPresetId } from "../utils/resolutionPresets";
+import { SIZE_TIERS, type SizeTierId, type ResolutionPresetId } from "../utils/resolutionPresets";
 import { safeUrl } from "../utils/safeUrl";
 import AspectRatioSelect from "./AspectRatioSelect";
 
@@ -16,11 +15,10 @@ interface Props {
   negativePrompt: string;
   setNegativePrompt: (v: string) => void;
   promptHistory: string[];
+  setPromptHistory: React.Dispatch<React.SetStateAction<string[]>>;
   referenceSlots: (File | null)[];
   setReferenceSlots: React.Dispatch<React.SetStateAction<(File | null)[]>>;
   referencePreviewUrls: (string | null)[];
-  setReferencePreviewUrls: React.Dispatch<React.SetStateAction<(string | null)[]>>;
-  setReferenceSize: (s: { width: number; height: number } | null) => void;
   model: string;
   setModel: (v: string) => void;
   modelList: string[];
@@ -45,13 +43,12 @@ interface Props {
 }
 
 const ControlPanel: React.FC<Props> = ({
-  prompt, setPrompt,
-  negativePrompt, setNegativePrompt,
-  promptHistory,
-  referenceSlots, setReferenceSlots,
-  referencePreviewUrls, setReferencePreviewUrls,
-  setReferenceSize,
-  model, setModel,
+   prompt, setPrompt,
+   negativePrompt, setNegativePrompt,
+   promptHistory, setPromptHistory,
+   referenceSlots, setReferenceSlots,
+   referencePreviewUrls,
+   model, setModel,
   modelList,
   resolutionPreset, setResolutionPreset,
   sizeTier, setSizeTier,
@@ -453,7 +450,7 @@ const ControlPanel: React.FC<Props> = ({
                   onSelectLogEntry({
                     time: entry.time,
                     request: JSON.stringify({ prompt: entry.prompt?.slice(0, 100), model: entry.model, width: entry.width, height: entry.height, batchSize: entry.batchSize }, null, 2),
-                    response: entry.results?.length > 0 ? `成功，返回 ${(entry.results as unknown[]).length} 张图` : undefined,
+                    response: entry.results && (entry.results as unknown[]).length > 0 ? `成功，返回 ${(entry.results as unknown[]).length} 张图` : undefined,
                     error: entry.error,
                   });
                 }}

@@ -16,8 +16,8 @@ async function fetchModelList(baseUrl: string, apiKey: string): Promise<{ ok: bo
     if (apiKey?.trim()) headers["Authorization"] = `Bearer ${apiKey.trim()}`;
     const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
     if (!resp.ok) return { ok: false, models: [], error: `HTTP ${resp.status}` };
-    const data = await resp.json();
-    const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id).filter(Boolean) : [];
+    const data = await resp.json() as { data?: Array<{ id: string }> };
+     const models = Array.isArray(data?.data) ? data.data.map((m) => m.id).filter(Boolean) : [];
     return { ok: models.length > 0, models, error: models.length === 0 ? "未获取到模型" : undefined };
   } catch (e) {
     return { ok: false, models: [], error: e instanceof Error ? e.message : "网络错误" };
@@ -123,10 +123,10 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
       const newModels: ImageModel[] = selectedModels.map((mid) => ({
         id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}${Math.random().toString(36).slice(2, 4)}`,
         modelId: mid,
-        label: mid,
-        baseUrl: "",
-        apiKey: "",
-        apiSpec: undefined as any,
+         label: mid,
+         baseUrl: "",
+         apiKey: "",
+         apiSpec: undefined as ApiSpec | undefined,
       }));
       setCfgDraft((prev) => {
         const existingIds = new Set(prev.imageModels.map((m) => m.modelId));
@@ -195,11 +195,11 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
   const addModel = () => {
     const newModel: ImageModel = {
       id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
-      modelId: "",
-      label: "",
-      baseUrl: "",
-      apiKey: "",
-      apiSpec: undefined as any,
+       modelId: "",
+       label: "",
+       baseUrl: "",
+       apiKey: "",
+       apiSpec: undefined as ApiSpec | undefined,
     };
     setCfgDraft((prev) => ({
       ...prev,
@@ -381,7 +381,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                         <select
                           className="w-20 flex-shrink-0 border border-white/[0.08] rounded-lg px-1.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-indigo-100 text-[11px] text-slate-400"
                           value={m.apiSpec || ""}
-                          onChange={(e) => updateModel(m.id, { apiSpec: (e.target.value || undefined) as any })}
+                          onChange={(e) => updateModel(m.id, { apiSpec: (e.target.value || undefined) as ApiSpec | undefined })}
                           title="API 规范（留空自动检测）"
                         >
                           <option value="">自动</option>
@@ -615,9 +615,8 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
               </div>
               <button
                 className="px-2.5 py-1.5 rounded-lg text-[11px] border border-white/[0.08] text-slate-400 hover:bg-white/[0.06] transition"
-                onClick={() => {
-                  const allFiltered = new Set(filteredPickerModels);
-                  const allSelected = filteredPickerModels.every((m) => modelPickerSelected.has(m));
+               onClick={() => {
+                   const allSelected = filteredPickerModels.every((m) => modelPickerSelected.has(m));
                   setModelPickerSelected((prev) => {
                     const next = new Set(prev);
                     if (allSelected) {

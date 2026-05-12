@@ -15,21 +15,12 @@ import {
   getApiSettings,
   setApiSettings,
   getApiConfig,
-  saveApiConfig,
   resolveApiSpec,
-  addApiVendor,
-  removeApiVendor,
-  switchApiVendor,
-  updateApiVendor,
-  setDefaultApiVendor,
   type ApiConfig,
-  type ApiSpec,
   type ChatModel,
   type ImageModel
 } from "./api/settings";
-import { testChatModel, testImageModel, fetchModelList } from "./api/modelConfig";
 import {
-  SIZE_TIERS,
   getResolution,
   loadImageDimensions,
   type ResolutionPresetId,
@@ -51,8 +42,6 @@ import SettingsDialog from "./components/SettingsDialog";
 import VendorManager from "./components/VendorManager";
 import ControlPanel from "./components/ControlPanel";
 import ResultPanel from "./components/ResultPanel";
-import { safeUrl } from "./utils/safeUrl";
-import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
 
 type GenerationStatus = "idle" | "running";
@@ -96,8 +85,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modelSelectOpen, setModelSelectOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [modelPickerMode, setModelPickerMode] = useState<"image" | "chat">("image");
-  const [modelPickerList, setModelPickerList] = useState<string[]>([]);
+  const [modelPickerMode, _setModelPickerMode] = useState<"image" | "chat">("image");
+  const [modelPickerList, _setModelPickerList] = useState<string[]>([]);
   const [modelPickerSelected, setModelPickerSelected] = useState<Set<string>>(new Set());
   const [modelPickerSearch, setModelPickerSearch] = useState("");
   const [modelPickerCategoryTag, setModelPickerCategoryTag] = useState<string | null>(null);
@@ -257,11 +246,6 @@ function App() {
 
   // ── 供应商管理弹窗 ─────────────────────────────────────────────────
   const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
-  // Global Config 快速保存供应商
-  const [globalSaveVendorName, setGlobalSaveVendorName] = useState("");
-  const [globalSaveVendorToast, setGlobalSaveVendorToast] = useState(false);
-  // 供应商名称下拉
-  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
 
   // ── 优化5：主界面模型管理弹窗（重新设计） ─────────────────────────────────
   const [mainModelPickerOpen, setMainModelPickerOpen] = useState(false);
@@ -308,21 +292,6 @@ function App() {
     setHeight(h);
   }, [resolutionPreset, sizeTier, referenceSize]);
 
-  const setReferenceSlot = (index: number, file: File | null) => {
-    setReferenceSlots((prev) => {
-      const next = [...prev];
-      next[index] = file;
-      return next;
-    });
-  };
-
-  const handleReferenceSlotDrop = (index: number, e: React.DragEvent) => {
-    e.preventDefault();
-    const f = e.dataTransfer.files?.[0];
-    if (f?.type.startsWith("image/")) setReferenceSlot(index, f);
-  };
-
-  // 提示词记录持久化
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PROMPT_HISTORY, JSON.stringify(promptHistory.slice(0, 50)));
   }, [promptHistory]);
@@ -873,7 +842,7 @@ function App() {
 
   // 折叠状态
   const [_negPromptOpen, setNegPromptOpen] = useState(true);
-  const [refImgOpen, setRefImgOpen] = useState(true);
+  const [_refImgOpen, setRefImgOpen] = useState(true);
 
   // 小屏响应式：窗口宽度 < 1280px 时折叠参考图和反向提示词
   useEffect(() => {
@@ -892,24 +861,12 @@ function App() {
     return () => window.removeEventListener("resize", checkSize);
   }, []);
 
-  // 历史+模板合并下拉
-  const [historyTemplateValue, setHistoryTemplateValue] = useState("");
-
-  // 反向提示词下拉值（用于重置选择）
-
   // 历史管理弹窗
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   // 历史管理标签页
   const [historyTab, setHistoryTab] = useState<"input">("input");
   const [selectedPromptHistory, setSelectedPromptHistory] = useState<Set<number>>(new Set());
 
-  const handlePromptOptimize = () => {
-    if (!prompt.trim()) return;
-    // 打开优化弹窗
-    setPromptOptimizeDialogOpen(true);
-  };
-
-  // 管理弹窗拖动调整尺寸
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!manageModalResizing.current) return;
@@ -2271,10 +2228,9 @@ function App() {
         <ControlPanel
           prompt={prompt} setPrompt={setPrompt}
           negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
-          promptHistory={promptHistory}
+          promptHistory={promptHistory} setPromptHistory={setPromptHistory}
           referenceSlots={referenceSlots} setReferenceSlots={setReferenceSlots}
-          referencePreviewUrls={referencePreviewUrls} setReferencePreviewUrls={setReferencePreviewUrls}
-          setReferenceSize={setReferenceSize}
+          referencePreviewUrls={referencePreviewUrls}
           model={model} setModel={setModel}
           modelList={modelList}
           resolutionPreset={resolutionPreset} setResolutionPreset={setResolutionPreset}

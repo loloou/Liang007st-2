@@ -5,7 +5,7 @@
  * 内部管理编辑状态，通过 cfgDraft/setCfgDraft 与父组件共享配置草稿。
  */
 import React, { useState } from "react";
-import type { ApiConfig, ApiVendor } from "../api/settings";
+import type { ApiConfig } from "../api/settings";
 import {
   saveApiConfig,
   setDefaultApiVendor,
