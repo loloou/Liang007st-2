@@ -44,7 +44,7 @@ const AboutDialog: React.FC = () => {
         {/* 内容 */}
         <div className="p-6 text-center">
           <h2 className="text-xl font-bold text-slate-100 mb-0.5">Liang007 生图</h2>
-          <p className="text-sm text-slate-400 mb-4">Version 1.0.0</p>
+          <p className="text-sm text-slate-400 mb-4">Version 5.2.3</p>
           <p className="text-sm text-slate-400 mb-4 leading-relaxed">
             基于 React + Vite + TypeScript + Tailwind CSS 开发的 AI 生图工作台，支持多种生图
             API 与模型。

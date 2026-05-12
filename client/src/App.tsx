@@ -580,6 +580,7 @@ function App() {
           return prev;
         }
       });
+      setError(message);
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
       setStatus("idle");
       if (prompt.trim()) {
