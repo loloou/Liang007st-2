@@ -36,6 +36,12 @@ interface Props {
   handleGenerate: () => void;
   onOpenModelPicker: () => void;
   onOptimize: () => void;
+  generationHistory: { id: string; time: string; prompt?: string; model?: string; width?: number; height?: number; batchSize?: number; results?: unknown[]; error?: string }[];
+  onClearHistory: () => void;
+  onOpenDetailedLog: () => void;
+  onSelectLogEntry: (entry: { time: string; request?: string; response?: string; error?: string }) => void;
+  onDeletePromptHistory: (index: number) => void;
+  rightPanelWidth?: number;
 }
 
 const ControlPanel: React.FC<Props> = ({
@@ -55,9 +61,17 @@ const ControlPanel: React.FC<Props> = ({
   handleGenerate,
   onOpenModelPicker,
   onOptimize,
+  generationHistory,
+  onClearHistory,
+  onOpenDetailedLog,
+  onSelectLogEntry,
+  onDeletePromptHistory,
+  rightPanelWidth = 340,
 }) => {
   const [refImgOpen, setRefImgOpen] = useState(true);
-  const [showPromptHistory, setShowPromptHistory] = useState(true);
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+  const [selectedHistoryIndices, setSelectedHistoryIndices] = useState<Set<number>>(new Set());
+  const [dragSourceIndex, setDragSourceIndex] = useState<number | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const handleReferenceSlotDrop = (index: number, e: React.DragEvent) => {
@@ -83,18 +97,12 @@ const ControlPanel: React.FC<Props> = ({
   const referenceImages = referenceSlots.filter((f): f is File => f != null);
 
   return (
-    <aside className="flex-shrink-0 flex flex-col gap-2 overflow-hidden" style={{ width: 340, height: "100%", maxHeight: "100%" }}>
+    <aside className="flex-shrink-0 flex flex-col gap-2 overflow-y-auto app-scrollbar" style={{ width: rightPanelWidth, height: "100%", maxHeight: "100%" }}>
       {/* ── 提示词模块 ── */}
       <div className="glass-card rounded-xl px-3 pt-2.5 pb-2 flex flex-col gap-1.5 flex-shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-300">提示词</span>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="text-[10px] text-slate-500 hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-white/[0.06] transition"
-              onClick={() => setShowPromptHistory(!showPromptHistory)}
-              title="提示词历史"
-            >历史</button>
             <button
               type="button"
               className="text-[10px] text-amber-400 hover:text-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-500/10 transition"
@@ -105,33 +113,104 @@ const ControlPanel: React.FC<Props> = ({
           </div>
         </div>
 
-        <textarea
-          ref={promptRef}
-          className="w-full text-xs glass-input px-2.5 py-2 resize-none app-scrollbar rounded-none border-0"
-          style={{ height: 100 }}
-          placeholder="输入提示词，描述你想生成的图像…"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleGenerate();
-            }
-          }}
-        />
+        <div className="relative">
+          <textarea
+            ref={promptRef}
+            className="w-full text-xs glass-input px-2.5 py-2 resize-none app-scrollbar rounded-none border-0"
+            style={{ height: 100 }}
+            placeholder="输入提示词，描述你想生成的图像…"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleGenerate();
+              }
+            }}
+          />
 
-        {/* 提示词历史下拉（输入框下方） */}
-        {showPromptHistory && promptHistory.length > 0 && (
-          <div className="max-h-28 overflow-y-auto app-scrollbar border border-white/[0.06] rounded-lg divide-y divide-white/[0.04]">
-            {promptHistory.slice(0, 15).map((p, i) => (
+          {/* 历史记录下拉框（提示词下方） */}
+          {promptHistory.length > 0 && (
+            <div className="relative mt-1">
               <button
-                key={i}
-                className="w-full text-left px-2.5 py-1.5 text-[11px] text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 transition truncate"
-                onClick={() => { setPrompt(p); setShowPromptHistory(false); }}
-              >{p}</button>
-            ))}
-          </div>
-        )}
+                type="button"
+                className="w-full text-left text-[11px] glass-input px-2 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-slate-400 hover:bg-white/[0.06] transition flex items-center justify-between"
+                onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+              >
+                <span>📝 提示词历史 ({promptHistory.length})</span>
+                <svg className={`w-3 h-3 transition-transform ${showHistoryDropdown ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showHistoryDropdown && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-10 max-h-40 overflow-y-auto app-scrollbar border border-white/[0.06] rounded-lg bg-slate-900/95 backdrop-blur shadow-xl">
+                  {/* 批量操作栏 */}
+                  <div className="sticky top-0 flex items-center gap-1 px-2 py-1.5 border-b border-white/[0.06] bg-slate-900/98">
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3 cursor-pointer"
+                      checked={selectedHistoryIndices.size === promptHistory.length && promptHistory.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedHistoryIndices(new Set(promptHistory.map((_, i) => i)));
+                        } else {
+                          setSelectedHistoryIndices(new Set());
+                        }
+                      }}
+                      title="全选"
+                    />
+                    <span className="text-[10px] text-slate-500 flex-1">
+                      {selectedHistoryIndices.size > 0 ? `已选 ${selectedHistoryIndices.size}` : "全选"}
+                    </span>
+                    {selectedHistoryIndices.size > 0 && (
+                      <button
+                        type="button"
+                        className="text-[10px] text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-500/10 transition"
+                        onClick={() => {
+                          setPromptHistory((prev) => prev.filter((_, i) => !selectedHistoryIndices.has(i)));
+                          setSelectedHistoryIndices(new Set());
+                        }}
+                      >删除</button>
+                    )}
+                  </div>
+                  {/* 历史项目列表 */}
+                  <div className="divide-y divide-white/[0.04]">
+                    {promptHistory.slice(0, 30).map((p, i) => (
+                      <div key={i} className="flex items-center gap-1 px-2 py-1.5 hover:bg-white/[0.06] group">
+                        <input
+                          type="checkbox"
+                          className="w-3 h-3 cursor-pointer"
+                          checked={selectedHistoryIndices.has(i)}
+                          onChange={(e) => {
+                            const next = new Set(selectedHistoryIndices);
+                            if (e.target.checked) next.add(i);
+                            else next.delete(i);
+                            setSelectedHistoryIndices(next);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="flex-1 text-left text-[11px] text-slate-400 hover:text-slate-200 transition truncate"
+                          onClick={() => { setPrompt(p); setShowHistoryDropdown(false); setSelectedHistoryIndices(new Set()); }}
+                        >{p.length > 70 ? p.slice(0, 70) + "…" : p}</button>
+                        <button
+                          type="button"
+                          className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition flex-shrink-0"
+                          onClick={(e) => { e.stopPropagation(); onDeletePromptHistory(i); }}
+                          title="删除"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* 反向提示词 */}
         <div className="border border-white/[0.06] rounded-lg overflow-hidden">
@@ -160,14 +239,33 @@ const ControlPanel: React.FC<Props> = ({
           <svg className={`w-3 h-3 text-slate-500 transition-transform duration-200 ${refImgOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
         </button>
         <div className={`transition-all duration-200 overflow-hidden ${refImgOpen ? "max-h-52" : "max-h-0"}`}>
-          <div className="px-3 pb-3 grid grid-cols-4 gap-2">
-            {[0, 1, 2, 3].map((index) => (
-              <label
-                key={index}
-                className="aspect-square max-h-24 border border-dashed border-white/[0.1] rounded-lg cursor-pointer bg-white/[0.03] hover:bg-white/[0.06] transition flex flex-col items-center justify-center overflow-hidden relative"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => handleReferenceSlotDrop(index, e)}
-              >
+           <div className="px-3 pb-3 grid grid-cols-4 gap-2">
+             {[0, 1, 2, 3].map((index) => (
+               <label
+                 key={index}
+                 className={`aspect-square max-h-24 border border-dashed border-white/[0.1] rounded-lg cursor-pointer bg-white/[0.03] hover:bg-white/[0.06] transition flex flex-col items-center justify-center overflow-hidden relative ${
+                   dragSourceIndex === index ? "ring-2 ring-primary-500" : ""
+                 }`}
+                 onDragOver={(e) => e.preventDefault()}
+                 onDrop={(e) => {
+                   e.preventDefault();
+                   if (dragSourceIndex !== null && dragSourceIndex !== index) {
+                     // 交换位置
+                     setReferenceSlots((prev) => {
+                       const next = [...prev];
+                       [next[dragSourceIndex], next[index]] = [next[index], next[dragSourceIndex]];
+                       return next;
+                     });
+                   } else if (dragSourceIndex === null) {
+                     // 上传新文件
+                     handleReferenceSlotDrop(index, e);
+                   }
+                   setDragSourceIndex(null);
+                 }}
+                 draggable={referencePreviewUrls[index] ? true : false}
+                 onDragStart={() => { if (referencePreviewUrls[index]) setDragSourceIndex(index); }}
+                 onDragEnd={() => setDragSourceIndex(null)}
+               >
                 <input
                   type="file"
                   className="hidden"
@@ -302,6 +400,72 @@ const ControlPanel: React.FC<Props> = ({
             </div>
           )}
         </button>
+      </div>
+
+      {/* ── 日志面板（生图按钮下方，填满剩余空间） ── */}
+      <div className="glass-card rounded-xl flex flex-col overflow-hidden flex-1 min-h-0">
+        <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0 border-b border-white/[0.06]">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${
+              status === "running" ? "bg-green-400 animate-pulse"
+              : generationHistory.length > 0 && generationHistory[0]?.error ? "bg-red-400"
+              : generationHistory.length > 0 ? "bg-primary-400"
+              : "bg-slate-600"
+            }`} />
+            日志
+            {generationHistory.length > 0 && <span className="text-[10px] text-slate-500">({generationHistory.length})</span>}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              title="查看详细日志"
+              className="p-0.5 rounded hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors"
+              onClick={onOpenDetailedLog}
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10" />
+              </svg>
+            </button>
+            {generationHistory.length > 0 && (
+              <button
+                type="button"
+                title="清空日志"
+                className="p-0.5 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
+                onClick={onClearHistory}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar p-1.5 text-[10px] font-mono text-slate-400 space-y-1.5">
+          {generationHistory.length === 0 ? (
+            <p className="text-slate-500 italic text-center py-3">生图后显示日志…</p>
+          ) : (
+            generationHistory.slice(0, 30).map((entry) => (
+              <div
+                key={entry.id}
+                className="border-b border-white/[0.06] pb-1 last:border-0 cursor-pointer rounded px-1 hover:bg-white/[0.04] transition-colors"
+                title="双击查看详情"
+                onDoubleClick={() => {
+                  onSelectLogEntry({
+                    time: entry.time,
+                    request: JSON.stringify({ prompt: entry.prompt?.slice(0, 100), model: entry.model, width: entry.width, height: entry.height, batchSize: entry.batchSize }, null, 2),
+                    response: entry.results?.length > 0 ? `成功，返回 ${(entry.results as unknown[]).length} 张图` : undefined,
+                    error: entry.error,
+                  });
+                }}
+              >
+                <span className="text-slate-500">[{entry.time}]</span>
+                {entry.model && <p className="mt-0.5 text-primary-400 truncate text-[9px]">→ {entry.model} · {entry.width}×{entry.height}</p>}
+                {entry.results && (entry.results as unknown[]).length > 0 && <p className="mt-0.5 text-emerald-400">✓ {(entry.results as unknown[]).length} 张</p>}
+                {entry.error && <p className="mt-0.5 text-red-400 truncate">✗ {entry.error.slice(0, 80)}</p>}
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </aside>
   );

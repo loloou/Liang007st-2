@@ -506,12 +506,15 @@ function App() {
         errMsg.includes("does not support image") ||
         errMsg.includes("image input is not supported") ||
         errMsg.includes("cannot read") ||
+        errMsg.includes("can't read") ||
+        errMsg.includes("unable to read") ||
         errMsg.includes("inform the user") ||
+        errMsg.includes("this model does not") ||
         (errMsg.includes("vision") && errMsg.includes("not support")) ||
         (errMsg.includes("multimodal") && errMsg.includes("not support")) ||
         (errMsg.includes("invalid") && errMsg.includes("image_url")) ||
         (errMsg.includes("unsupported") && errMsg.includes("image"));
-      console.log(`[图片降级] error含图片关键词: ${isImageUnsupported}, error: ${errMsg.slice(0, 100)}`);
+      console.log(`[图片降级] error含图片关键词: ${isImageUnsupported}, error: ${errMsg.slice(0, 200)}`);
       if (isImageUnsupported) {
         result = await generateImages({
           prompt,
@@ -528,6 +531,12 @@ function App() {
           const warnMsg = "⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。";
           setError(warnMsg);
           setTimeout(() => setError((prev) => prev === warnMsg ? null : prev), 8000);
+        } else {
+          // 重试也失败，说明模型本身可能不支持图片生成
+          const detailedMsg = errMsg.includes("cannot read") 
+            ? "❌ 当前模型不支持图片输入。请在设置中选择支持图片的模型（如 gemini-2.0-flash-preview-image-generation）。"
+            : result.error;
+          result.error = detailedMsg;
         }
       }
     }
@@ -2284,78 +2293,20 @@ function App() {
             if (!prompt.trim()) return;
             setPromptOptimizeDialogOpen(true);
           }}
+          generationHistory={generationHistory}
+          onClearHistory={() => { setGenerationHistory([]); saveHistory([]); }}
+          onOpenDetailedLog={() => useUiStore.getState().setShowDetailedLog(true)}
+          onSelectLogEntry={(entry) => {
+            useUiStore.getState().setSelectedLogEntry(entry);
+            useUiStore.getState().setShowDetailedLog(true);
+          }}
+          onDeletePromptHistory={(index) => {
+            setPromptHistory((prev) => prev.filter((_, i) => i !== index));
+          }}
+          rightPanelWidth={rightPanelWidth}
         />
 
       </main>
-
-      {/* ── 日志面板（固定在右下角，控制栏左侧） ── */}
-      <div className="fixed bottom-2 z-40 w-80 max-h-60 glass-card rounded-xl flex flex-col overflow-hidden shadow-2xl border border-white/[0.08]" style={{ right: 350, pointerEvents: "auto" }}>
-        {/* 标题栏 */}
-        <div className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-white/[0.06]">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${
-              status === "running" ? "bg-green-400 animate-pulse"
-              : generationHistory.length > 0 && generationHistory[0]?.error ? "bg-red-400"
-              : generationHistory.length > 0 ? "bg-primary-400"
-              : "bg-slate-600"
-            }`} />
-            日志
-            {generationHistory.length > 0 && <span className="text-[10px] text-slate-400">({generationHistory.length})</span>}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              title="查看详细日志"
-              className="p-1 rounded hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors"
-              onClick={() => useUiStore.getState().setShowDetailedLog(true)}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10" />
-              </svg>
-            </button>
-            {generationHistory.length > 0 && (
-              <button
-                type="button"
-                title="清空日志"
-                className="p-1 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
-                onClick={() => { setGenerationHistory([]); saveHistory([]); }}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-        {/* 日志内容 */}
-        <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar p-2 text-[11px] font-mono text-slate-400 space-y-2">
-          {generationHistory.length === 0 ? (
-            <p className="text-slate-500 italic text-center py-2">生图后将显示请求与返回信息…</p>
-          ) : (
-            generationHistory.slice(0, 30).map((entry) => (
-              <div
-                key={entry.id}
-                className="border-b border-white/[0.06] pb-1.5 last:border-0 cursor-pointer rounded px-1 hover:bg-white/[0.04] transition-colors"
-                title="双击查看详情"
-                onDoubleClick={() => {
-                  useUiStore.getState().setSelectedLogEntry({
-                    time: entry.time,
-                    request: JSON.stringify({ prompt: entry.prompt?.slice(0, 100), model: entry.model, width: entry.width, height: entry.height, batchSize: entry.batchSize }, null, 2),
-                    response: entry.results?.length > 0 ? `成功，返回 ${entry.results.length} 张图` : undefined,
-                    error: entry.error,
-                  });
-                  useUiStore.getState().setShowDetailedLog(true);
-                }}
-              >
-                <span className="text-slate-500">[{entry.time}]</span>
-                {entry.model && <p className="mt-0.5 text-primary-400 truncate text-[10px]">→ {entry.model} · {entry.width}×{entry.height}</p>}
-                {entry.results?.length > 0 && <p className="mt-0.5 text-emerald-400">✓ 成功，返回 {entry.results.length} 张图</p>}
-                {entry.error && <p className="mt-0.5 text-red-400">✗ {entry.error.slice(0, 120)}</p>}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
       {/* 全局错误/提示 Toast */}
       {error && (

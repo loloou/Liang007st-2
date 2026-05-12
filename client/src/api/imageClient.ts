@@ -335,6 +335,62 @@ function extractImagesGemini(data: unknown): GeneratedImage[] | null {
   return images.length > 0 ? images : null;
 }
 
+/** 从 Gemini 响应中提取错误信息（text parts / promptFeedback / error 字段） */
+function extractGeminiErrorText(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+
+  const texts: string[] = [];
+
+  // 1. promptFeedback.blockReasonMessage
+  const pf = obj.promptFeedback as Record<string, unknown> | undefined;
+  if (pf) {
+    if (typeof pf.blockReasonMessage === "string") texts.push(pf.blockReasonMessage);
+    if (typeof pf.blockReason === "string") texts.push(`blockReason: ${pf.blockReason}`);
+  }
+
+  // 2. error 字段（部分代理直接返回 { error: { message } }）
+  const errField = obj.error as Record<string, unknown> | undefined;
+  if (errField && typeof errField.message === "string") {
+    texts.push(errField.message);
+  }
+
+  // 3. candidates[].content.parts[].text
+  const candidates = obj.candidates as unknown[] | undefined;
+  if (Array.isArray(candidates)) {
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== "object") continue;
+      const content = (candidate as Record<string, unknown>).content as Record<string, unknown> | undefined;
+      if (!content) continue;
+      const parts = content.parts as unknown[] | undefined;
+      if (!Array.isArray(parts)) continue;
+      for (const part of parts) {
+        if (!part || typeof part !== "object") continue;
+        const text = (part as Record<string, unknown>).text as string | undefined;
+        if (text) texts.push(text);
+      }
+    }
+  }
+
+  if (texts.length === 0) return null;
+
+  const joined = texts.join("\n");
+  const lower = joined.toLowerCase();
+  const isError =
+    lower.includes("cannot read") ||
+    lower.includes("does not support") ||
+    lower.includes("not support") ||
+    lower.includes("inform the user") ||
+    lower.includes("unable to") ||
+    lower.includes("can't read") ||
+    lower.includes("error") ||
+    lower.includes("sorry") ||
+    lower.includes("i cannot") ||
+    lower.includes("i can't") ||
+    lower.includes("blockreason");
+  return isError ? joined : null;
+}
+
 // ── 构造请求体 ────────────────────────────────────────────
 
 /** 构造 OpenAI 规范请求体 */
@@ -629,15 +685,22 @@ async function doFetchAndParse(
   if (!images || images.length === 0) {
     // Gemini 特殊处理：API 返回 200 但文本含错误信息（如 "Cannot read image.png"）
     if (spec === "gemini") {
-      const textLower = rawText.toLowerCase();
+      const geminiErrorText = extractGeminiErrorText(data);
+      const checkText = (geminiErrorText || rawText).toLowerCase();
       const hasError =
-        textLower.includes("cannot read") ||
-        textLower.includes("does not support image") ||
-        textLower.includes("not support") && textLower.includes("image") ||
-        textLower.includes("inform the user");
+        checkText.includes("cannot read") ||
+        checkText.includes("does not support image") ||
+        (checkText.includes("not support") && checkText.includes("image")) ||
+        checkText.includes("inform the user") ||
+        checkText.includes("unable to read") ||
+        checkText.includes("can't read") ||
+        (checkText.includes("does not support") && checkText.includes("input")) ||
+        checkText.includes("this model does not");
       if (hasError) {
+        const cleanMsg = geminiErrorText || rawText.slice(0, 500);
+        console.warn("[Gemini 图片降级] 检测到模型不支持图片输入:", cleanMsg.slice(0, 200));
         return errResult(endpoint, spec, requestBodyForLog,
-          rawText.slice(0, 500), resp.status, rawText.slice(0, 500));
+          cleanMsg, resp.status, rawText.slice(0, 500));
       }
     }
     const hint = spec === "gemini" ? "期望 candidates[].content.parts[].inlineData.data" : "期望 data[].url 或 images[]";
