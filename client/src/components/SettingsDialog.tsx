@@ -5,7 +5,7 @@
  * Image/Chat 模型列表、自动获取模型、模型选择弹窗、测试连接。
  */
 import React, { useState, useEffect } from "react";
-import { getApiConfig, saveApiConfig, type ApiConfig, type ImageModel, type ApiSpec } from "../api/settings";
+import { getApiConfig, saveApiConfig, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec } from "../api/settings";
 import VendorManager from "./VendorManager";
 
 // ── 内联 API 函数 ──────────────────────────────────────────────────────────
@@ -62,6 +62,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
 
   // 模型选择弹窗（获取模型列表后弹出）
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelPickerMode, setModelPickerMode] = useState<"image" | "chat">("image");
   const [modelPickerList, setModelPickerList] = useState<string[]>([]);
   const [modelPickerSelected, setModelPickerSelected] = useState<Set<string>>(new Set());
   const [modelPickerSearch, setModelPickerSearch] = useState("");
@@ -91,7 +92,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
     onClose();
   };
 
-  const handleFetchModels = async () => {
+  const handleFetchModels = async (mode: "image" | "chat" = "image") => {
     setFetching(true);
     setFetchErr("");
     try {
@@ -100,8 +101,9 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
       if (!baseUrl.trim()) { setFetchErr("请先填写 Base URL"); return; }
       const result = await fetchModelList(baseUrl, apiKey);
       if (result.ok && result.models.length > 0) {
-        // 弹出模型选择弹窗
+        setModelPickerMode(mode);
         setModelPickerList(result.models);
+        // 默认全选
         setModelPickerSelected(new Set(result.models));
         setModelPickerSearch("");
         setModelPickerOpen(true);
@@ -117,20 +119,34 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
 
   const handleModelPickerConfirm = () => {
     const selectedModels = modelPickerList.filter((m) => modelPickerSelected.has(m));
-    const newModels: ImageModel[] = selectedModels.map((mid) => ({
-      id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}${Math.random().toString(36).slice(2, 4)}`,
-      modelId: mid,
-      label: mid,
-      baseUrl: "",
-      apiKey: "",
-      apiSpec: undefined as any,
-    }));
-    // 合并：保留已有的（用户手动添加的），添加新选的
-    setCfgDraft((prev) => {
-      const existingIds = new Set(prev.imageModels.map((m) => m.modelId));
-      const toAdd = newModels.filter((nm) => !existingIds.has(nm.modelId));
-      return { ...prev, imageModels: [...prev.imageModels, ...toAdd] };
-    });
+    if (modelPickerMode === "image") {
+      const newModels: ImageModel[] = selectedModels.map((mid) => ({
+        id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}${Math.random().toString(36).slice(2, 4)}`,
+        modelId: mid,
+        label: mid,
+        baseUrl: "",
+        apiKey: "",
+        apiSpec: undefined as any,
+      }));
+      setCfgDraft((prev) => {
+        const existingIds = new Set(prev.imageModels.map((m) => m.modelId));
+        const toAdd = newModels.filter((nm) => !existingIds.has(nm.modelId));
+        return { ...prev, imageModels: [...prev.imageModels, ...toAdd] };
+      });
+    } else {
+      const newModels: ChatModel[] = selectedModels.map((mid) => ({
+        id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}${Math.random().toString(36).slice(2, 4)}`,
+        modelId: mid,
+        label: mid,
+        baseUrl: "",
+        apiKey: "",
+      }));
+      setCfgDraft((prev) => {
+        const existingIds = new Set(prev.chatModels.map((m) => m.modelId));
+        const toAdd = newModels.filter((nm) => !existingIds.has(nm.modelId));
+        return { ...prev, chatModels: [...prev.chatModels, ...toAdd] };
+      });
+    }
     setModelPickerOpen(false);
   };
 
@@ -145,6 +161,34 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
     setCfgDraft((prev) => ({
       ...prev,
       imageModels: prev.imageModels.filter((m) => m.id !== id),
+    }));
+  };
+
+  const updateChatModel = (id: string, patch: Partial<ChatModel>) => {
+    setCfgDraft((prev) => ({
+      ...prev,
+      chatModels: prev.chatModels.map((m) => m.id === id ? { ...m, ...patch } : m),
+    }));
+  };
+
+  const removeChatModel = (id: string) => {
+    setCfgDraft((prev) => ({
+      ...prev,
+      chatModels: prev.chatModels.filter((m) => m.id !== id),
+    }));
+  };
+
+  const addChatModel = () => {
+    const newModel: ChatModel = {
+      id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+      modelId: "",
+      label: "",
+      baseUrl: "",
+      apiKey: "",
+    };
+    setCfgDraft((prev) => ({
+      ...prev,
+      chatModels: [...prev.chatModels, newModel],
     }));
   };
 
@@ -301,7 +345,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                     <button
                       type="button"
                       className="px-2 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
-                      onClick={handleFetchModels}
+                      onClick={() => handleFetchModels("image")}
                       disabled={fetching}
                     >{fetching ? "获取中…" : "自动获取模型"}</button>
                   </div>
@@ -414,10 +458,110 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
             )}
 
             {settingsTab === "chat" && (
-              <div className="text-center py-8">
-                <p className="text-sm text-slate-500">Chat 模型配置开发中…</p>
-                <p className="text-xs text-slate-600 mt-1">当前版本仅支持 Image 模型</p>
-              </div>
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">共 {cfgDraft.chatModels.length} 个模型</span>
+                    <button
+                      type="button"
+                      className="px-2 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
+                      onClick={() => handleFetchModels("chat")}
+                      disabled={fetching}
+                    >{fetching ? "获取中…" : "自动获取模型"}</button>
+                  </div>
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition"
+                    onClick={addChatModel}
+                  >+ 手动添加</button>
+                </div>
+                {fetchErr && <p className="text-[10px] text-red-400 mb-2">{fetchErr}</p>}
+
+                {cfgDraft.chatModels.map((m) => {
+                  const ts = modelTestStatus[m.id] || "idle";
+                  const tmsg = modelTestMsg[m.id] || "";
+                  return (
+                    <div key={m.id} className="glass-card rounded-xl p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                          placeholder="Model ID（如 gpt-4o）"
+                          value={m.modelId}
+                          onChange={(e) => updateChatModel(m.id, { modelId: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          className="w-24 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                          placeholder="别名"
+                          value={m.label || ""}
+                          onChange={(e) => updateChatModel(m.id, { label: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
+                          onClick={() => removeChatModel(m.id)}
+                          title="删除此模型"
+                        >×</button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
+                          placeholder="Base URL（留空继承全局）"
+                          value={m.baseUrl || ""}
+                          onChange={(e) => updateChatModel(m.id, { baseUrl: e.target.value })}
+                        />
+                        <input
+                          type="password"
+                          className="w-36 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
+                          placeholder="API Key（留空继承全局）"
+                          value={m.apiKey || ""}
+                          onChange={(e) => updateChatModel(m.id, { apiKey: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className={`px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1 ${
+                            ts === "ok" ? "bg-emerald-500/10 text-emerald-400" :
+                            ts === "fail" ? "bg-red-500/10 text-red-400" :
+                            ts === "testing" ? "bg-amber-500/10 text-amber-400" :
+                            "bg-white/[0.04] text-slate-400 hover:bg-white/[0.08]"
+                          }`}
+                          disabled={ts === "testing"}
+                          onClick={async () => {
+                            setModelTestStatus((s) => ({ ...s, [m.id]: "testing" }));
+                            setModelTestMsg((s) => ({ ...s, [m.id]: "" }));
+                            const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl;
+                            const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey;
+                            const result = await testModelConnection(baseUrl, apiKey, m.modelId);
+                            setModelTestStatus((s) => ({ ...s, [m.id]: result.ok ? "ok" : "fail" }));
+                            setModelTestMsg((s) => ({ ...s, [m.id]: result.message + (result.ok ? "" : (result.detail ? `\n${result.detail}` : "")) }));
+                          }}
+                        >
+                          {ts === "testing" ? (
+                            <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
+                          ) : ts === "ok" ? (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>联通</>
+                          ) : ts === "fail" ? (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>失败</>
+                          ) : (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
+                          )}
+                        </button>
+                      </div>
+                      {tmsg && (
+                        <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
+                          ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
+                        }`}>{tmsg}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
             )}
           </div>
 
@@ -451,7 +595,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
           >
             <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
               <div>
-                <h3 className="text-sm font-bold text-slate-100">选择要添加的模型</h3>
+                <h3 className="text-sm font-bold text-slate-100">选择要添加的{modelPickerMode === "image" ? "Image" : "Chat"}模型</h3>
                 <p className="text-[10px] text-slate-500 mt-0.5">已获取 {modelPickerList.length} 个模型，勾选后点击确认添加</p>
               </div>
               <button className="text-slate-500 hover:text-slate-300 text-xl leading-none p-1" onClick={() => setModelPickerOpen(false)}>×</button>
