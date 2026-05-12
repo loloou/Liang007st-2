@@ -2288,8 +2288,8 @@ function App() {
 
       </main>
 
-      {/* ── 日志面板（固定在右下角） ── */}
-      <div className="fixed bottom-2 right-2 z-40 w-80 max-h-60 glass-card rounded-xl flex flex-col overflow-hidden shadow-2xl border border-white/[0.08]" style={{ pointerEvents: "auto" }}>
+      {/* ── 日志面板（固定在右下角，控制栏左侧） ── */}
+      <div className="fixed bottom-2 z-40 w-80 max-h-60 glass-card rounded-xl flex flex-col overflow-hidden shadow-2xl border border-white/[0.08]" style={{ right: 350, pointerEvents: "auto" }}>
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-white/[0.06]">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">

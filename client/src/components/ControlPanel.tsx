@@ -88,34 +88,22 @@ const ControlPanel: React.FC<Props> = ({
       <div className="glass-card rounded-xl px-3 pt-2.5 pb-2 flex flex-col gap-1.5 flex-shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-300">提示词</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="text-[10px] text-slate-500 hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-white/[0.06] transition"
-                  onClick={() => setShowPromptHistory(!showPromptHistory)}
-                  title="提示词历史"
-                >历史</button>
-                <button
-                  type="button"
-                  className="text-[10px] text-amber-400 hover:text-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-500/10 transition"
-                  onClick={onOptimize}
-                  title="提示词优化"
-                  disabled={!prompt.trim()}
-                >优化</button>
-              </div>
-        </div>
-
-        {showPromptHistory && promptHistory.length > 0 && (
-          <div className="max-h-32 overflow-y-auto app-scrollbar border border-white/[0.06] rounded-lg divide-y divide-white/[0.04]">
-            {promptHistory.slice(0, 20).map((p, i) => (
-              <button
-                key={i}
-                className="w-full text-left px-2.5 py-1.5 text-[11px] text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 transition truncate"
-                onClick={() => { setPrompt(p); setShowPromptHistory(false); }}
-              >{p}</button>
-            ))}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="text-[10px] text-slate-500 hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-white/[0.06] transition"
+              onClick={() => setShowPromptHistory(!showPromptHistory)}
+              title="提示词历史"
+            >历史</button>
+            <button
+              type="button"
+              className="text-[10px] text-amber-400 hover:text-amber-300 px-1.5 py-0.5 rounded hover:bg-amber-500/10 transition"
+              onClick={onOptimize}
+              title="提示词优化"
+              disabled={!prompt.trim()}
+            >优化</button>
           </div>
-        )}
+        </div>
 
         <textarea
           ref={promptRef}
@@ -131,6 +119,19 @@ const ControlPanel: React.FC<Props> = ({
             }
           }}
         />
+
+        {/* 提示词历史下拉（输入框下方） */}
+        {showPromptHistory && promptHistory.length > 0 && (
+          <div className="max-h-28 overflow-y-auto app-scrollbar border border-white/[0.06] rounded-lg divide-y divide-white/[0.04]">
+            {promptHistory.slice(0, 15).map((p, i) => (
+              <button
+                key={i}
+                className="w-full text-left px-2.5 py-1.5 text-[11px] text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 transition truncate"
+                onClick={() => { setPrompt(p); setShowPromptHistory(false); }}
+              >{p}</button>
+            ))}
+          </div>
+        )}
 
         {/* 反向提示词 */}
         <div className="border border-white/[0.06] rounded-lg overflow-hidden">

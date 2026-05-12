@@ -626,7 +626,7 @@ async function doFetchAndParse(
 
   // 按规范提取图片
   let images = spec === "gemini" ? extractImagesGemini(data) : extractImagesOpenAI(data);
-  if (!images) {
+  if (!images || images.length === 0) {
     // Gemini 特殊处理：API 返回 200 但文本含错误信息（如 "Cannot read image.png"）
     if (spec === "gemini") {
       const textLower = rawText.toLowerCase();
