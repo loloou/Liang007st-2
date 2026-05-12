@@ -905,3 +905,84 @@
 [data-theme="cyber"] .text-slate-600,
 [data-theme="ember"] .text-slate-600,
 [data-theme="verdant"] .text-slate-600 { color: #788090; }
+
+/* ═══════════════════════════════════════════════════
+   Error Toast — theme-aware styling
+   ═══════════════════════════════════════════════════ */
+.toast-error {
+  background: var(--toast-error-bg, rgba(220, 38, 38, 0.1));
+  border-color: var(--toast-error-border, rgba(220, 38, 38, 0.2));
+  color: var(--toast-error-text, #fca5a5);
+}
+.toast-error .toast-error-icon { color: var(--toast-error-icon, #f87171); }
+.toast-error .toast-error-msg { color: var(--toast-error-msg, #fecaca); }
+.toast-error .toast-error-close { color: var(--toast-error-close, rgba(255,255,255,0.4)); }
+.toast-error .toast-error-close:hover { color: var(--toast-error-close-hover, rgba(255,255,255,0.7)); }
+.toast-error .toast-error-retry { color: var(--toast-error-retry, #a78bfa); }
+.toast-error .toast-error-retry:hover { background: var(--toast-error-retry-bg, rgba(139,92,246,0.15)); }
+
+[data-theme="dark"] {
+  --toast-error-bg: rgba(220, 38, 38, 0.08);
+  --toast-error-border: rgba(220, 38, 38, 0.18);
+  --toast-error-icon: #f87171;
+  --toast-error-msg: #fecaca;
+  --toast-error-close: rgba(255,255,255,0.35);
+  --toast-error-close-hover: rgba(255,255,255,0.7);
+  --toast-error-retry: #a78bfa;
+  --toast-error-retry-bg: rgba(139,92,246,0.12);
+}
+
+[data-theme="aurora"] {
+  --toast-error-bg: rgba(220, 38, 38, 0.1);
+  --toast-error-border: rgba(220, 38, 38, 0.22);
+  --toast-error-icon: #fb7185;
+  --toast-error-msg: #fecdd3;
+  --toast-error-close: rgba(255,255,255,0.35);
+  --toast-error-close-hover: rgba(255,255,255,0.7);
+  --toast-error-retry: #c084fc;
+  --toast-error-retry-bg: rgba(192,132,252,0.15);
+}
+
+[data-theme="cyber"] {
+  --toast-error-bg: rgba(255, 45, 120, 0.1);
+  --toast-error-border: rgba(255, 45, 120, 0.25);
+  --toast-error-icon: #ff2d78;
+  --toast-error-msg: #ffb3d0;
+  --toast-error-close: rgba(0,240,255,0.4);
+  --toast-error-close-hover: rgba(0,240,255,0.8);
+  --toast-error-retry: #67f7ff;
+  --toast-error-retry-bg: rgba(0,240,255,0.1);
+}
+
+[data-theme="dawn"] {
+  --toast-error-bg: rgba(220, 38, 38, 0.06);
+  --toast-error-border: rgba(220, 38, 38, 0.18);
+  --toast-error-icon: #dc2626;
+  --toast-error-msg: #991b1b;
+  --toast-error-close: rgba(0,0,0,0.3);
+  --toast-error-close-hover: rgba(0,0,0,0.6);
+  --toast-error-retry: #4f46e5;
+  --toast-error-retry-bg: rgba(79,70,229,0.1);
+}
+
+[data-theme="ember"] {
+  --toast-error-bg: rgba(220, 38, 38, 0.12);
+  --toast-error-border: rgba(239, 68, 68, 0.25);
+  --toast-error-icon: #f87171;
+  --toast-error-msg: #fecaca;
+  --toast-error-close: rgba(255,255,255,0.35);
+  --toast-error-close-hover: rgba(255,255,255,0.7);
+  --toast-error-retry: #fb923c;
+  --toast-error-retry-bg: rgba(251,146,60,0.12);
+}
+
+[data-theme="verdant"] {
+  --toast-error-bg: rgba(220, 38, 38, 0.08);
+  --toast-error-border: rgba(220, 38, 38, 0.18);
+  --toast-error-icon: #f87171;
+  --toast-error-msg: #fecaca;
+  --toast-error-close: rgba(255,255,255,0.35);
+  --toast-error-close-hover: rgba(255,255,255,0.7);
+  --toast-error-retry: #34d399;
+  --toast-error-retry-bg: rgba(52,211,153,0.12);
+}

@@ -2270,21 +2270,21 @@ function App() {
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] max-w-xl w-full px-4"
           onClick={() => setError(null)}
         >
-          <div className="glass-popup rounded-xl px-4 py-3 flex items-start gap-3 border border-red-500/20 bg-red-500/10 cursor-pointer shadow-xl">
-            <svg className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="toast-error glass-popup rounded-xl px-4 py-3 flex items-start gap-3 cursor-pointer shadow-xl">
+            <svg className="toast-error-icon w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
-            <p className="text-xs text-red-300 whitespace-pre-wrap flex-1">{error}</p>
+            <p className="toast-error-msg text-xs whitespace-pre-wrap flex-1">{error}</p>
             <div className="flex items-center gap-2 flex-shrink-0">
               {status !== "running" && prompt.trim() && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setError(null); handleGenerateRef.current(); }}
-                  className="text-xs text-primary-400 hover:text-primary-300 px-2 py-0.5 rounded bg-primary-500/10 hover:bg-primary-500/20 transition"
+                  className="toast-error-retry text-xs px-2 py-0.5 rounded transition"
                   aria-label="重试生成"
                 >重试</button>
               )}
               <button
-                className="text-slate-500 hover:text-slate-300 text-sm leading-none"
+                className="toast-error-close text-sm leading-none"
                 onClick={(e) => { e.stopPropagation(); setError(null); }}
                 aria-label="关闭提示"
               >×</button>
