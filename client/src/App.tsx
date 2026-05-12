@@ -49,6 +49,7 @@ import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode } from "./ut
 import { createThumbnail } from "./utils/imageUtils";
 import SettingsDialog from "./components/SettingsDialog";
 import VendorManager from "./components/VendorManager";
+import ControlPanel from "./components/ControlPanel";
 import { safeUrl } from "./utils/safeUrl";
 import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
@@ -2440,291 +2441,32 @@ function App() {
           <div className="w-0.5 h-12 bg-white/[0.08] group-hover:bg-primary-500/60 rounded-full transition-colors" />
         </div>
 
+
         {/* 右侧控制栏 */}
-        <aside
-          className="flex-shrink-0 flex flex-col gap-2 overflow-hidden"
-          style={{ width: rightPanelWidth, height: "100%", maxHeight: "100%" }}
-        >
-          {/* ── 提示词模块 ── */}
-          <div className="glass-card rounded-xl px-3 pt-2.5 pb-2 flex flex-col gap-1.5 flex-shrink-0">
-            {/* 标题行 */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-300">提示词</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={!prompt.trim()}
-                  className="px-2 py-0.5 rounded-lg glass-button text-[11px] btn-hover-lift transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                  onClick={handlePromptOptimize}
-                  title="打开提示词优化助手"
-                >
-                  优化
-                </button>
-              </div>
-            </div>
-            {/* 主提示词输入框 */}
-            <textarea
-              className="w-full text-sm rounded-xl glass-input px-3 py-2 resize-none app-scrollbar"
-              style={{ minHeight: 120, maxHeight: 200 }}
-              placeholder="输入提示词，将使用选用的模型生成图片..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-            {/* 提示词历史下拉 */}
-            <div className="flex items-center gap-1">
-              <select
-                className="flex-1 min-w-[140px] text-xs rounded-lg glass-input px-2 py-1.5"
-                value={historyTemplateValue}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setHistoryTemplateValue("");
-                  if (!v) return;
-                  if (v.startsWith("ph:")) {
-                    // 应用输入历史
-                    const idx = parseInt(v.slice(3));
-                    if (!isNaN(idx) && promptHistory[idx]) {
-                      setPrompt(promptHistory[idx]);
-                    }
-                  } else if (v.startsWith("hist:")) {
-                    // 应用历史记录
-                    const idx = parseInt(v.slice(5));
-                    if (!isNaN(idx) && generationHistory[idx]) {
-                      const entry = generationHistory[idx];
-                      setPrompt(entry.prompt || "");
-                      setNegativePrompt(entry.negativePrompt || "");
-                      setModel(entry.model || "");
-                      setBatchSize(entry.batchSize || 1);
-                      // 尝试恢复图片结果（仅限有效的外部 URL）
-                      if (entry.results && entry.results.length > 0) {
-                        const validResults = entry.results.map(img => {
-                          if (!img || !img.url) return null;
-                          const extImg = img as typeof img & { originalUrl?: string };
-                          if (img.url.startsWith('blob:') || img.url.startsWith('data:')) {
-                            if (extImg.originalUrl && !extImg.originalUrl.startsWith('blob:') && !extImg.originalUrl.startsWith('data:')) {
-                              return { ...img, url: extImg.originalUrl };
-                            }
-                            return null;
-                          }
-                          return img;
-                        }).filter(Boolean) as typeof entry.results;
-                        if (validResults.length > 0) {
-                          setResults(validResults);
-                          setResultActiveIdx(0);
-                        }
-                      }
-                    }
-                  }
-                }}
-              >
-                <option value="">提示词历史…</option>
-                {/* 输入历史 */}
-                {promptHistory.length > 0 && (
-                  <optgroup label="📝 输入历史">
-                    {promptHistory.slice(0, 10).map((p, i) => (
-                      <option key={`ph-${i}`} value={`ph:${i}`}>
-                        {p.slice(0, 30)}{p.length > 30 ? "..." : ""}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-              {/* 管理按钮 */}
-              <button
-                type="button"
-                title="管理历史"
-                className="flex-shrink-0 px-2 py-1.5 rounded-lg glass-button text-slate-400 hover:text-primary-400 transition text-[11px]"
-                onClick={() => { setManageDialogOpen(true); }}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            </div>
-            {/* 反向提示词 */}
-            <div className="border border-white/[0.06] rounded-lg overflow-hidden">
-              <textarea
-                className="w-full text-xs glass-input px-2.5 py-2 resize-none app-scrollbar rounded-none border-0"
-                style={{ height: 68 }}
-                placeholder="反向提示词（可选）"
-                value={negativePrompt}
-                onChange={(e) => setNegativePrompt(e.target.value)}
-              />
-            </div>
-          </div>
+        <ControlPanel
+          prompt={prompt} setPrompt={setPrompt}
+          negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
+          promptHistory={promptHistory}
+          referenceSlots={referenceSlots} setReferenceSlots={setReferenceSlots}
+          referencePreviewUrls={referencePreviewUrls} setReferencePreviewUrls={setReferencePreviewUrls}
+          setReferenceSize={setReferenceSize}
+          model={model} setModel={setModel}
+          modelList={modelList}
+          resolutionPreset={resolutionPreset} setResolutionPreset={setResolutionPreset}
+          sizeTier={sizeTier} setSizeTier={setSizeTier}
+          batchSize={batchSize} setBatchSize={setBatchSize}
+          width={width} height={height}
+          status={status}
+          handleGenerate={handleGenerate}
+          onOpenModelPicker={() => {
+            const cfg = getApiConfig();
+            const activeIds = new Set(cfg.imageModels.filter((m) => modelList.includes(m.modelId)).map((m) => m.id));
+            setMainModelPickerSelected(activeIds);
+            setMainModelPickerOpen(true);
+          }}
+        />
 
-          {/* ── 参考图 - 可折叠 ── */}
-          <div className="glass-card rounded-xl overflow-hidden flex-shrink-0">
-            <button
-              type="button"
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/[0.04] transition-colors"
-              onClick={() => setRefImgOpen((v) => !v)}
-            >
-              <span className="flex items-center gap-1.5">
-                <svg className="w-3 h-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                参考图
-                {referenceImages.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-primary-500/15 text-primary-400 text-[10px] font-medium">{referenceImages.length}</span>}
-              </span>
-              <svg className={`w-3 h-3 text-slate-500 transition-transform duration-200 ${refImgOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            <div className={`transition-all duration-200 overflow-hidden ${refImgOpen ? "max-h-52" : "max-h-0"}`}>
-              <div className="px-3 pb-3 grid grid-cols-4 gap-2">
-                {[0, 1, 2, 3].map((index) => (
-                  <label
-                    key={index}
-                    className="aspect-square max-h-24 border border-dashed border-white/[0.1] rounded-lg cursor-pointer bg-white/[0.03] hover:bg-white/[0.06] transition flex flex-col items-center justify-center overflow-hidden relative"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => handleReferenceSlotDrop(index, e)}
-                  >
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        setReferenceSlot(index, f ?? null);
-                        e.target.value = "";
-                      }}
-                    />
-                    {referencePreviewUrls[index] ? (
-                      <>
-                         <img src={safeUrl(referencePreviewUrls[index])} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          className="absolute top-0 right-0 w-5 h-5 flex items-center justify-center rounded-bl bg-black/60 text-white text-xs hover:bg-red-500/100 transition-colors"
-                          title="删除图片"
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setReferenceSlot(index, null); }}
-                        >×</button>
-                        <span className="absolute bottom-0 left-0 right-0 py-0.5 bg-black/50 text-white text-[9px] text-center">点击可替换</span>
-                      </>
-                    ) : (
-                      <span className="text-[9px] text-slate-400 text-center px-0.5">点击/拖拽</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── 生图设置 ── */}
-          <div className="glass-card rounded-xl px-3 py-2.5 flex flex-col gap-2 flex-shrink-0">
-            <div className="text-xs font-semibold text-slate-300">生图参数</div>
-            {/* 第一行：比例下拉 + 分辨率按钮组 */}
-            <div className="flex items-center gap-2">
-              {/* 比例下拉 */}
-              <div className="flex flex-col gap-0.5 flex-1">
-                <span className="text-slate-500 text-[10px]">宽高比</span>
-                <AspectRatioSelect
-                  value={resolutionPreset}
-                  onChange={setResolutionPreset}
-                />
-              </div>
-              {/* 分辨率按钮组 */}
-              <div className="flex flex-col gap-0.5">
-                <span className="text-slate-500 text-[10px]">分辨率</span>
-                <div className="flex gap-1">
-                  {SIZE_TIERS.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className={`px-3 py-1.5 rounded-lg border text-[11px] font-medium transition ${
-                        sizeTier === t.id
-                          ? "border-primary-500/30 bg-primary-500/10 text-primary-400"
-                          : "border-white/[0.08] text-slate-400 hover:bg-white/[0.06]"
-                      }`}
-                      onClick={() => setSizeTier(t.id as SizeTierId)}
-                    >{t.label}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {/* 第二行：模型下拉 + 数量下拉 */}
-            <div className="flex items-center gap-2">
-              {/* 模型下拉 */}
-              <div className="flex flex-col gap-0.5 flex-1">
-                <span className="text-slate-500 text-[10px]">模型</span>
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="border border-white/[0.08] rounded-lg px-1.5 py-1.5 text-[11px] bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-primary-500/30 text-slate-300 w-full truncate"
-                  title={model}
-                >
-                  {[...new Set(model ? [model, ...modelList] : modelList)].map((id) => (
-                    <option key={id} value={id}>{id}</option>
-                  ))}
-                </select>
-              </div>
-              {/* 数量下拉 */}
-              <div className="flex flex-col gap-0.5">
-                <span className="text-slate-500 text-[10px]">数量</span>
-                <select
-                  value={batchSize}
-                  onChange={(e) => setBatchSize(Number(e.target.value))}
-                  className="border border-white/[0.08] rounded-lg px-1.5 py-1.5 text-[11px] bg-white/[0.04] focus:outline-none focus:ring-1 focus:ring-primary-500/30 text-slate-300 w-16"
-                >
-                  {[1, 2, 4].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {/* 尺寸 + 已选模型管理 */}
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="text-slate-500 tabular-nums">{width} × {height} px</span>
-              <button
-                type="button"
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 transition font-medium border ${
-                  modelList.length > 0
-                    ? "text-primary-400 bg-primary-500/10 hover:bg-primary-500/20 border-primary-500/20"
-                    : "text-slate-500 bg-white/[0.04] hover:bg-white/[0.08] border-white/[0.08]"
-                }`}
-                onClick={() => {
-                  const cfg = getApiConfig();
-                  const activeIds = new Set(
-                    cfg.imageModels.filter((m) => modelList.includes(m.modelId)).map((m) => m.id)
-                  );
-                  setMainModelPickerSelected(activeIds);
-                  setMainModelPickerOpen(true);
-                }}
-              >
-                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                {modelList.length > 0
-                  ? <>已选 <span className="font-bold tabular-nums">{modelList.length}</span> 个模型 · 点击管理</>
-                  : "点击选择模型"
-                }
-              </button>
-            </div>
-          </div>
-
-          {/* ── 生图按钮 ── */}
-          <div className="glass-card rounded-xl px-3 py-2 flex flex-col gap-1.5 flex-shrink-0">
-            <button
-              onClick={handleGenerate}
-              disabled={status === "running"}
-              aria-label={status === "running" ? "正在生成中" : "开始生图"}
-              className={`w-full h-10 rounded-xl text-white text-sm font-semibold transition-all relative overflow-hidden ${
-                status === "running"
-                  ? "bg-primary-500/40 cursor-not-allowed opacity-70 generating-pulse"
-                  : "gradient-button"
-              }`}
-            >
-              {status === "running" ? (
-                <div className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>生图中...</span>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span>开始生图</span>
-                </div>
-              )}
-            </button>
-          </div>
+        <aside className="flex-shrink-0 flex flex-col gap-2 overflow-hidden" style={{ width: rightPanelWidth, height: "100%", maxHeight: "100%" }}>
 
           {/* ── 日志 ── */}
           <div className="glass-card rounded-xl flex flex-col overflow-hidden flex-1 min-h-0" style={{ maxHeight: 160 }}>
