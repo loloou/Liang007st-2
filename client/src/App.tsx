@@ -2280,6 +2280,10 @@ function App() {
             setMainModelPickerSelected(activeIds);
             setMainModelPickerOpen(true);
           }}
+          onOptimize={() => {
+            if (!prompt.trim()) return;
+            setPromptOptimizeDialogOpen(true);
+          }}
         />
 
         <aside className="flex-shrink-0 flex flex-col gap-2 overflow-hidden" style={{ width: rightPanelWidth, height: "100%", maxHeight: "100%" }}>
