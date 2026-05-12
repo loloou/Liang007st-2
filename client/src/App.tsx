@@ -47,6 +47,7 @@ import {
 import { fetchBalance } from "./api/balance";
 import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode } from "./utils/theme";
 import { createThumbnail } from "./utils/imageUtils";
+import { safeUrl } from "./utils/safeUrl";
 import AspectRatioSelect from "./components/AspectRatioSelect";
 import { getRealPerformanceData, FPSCalculator } from "./utils/performanceMonitor";
 
@@ -581,6 +582,7 @@ function App() {
         }
       });
       setError(message);
+      setTimeout(() => setError((prev) => prev === message ? null : prev), 15000);
       if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
       setStatus("idle");
       if (prompt.trim()) {
@@ -964,6 +966,7 @@ function App() {
                 setSettingsOpen(true);
               }}
               className="px-3 py-1.5 rounded-lg glass-button text-xs btn-hover-lift"
+              aria-label="打开设置"
             >
               设置
             </button>
@@ -1003,6 +1006,7 @@ function App() {
             <button
               className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${whiteboardOpen ? "ring-1 ring-primary-500/30 text-primary-400" : ""}`}
               onClick={() => setWhiteboardOpen(!whiteboardOpen)}
+              aria-label={whiteboardOpen ? "关闭无限画布" : "打开无限画布"}
             >
               无限画布
             </button>
@@ -2519,7 +2523,7 @@ function App() {
                                 onClick={() => setResultActiveIdx(idx)}
                                 className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${idx === safeIdx ? "border-primary-400 ring-1 ring-primary-400/30" : "border-transparent hover:border-white/20"}`}
                               >
-                                <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                                <img src={safeUrl(thumbUrl)} alt="" className="w-full h-full object-cover" />
                               </button>
                               <button
                                 className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center transition text-xs leading-none"
@@ -2554,7 +2558,7 @@ function App() {
 
       {/* 无限画布 */}
       {whiteboardOpen && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0f]"><div className="w-8 h-8 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" /></div>}>
           <InfiniteCanvas onClose={() => setWhiteboardOpen(false)} />
         </Suspense>
       )}
@@ -3171,7 +3175,7 @@ function App() {
       )}
 
       {/* ── 优化5：提示词优化弹窗 ────────────────────────────────────────────── */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"><div className="w-8 h-8 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" /></div>}>
         <PromptOptimizerDialog
           open={promptOptimizeDialogOpen}
           onClose={() => setPromptOptimizeDialogOpen(false)}
@@ -3500,7 +3504,7 @@ function App() {
                     />
                     {referencePreviewUrls[index] ? (
                       <>
-                        <img src={referencePreviewUrls[index]!} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                         <img src={safeUrl(referencePreviewUrls[index])} alt="" className="absolute inset-0 w-full h-full object-cover" />
                         <button
                           type="button"
                           className="absolute top-0 right-0 w-5 h-5 flex items-center justify-center rounded-bl bg-black/60 text-white text-xs hover:bg-red-500/100 transition-colors"
@@ -3613,6 +3617,7 @@ function App() {
             <button
               onClick={handleGenerate}
               disabled={status === "running"}
+              aria-label={status === "running" ? "正在生成中" : "开始生图"}
               className={`w-full h-10 rounded-xl text-white text-sm font-semibold transition-all relative overflow-hidden ${
                 status === "running"
                   ? "bg-primary-500/40 cursor-not-allowed opacity-70 generating-pulse"
@@ -3724,7 +3729,20 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
             <p className="text-xs text-red-300 whitespace-pre-wrap flex-1">{error}</p>
-            <button className="text-slate-500 hover:text-slate-300 text-sm leading-none flex-shrink-0">×</button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {status !== "running" && prompt.trim() && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setError(null); handleGenerateRef.current(); }}
+                  className="text-xs text-primary-400 hover:text-primary-300 px-2 py-0.5 rounded bg-primary-500/10 hover:bg-primary-500/20 transition"
+                  aria-label="重试生成"
+                >重试</button>
+              )}
+              <button
+                className="text-slate-500 hover:text-slate-300 text-sm leading-none"
+                onClick={(e) => { e.stopPropagation(); setError(null); }}
+                aria-label="关闭提示"
+              >×</button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect } from "react";
 import { useCanvasStore } from "../store/useCanvasStore";
+import { safeUrl } from "../../../utils/safeUrl";
 
 const Lightbox: React.FC = () => {
   const url = useCanvasStore((s) => s.lightboxUrl);
@@ -21,7 +22,7 @@ const Lightbox: React.FC = () => {
       onClick={close}
     >
       <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-        <img src={url} alt="" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" draggable={false} />
+         <img src={safeUrl(url)} alt="" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" draggable={false} />
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
           <a href={url} download={`canvas_${Date.now()}.png`} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition backdrop-blur-sm">
             💾 下载

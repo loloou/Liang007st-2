@@ -3,6 +3,7 @@ import { useCanvasStore } from "../store/useCanvasStore";
 import { getApiConfig } from "../../../api/settings";
 import { ASPECT_LIST } from "../store/useCanvasStore";
 import { useGenerationStore } from "../../../store/generationStore";
+import { safeUrl } from "../../../utils/safeUrl";
 import { SIZE_TIERS, RESOLUTION_PRESETS, type SizeTierId } from "../../../utils/resolutionPresets";
 
 const ASPECTS = ASPECT_LIST;
@@ -89,7 +90,7 @@ const PromptBar: React.FC = () => {
           <div className="px-3 pt-3 flex gap-2 overflow-x-auto pb-1">
             {refImages.map((url, i) => (
               <div key={i} className="relative group flex-shrink-0">
-                <img src={url} className="w-12 h-12 object-cover rounded-lg border border-white/10" alt="" />
+                 <img src={safeUrl(url)} className="w-12 h-12 object-cover rounded-lg border border-white/10" alt="" />
                 <button
                   onClick={() => setRefImages((p) => p.filter((_, j) => j !== i))}
                   className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition"
