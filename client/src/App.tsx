@@ -910,7 +910,7 @@ function App() {
         className="fixed top-0 left-0 right-0 z-30 h-11 flex items-center justify-between px-5 glass-header"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <span className="font-bold text-gradient text-base tracking-tight select-none">Liang007</span>
           <div className="h-4 w-px bg-white/10" />
           <button
@@ -1787,7 +1787,7 @@ function App() {
                 <div className="flex-1 flex flex-col overflow-hidden">
                   {/* 列表头部：全选 + 计数 */}
                   <div className="px-4 py-2 border-b border-white/[0.04] flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
                       <button
                         onClick={toggleAll}
                         className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-400 transition-colors"
