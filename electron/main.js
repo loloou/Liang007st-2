@@ -1,17 +1,12 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 let mainWindow = null;
 
 // ── 便携模式：把用户数据放在 exe 同目录的 .liang007-data 文件夹里 ──────────────
-// electron-builder portable 模式下 app.getPath('exe') 指向临时解压目录，
-// 必须用 PORTABLE_EXECUTABLE_DIR 环境变量获取真正的 exe 所在目录。
 function initPortableUserData() {
-  // 优先使用 electron-builder portable 设置的环境变量
   let exeDir = process.env.PORTABLE_EXECUTABLE_DIR;
-
-  // fallback：尝试从 exe 路径获取（非 portable 模式或旧版 electron-builder）
   if (!exeDir) {
     try {
       exeDir = path.dirname(app.getPath('exe'));
@@ -19,11 +14,9 @@ function initPortableUserData() {
       return;
     }
   }
-
   if (!exeDir) return;
 
   const portableDataDir = path.join(exeDir, '.liang007-data');
-
   if (!fs.existsSync(portableDataDir)) {
     try {
       fs.mkdirSync(portableDataDir, { recursive: true });
@@ -32,7 +25,6 @@ function initPortableUserData() {
       return;
     }
   }
-
   app.setPath('userData', portableDataDir);
   console.log('[liang007] 便携模式：数据路径 →', portableDataDir);
 }
@@ -49,15 +41,14 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
-    autoHideMenuBar: true,
+    frame: false,
+    titleBarStyle: 'hidden',
     backgroundColor: '#0f172a',
     show: false,
   });
 
-  // 生产环境加载打包后的文件
   mainWindow.loadFile(path.join(__dirname, '../client/dist/index.html'));
 
-  // 窗口准备好后显示，避免白屏闪烁
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
@@ -67,8 +58,28 @@ function createWindow() {
   });
 }
 
+// ── 窗口控制 IPC ──────────────────────────────────────────────────────────────
+ipcMain.on('window-minimize', () => mainWindow?.minimize());
+ipcMain.on('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
+ipcMain.on('window-close', () => mainWindow?.close());
+
+// ── 双击标题栏切换最大化 ──────────────────────────────────────────────────────
+ipcMain.on('window-toggle-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+
 app.whenReady().then(() => {
-  // 便携模式：强制数据目录为 exe 同目录
   initPortableUserData();
   createWindow();
 });

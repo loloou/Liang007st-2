@@ -184,6 +184,13 @@ function App() {
   });
   const themeConfig = getThemeConfig(theme);
 
+  // ── Electron 环境检测：在 <html> 上添加 electron 类 ──────────────────────────
+  useEffect(() => {
+    if (window.electronAPI) {
+      document.documentElement.classList.add("electron");
+    }
+  }, []);
+
   // ── 清理超时的"生图中..."条目（超过5分钟自动标记为失败）──────────────
   useEffect(() => {
     const now = Date.now();
@@ -898,8 +905,41 @@ function App() {
       data-theme={themeConfig.id}
       style={{ "--accent": themeConfig.accentColor } as React.CSSProperties}
     >
+      {/* 自定义标题栏（无边框窗口，仅 Electron 显示） */}
+      <div
+        className="titlebar fixed top-0 left-0 right-0 z-50 items-center justify-between select-none glass-header"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <div className="flex items-center gap-2 px-4">
+          <span className="text-gradient text-[11px] font-bold tracking-wider">Liang007</span>
+        </div>
+        <div className="flex items-center h-full" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <button
+            className="h-full px-3 hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 transition-colors"
+            onClick={() => window.electronAPI?.minimize()}
+            aria-label="最小化"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2"><line x1="2" y1="6" x2="10" y2="6" /></svg>
+          </button>
+          <button
+            className="h-full px-3 hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 transition-colors"
+            onClick={() => window.electronAPI?.toggleMaximize()}
+            aria-label="最大化"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="2" y="2" width="8" height="8" rx="1" /></svg>
+          </button>
+          <button
+            className="h-full px-3 hover:bg-red-500/80 text-slate-400 hover:text-white transition-colors"
+            onClick={() => window.electronAPI?.close()}
+            aria-label="关闭"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="3" y1="3" x2="9" y2="9" /><line x1="9" y1="3" x2="3" y2="9" /></svg>
+          </button>
+        </div>
+      </div>
+
       {/* 顶部工具栏 */}
-      <header className="fixed top-0 left-0 right-0 z-30 h-14 flex items-center justify-between px-6 glass-header">
+      <header className="fixed top-8 left-0 right-0 z-30 h-14 flex items-center justify-between px-6 glass-header">
         <div className="flex items-center gap-4 text-sm">
           <span className="font-bold text-gradient text-base tracking-tight select-none">Liang007</span>
           <div className="h-4 w-px bg-white/10" />
