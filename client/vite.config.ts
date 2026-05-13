@@ -8,12 +8,19 @@ export default defineConfig({
     port: 5173,
     host: "0.0.0.0"
   },
-  base: './', // Electron 需要相对路径
+  base: './',
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
       input: resolve(__dirname, 'index.html'),
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'zustand': ['zustand'],
+        },
+      },
     },
+    chunkSizeWarningLimit: 400,
   },
 });

@@ -67,14 +67,13 @@ export class FPSCalculator {
     const delta = now - this.lastFrameTime;
     this.lastFrameTime = now;
 
-    // 添加新的帧时间
     this.frameTimes.push(delta);
     if (this.frameTimes.length > this.maxSamples) {
       this.frameTimes.shift();
     }
 
-    // 计算平均 FPS
-    if (this.frameTimes.length > 0) {
+    // 节流：每 3 帧更新一次，减少 re-render 频率
+    if (this.frameTimes.length % 3 === 0 && this.frameTimes.length > 0) {
       const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
       const fps = Math.round(1000 / avgFrameTime);
       this.onUpdate?.(fps);

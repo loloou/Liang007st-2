@@ -40,11 +40,16 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      spellcheck: false,
+      enableWebSQL: false,
+      backgroundThrottling: false,
     },
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0a0a0f',
     show: false,
+    // 性能优化
+    paintWhenInitiallyHidden: false,
   });
 
   mainWindow.loadFile(path.join(__dirname, '../client/dist/index.html'));
@@ -69,8 +74,6 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
 ipcMain.on('window-close', () => mainWindow?.close());
-
-// ── 双击标题栏切换最大化 ──────────────────────────────────────────────────────
 ipcMain.on('window-toggle-maximize', () => {
   if (mainWindow?.isMaximized()) {
     mainWindow.unmaximize();
