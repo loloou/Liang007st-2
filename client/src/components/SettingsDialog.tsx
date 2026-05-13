@@ -5,7 +5,7 @@
  * Image/Chat 模型列表、自动获取模型、模型选择弹窗、测试连接。
  */
 import React, { useState, useEffect } from "react";
-import { getApiConfig, saveApiConfig, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec } from "../api/settings";
+import { getApiConfig, saveApiConfig, addApiVendor, switchApiVendor, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec } from "../api/settings";
 import VendorManager from "./VendorManager";
 
 // ── 内联 API 函数 ──────────────────────────────────────────────────────────
@@ -265,19 +265,38 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                   </svg>
                 )}
                 {vendorDropdownOpen && cfgDraft.apiVendors?.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-lg border border-white/[0.08] bg-slate-900/98 shadow-xl max-h-40 overflow-y-auto">
-                    {cfgDraft.apiVendors.map((v) => (
-                      <button
-                        key={v.id}
-                        className="w-full px-3 py-1.5 text-left text-xs text-slate-300 hover:bg-white/[0.06] transition"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setGlobalSaveVendorName(v.name);
-                          setCfgDraft((prev) => ({ ...prev, globalBaseUrl: v.baseUrl, globalApiKey: v.apiKey || "" }));
-                          setVendorDropdownOpen(false);
-                        }}
-                      >{v.name}</button>
-                    ))}
+                  <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-lg border border-white/[0.08] bg-slate-900/98 shadow-xl max-h-48 overflow-y-auto">
+                    <div className="px-2 py-1 border-b border-white/[0.06]">
+                      <span className="text-[9px] text-slate-500 uppercase tracking-wider">已保存的供应商（点击切换）</span>
+                    </div>
+                    {cfgDraft.apiVendors.map((v) => {
+                      const isActive = cfgDraft.activeVendorId === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          className={`w-full px-3 py-1.5 text-left text-xs transition flex items-center gap-2 ${
+                            isActive ? "bg-primary-500/10 text-primary-400" : "text-slate-300 hover:bg-white/[0.06]"
+                          }`}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const updated = switchApiVendor(v.id);
+                            setGlobalSaveVendorName(v.name);
+                            setCfgDraft((prev) => ({
+                              ...prev,
+                              globalBaseUrl: v.baseUrl,
+                              globalApiKey: v.apiKey || "",
+                              activeVendorId: v.id,
+                              apiVendors: updated.apiVendors,
+                            }));
+                            setVendorDropdownOpen(false);
+                          }}
+                        >
+                          {isActive && <span className="text-[9px]">✓</span>}
+                          <span className="flex-1 truncate">{v.name}</span>
+                          <span className="text-[9px] text-slate-500 font-mono truncate max-w-[120px]">{v.baseUrl}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -318,6 +337,27 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                 }}
                 title="将 Global Config 同步到所有模型（仅未自定义的字段）"
               >同步</button>
+
+              {/* 保存为供应商 */}
+              <button
+                type="button"
+                className="px-2.5 py-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-[11px] text-emerald-400 hover:bg-emerald-500/15 transition flex-shrink-0"
+                onClick={() => {
+                  const name = globalSaveVendorName.trim() || cfgDraft.globalBaseUrl.replace(/^https?:\/\//, "").split("/")[0] || "未命名供应商";
+                  if (!cfgDraft.globalBaseUrl.trim()) return;
+                  const updated = addApiVendor({
+                    name,
+                    baseUrl: cfgDraft.globalBaseUrl.trim(),
+                    apiKey: cfgDraft.globalApiKey.trim() || undefined,
+                  });
+                  setCfgDraft((prev) => ({ ...prev, apiVendors: updated.apiVendors }));
+                  setGlobalSaveVendorName("");
+                  setSyncToast(true);
+                  setTimeout(() => setSyncToast(false), 2000);
+                }}
+                disabled={!cfgDraft.globalBaseUrl.trim()}
+                title="将当前 Base URL 和 API Key 保存为供应商"
+              >保存为供应商</button>
             </div>
             {syncToast && <p className="text-[10px] text-emerald-400 mt-1">✓ 已同步到所有模型</p>}
           </div>

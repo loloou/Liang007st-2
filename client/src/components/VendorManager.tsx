@@ -8,6 +8,7 @@ import React, { useState } from "react";
 import type { ApiConfig } from "../api/settings";
 import {
   saveApiConfig,
+  addApiVendor,
   setDefaultApiVendor,
   switchApiVendor,
   updateApiVendor,
@@ -28,6 +29,11 @@ const VendorManager: React.FC<Props> = ({ open, onClose, cfgDraft, setCfgDraft }
   const [urlInput, setUrlInput] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [remarkInput, setRemarkInput] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addUrl, setAddUrl] = useState("");
+  const [addApiKey, setAddApiKey] = useState("");
+  const [addRemark, setAddRemark] = useState("");
 
   if (!open) return null;
 
@@ -60,6 +66,62 @@ const VendorManager: React.FC<Props> = ({ open, onClose, cfgDraft, setCfgDraft }
           <button onClick={handleClose} className="p-1.5 rounded-lg hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors" aria-label="关闭">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
+        </div>
+
+        {/* 新增供应商 */}
+        <div className="px-4 pt-3 flex-shrink-0">
+          {!showAddForm ? (
+            <button
+              className="w-full px-3 py-2 rounded-lg border border-dashed border-emerald-500/20 text-emerald-400 text-xs hover:bg-emerald-500/10 transition flex items-center justify-center gap-1.5"
+              onClick={() => setShowAddForm(true)}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              新增供应商
+            </button>
+          ) : (
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 mb-2">
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">供应商名称 *</label>
+                  <input type="text" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400" value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="如：我的API" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">Base URL *</label>
+                  <input type="url" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 font-mono" value={addUrl} onChange={(e) => setAddUrl(e.target.value)} placeholder="https://api.example.com" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">API Key（可选）</label>
+                  <input type="password" autoComplete="off" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 font-mono" value={addApiKey} onChange={(e) => setAddApiKey(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-0.5 font-medium">备注（可选）</label>
+                  <input type="text" className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400" value={addRemark} onChange={(e) => setAddRemark(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={!addName.trim() || !addUrl.trim()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 hover:bg-emerald-600 text-white transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  onClick={() => {
+                    if (!addName.trim() || !addUrl.trim()) return;
+                    const updated = addApiVendor({
+                      name: addName.trim(),
+                      baseUrl: addUrl.trim(),
+                      apiKey: addApiKey.trim() || undefined,
+                      remark: addRemark.trim() || undefined,
+                    });
+                    setCfgDraft((d) => ({ ...d, apiVendors: updated.apiVendors }));
+                    setAddName(""); setAddUrl(""); setAddApiKey(""); setAddRemark("");
+                    setShowAddForm(false);
+                  }}
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  保存
+                </button>
+                <button className="px-3 py-1.5 rounded-lg text-xs border border-white/[0.08] text-slate-500 hover:bg-white/[0.08] transition" onClick={() => { setShowAddForm(false); setAddName(""); setAddUrl(""); setAddApiKey(""); setAddRemark(""); }}>取消</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 供应商列表 */}
