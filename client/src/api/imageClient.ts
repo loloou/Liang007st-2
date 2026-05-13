@@ -700,7 +700,8 @@ async function doFetchAndParse(
         const cleanMsg = geminiErrorText || rawText.slice(0, 500);
         console.warn("[Gemini 图片降级] 检测到模型不支持图片输入:", cleanMsg.slice(0, 200));
         return errResult(endpoint, spec, requestBodyForLog,
-          cleanMsg, resp.status, rawText.slice(0, 500));
+          "当前模型不支持图片输入（含参考图）。请在设置中选择支持图片的模型，或去掉参考图后重试。",
+          resp.status, rawText.slice(0, 500));
       }
     }
     const hint = spec === "gemini" ? "期望 candidates[].content.parts[].inlineData.data" : "期望 data[].url 或 images[]";

@@ -727,6 +727,13 @@
 [data-theme="dawn"] .border-amber-500\/20 { border-color: rgba(217,119,6,0.15); }
 [data-theme="dawn"] .border-amber-500\/30 { border-color: rgba(217,119,6,0.2); }
 
+/* Dawn: override remaining dark utility classes */
+[data-theme="dawn"] .bg-slate-900\/95 { background: rgba(247,244,239,0.95); }
+[data-theme="dawn"] .bg-slate-900\/98 { background: rgba(247,244,239,0.98); }
+[data-theme="dawn"] .bg-slate-900\/60 { background: rgba(240,236,228,0.6); }
+[data-theme="dawn"] .bg-slate-800 { background: #ede8df; }
+[data-theme="dawn"] .bg-slate-700 { background: #e4dfd5; }
+
 /* --- 炽焰 (Ember) --- */
 [data-theme="ember"] body {
   background: #141010;

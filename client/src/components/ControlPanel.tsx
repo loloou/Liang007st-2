@@ -140,9 +140,9 @@ const ControlPanel: React.FC<Props> = ({
                 </svg>
               </button>
               {showHistoryDropdown && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-10 max-h-40 overflow-y-auto app-scrollbar border border-white/[0.06] rounded-lg bg-slate-900/95 backdrop-blur shadow-xl">
+                <div className="absolute left-0 right-0 top-full mt-1 z-10 max-h-40 overflow-y-auto app-scrollbar border border-white/[0.06] rounded-lg glass-popup shadow-xl">
                   {/* 批量操作栏 */}
-                  <div className="sticky top-0 flex items-center gap-1 px-2 py-1.5 border-b border-white/[0.06] bg-slate-900/98">
+                  <div className="sticky top-0 flex items-center gap-1 px-2 py-1.5 border-b border-white/[0.06] bg-white/[0.04]">
                     <input
                       type="checkbox"
                       className="w-3 h-3 cursor-pointer"

@@ -44,13 +44,12 @@ const VendorManager: React.FC<Props> = ({ open, onClose, cfgDraft, setCfgDraft }
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: "rgba(15,23,42,0.45)" }}
+      className="overlay-dark fixed inset-0 z-[9999] flex items-center justify-center"
       onClick={handleClose}
     >
       <div
-        className="rounded-2xl shadow-2xl flex flex-col overflow-hidden popup-enter"
-        style={{ width: 580, maxWidth: "96vw", maxHeight: "80vh", background: "rgba(18, 18, 26, 0.95)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
+        className="glass-popup rounded-2xl shadow-2xl flex flex-col overflow-hidden popup-enter"
+        style={{ width: 580, maxWidth: "96vw", maxHeight: "80vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题栏 */}

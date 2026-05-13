@@ -2100,7 +2100,7 @@ export default function PromptOptimizerDialog({
                   {promptScore.breakdown.map(b => (
                     <div key={b.label} className="flex items-center gap-2">
                       <span className="text-[10px] text-slate-500 w-16 flex-shrink-0">{b.label}</span>
-                      <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             b.score / b.max >= 0.8 ? "bg-emerald-500/100" :
@@ -2330,8 +2330,7 @@ export default function PromptOptimizerDialog({
         ═══════════════════════════════════════════════════════ */}
         {showTemplateManager && (
           <div
-            className="fixed inset-0 z-[10000] flex items-center justify-center"
-            style={{ background: "rgba(15,23,42,0.5)" }}
+            className="overlay-dark fixed inset-0 z-[10000] flex items-center justify-center"
             onClick={() => { setShowTemplateManager(false); setEditingTemplate(null); setShowTemplateEdit(false); }}
           >
             <div
@@ -2515,8 +2514,7 @@ export default function PromptOptimizerDialog({
         ═══════════════════════════════════════════════════════ */}
         {showHistory && (
           <div
-            className="fixed inset-0 z-[10000] flex items-center justify-center"
-            style={{ background: "rgba(15,23,42,0.5)" }}
+            className="overlay-dark fixed inset-0 z-[10000] flex items-center justify-center"
             onClick={() => setShowHistory(false)}
           >
             <div
@@ -2574,8 +2572,7 @@ export default function PromptOptimizerDialog({
         ═══════════════════════════════════════════════════════ */}
         {showFavorites && (
           <div
-            className="fixed inset-0 z-[10000] flex items-center justify-center"
-            style={{ background: "rgba(15,23,42,0.5)" }}
+            className="overlay-dark fixed inset-0 z-[10000] flex items-center justify-center"
             onClick={() => setShowFavorites(false)}
           >
             <div
@@ -2628,8 +2625,7 @@ export default function PromptOptimizerDialog({
         ═══════════════════════════════════════════════════════ */}
         {showShortcuts && (
           <div
-            className="fixed inset-0 z-[10000] flex items-center justify-center"
-            style={{ background: "rgba(15,23,42,0.5)" }}
+            className="overlay-dark fixed inset-0 z-[10000] flex items-center justify-center"
             onClick={() => setShowShortcuts(false)}
           >
             <div

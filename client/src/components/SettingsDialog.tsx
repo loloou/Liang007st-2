@@ -265,7 +265,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                   </svg>
                 )}
                 {vendorDropdownOpen && cfgDraft.apiVendors?.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-lg border border-white/[0.08] bg-slate-900/98 shadow-xl max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-lg border border-white/[0.08] glass-popup shadow-xl max-h-48 overflow-y-auto">
                     <div className="px-2 py-1 border-b border-white/[0.06]">
                       <span className="text-[9px] text-slate-500 uppercase tracking-wider">已保存的供应商（点击切换）</span>
                     </div>

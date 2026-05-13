@@ -131,7 +131,7 @@ const ResultPanel: React.FC<Props> = ({
                   {/* 生成中遮罩 */}
                   {status === "running" && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
-                      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+                      <div className="absolute inset-0 overlay-dark backdrop-blur-sm" />
                       <div className="relative z-10 flex flex-col items-center gap-3 w-full px-6 max-w-xs">
                         <div className="flex items-center gap-2 text-white">
                           <svg className="animate-spin w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24">
