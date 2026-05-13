@@ -466,24 +466,6 @@
   .overlay-dark {
     background: rgba(0, 0, 0, 0.7);
   }
-
-  /* 自定义标题栏 — 仅 Electron 环境显示 */
-  .titlebar {
-    height: 32px;
-    display: none;
-  }
-
-  html.electron .titlebar {
-    display: flex;
-  }
-
-  html.electron main {
-    padding-top: 104px !important;
-  }
-
-  html:not(.electron) main {
-    padding-top: 72px !important;
-  }
 }
 
 /* ═══════════════════════════════════════════════════
