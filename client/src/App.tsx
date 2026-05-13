@@ -939,23 +939,25 @@ function App() {
             >
               关于
             </button>
-            <button
-              className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${whiteboardOpen ? "ring-1 ring-primary-500/30 text-primary-400" : ""}`}
-              onClick={() => setWhiteboardOpen(!whiteboardOpen)}
-              aria-label={whiteboardOpen ? "关闭无限画布" : "打开无限画布"}
-            >
-              无限画布
-            </button>
           </div>
-        <button
-          ref={perfBtnRef}
-          className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${
-            performanceMonitorOpen ? "ring-1 ring-primary-500/30" : ""
-          }`}
-          onClick={handleOpenPerformanceMonitor}
-        >
-          性能
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${whiteboardOpen ? "ring-1 ring-primary-500/30 text-primary-400" : ""}`}
+            onClick={() => setWhiteboardOpen(!whiteboardOpen)}
+            aria-label={whiteboardOpen ? "关闭无限画布" : "打开无限画布"}
+          >
+            无限画布
+          </button>
+          <button
+            ref={perfBtnRef}
+            className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${
+              performanceMonitorOpen ? "ring-1 ring-primary-500/30" : ""
+            }`}
+            onClick={handleOpenPerformanceMonitor}
+          >
+            性能
+          </button>
+        </div>
       </header>
 
       {/* 主题菜单 */}
