@@ -35,7 +35,7 @@ function createWindow() {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    icon: path.join(__dirname, '../logo.png'),
+    icon: path.join(__dirname, '../logo.ico'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -48,13 +48,23 @@ function createWindow() {
     titleBarStyle: 'hidden',
     backgroundColor: '#0a0a0f',
     show: false,
-    // 性能优化
-    paintWhenInitiallyHidden: false,
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../client/dist/index.html'));
+  const htmlPath = path.join(__dirname, '../client/dist/index.html');
+  console.log('[liang007] 加载页面:', htmlPath);
+  console.log('[liang007] 文件存在:', fs.existsSync(htmlPath));
+
+  mainWindow.loadFile(htmlPath).catch((err) => {
+    console.error('[liang007] 页面加载失败:', err.message);
+  });
 
   mainWindow.once('ready-to-show', () => {
+    console.log('[liang007] 窗口就绪，显示窗口');
+    mainWindow?.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('[liang007] 页面加载错误:', errorCode, errorDescription);
     mainWindow?.show();
   });
 
