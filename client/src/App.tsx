@@ -502,7 +502,11 @@ function App() {
           setTimeout(() => setError((prev) => prev === warnMsg ? null : prev), 8000);
         } else {
           // 重试也失败，说明模型本身可能不支持图片生成
-          const detailedMsg = errMsg.includes("cannot read") || errMsg.includes("不支持图片")
+          const detailedMsg = result.error && (
+            result.error.toLowerCase().includes("cannot read") ||
+            result.error.toLowerCase().includes("不支持图片") ||
+            result.error.toLowerCase().includes("inform the user")
+          )
             ? "当前模型不支持图片输入。请在设置中选择支持图片的模型，或去掉参考图后重试。"
             : result.error;
           result.error = detailedMsg;
