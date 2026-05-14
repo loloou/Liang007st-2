@@ -227,6 +227,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
+        zoomOnDoubleClick={false}
         defaultEdgeOptions={{
           type: "canvasEdge",
           animated: false,
