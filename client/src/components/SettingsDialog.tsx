@@ -498,7 +498,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
             )}
 
             {settingsTab === "chat" && (
-              <div className="grid grid-cols-[1fr_260px] gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 {/* 左侧：Chat 模型列表 */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
