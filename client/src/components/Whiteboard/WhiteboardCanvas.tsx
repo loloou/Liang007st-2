@@ -153,20 +153,12 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
     setQuickConnect(null);
   }, [setContextMenu]);
 
-  const handlePaneDoubleClick = useCallback((event: Event) => {
-    const e = event as MouseEvent;
-    const target = e.target as HTMLElement;
+  const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
+    const target = event.target as HTMLElement;
     if (target.closest(".react-flow__node") || target.closest(".react-flow__handle") || target.closest("[data-testid]")) return;
-    const flowPos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    setDblClickMenu({ x: e.clientX, y: e.clientY, flowX: flowPos.x, flowY: flowPos.y });
+    const flowPos = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    setDblClickMenu({ x: event.clientX, y: event.clientY, flowX: flowPos.x, flowY: flowPos.y });
   }, [rf]);
-
-  useEffect(() => {
-    const pane = containerRef.current?.querySelector(".react-flow__pane");
-    if (!pane) return;
-    pane.addEventListener("dblclick", handlePaneDoubleClick);
-    return () => pane.removeEventListener("dblclick", handlePaneDoubleClick);
-  }, [handlePaneDoubleClick]);
 
   const handleConnectStart = useCallback((_event: unknown, params: { nodeId?: string | null }) => {
     connectingSourceRef.current = params.nodeId || null;
@@ -212,6 +204,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
       className="fixed inset-0 z-[9999] bg-[#0a0a0f]"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
+      onDoubleClick={handlePaneDoubleClick}
     >
       <ReactFlow
         nodes={nodes}
