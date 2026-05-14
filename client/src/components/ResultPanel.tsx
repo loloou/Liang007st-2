@@ -116,17 +116,18 @@ const ResultPanel: React.FC<Props> = ({
                   onClick={() => { if (status !== "running") setPreviewImage(activeImg); }}
                 >
                   <img
+                    key={`main-${safeIdx}`}
                     src={activeImgUrl}
                     alt=""
                     className={`w-full h-full object-contain ${status === "running" ? "opacity-40 scale-105" : ""} transition-all duration-300`}
                     draggable={false}
                     onError={(e) => {
-                      const parent = e.currentTarget.parentElement;
-                      if (parent) {
-                        parent.innerHTML = '<div class="flex items-center justify-center w-full h-full text-slate-400">图片加载失败</div>';
-                      }
+                      e.currentTarget.style.display = 'none';
+                      const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (sibling) sibling.style.display = 'flex';
                     }}
                   />
+                  <div className="hidden items-center justify-center w-full h-full text-slate-400">图片加载失败</div>
 
                   {/* 生成中遮罩 */}
                   {status === "running" && (

@@ -1432,7 +1432,6 @@ function App() {
                                 historySelected.has(entry.id) ? "ring-2 ring-primary-500" : ""
                               }`}
                               onClick={() => {
-                                // 批量模式：切换选择；非批量：只查看，不填入提示词
                                 if (historyBatchMode) {
                                   setHistorySelected(prev => {
                                     const next = new Set(prev);
@@ -1443,6 +1442,10 @@ function App() {
                                     }
                                     return next;
                                   });
+                                } else if (firstImg) {
+                                  setResults(entry.results);
+                                  setResultActiveIdx(0);
+                                  setHistoryPanelOpen(false);
                                 }
                               }}
                               onDoubleClick={(e) => {
@@ -1522,13 +1525,16 @@ function App() {
                           historySelected.has(entry.id) ? "bg-primary-500/20 ring-1 ring-primary-400/40" : ""
                         } ${historyBatchMode ? "pl-3" : ""}`}
                         onClick={() => {
-                          // 批量模式：切换选择；非批量：只查看，不填入提示词
                           if (historyBatchMode) {
                             setHistorySelected(prev => {
                               const next = new Set(prev);
                               if (next.has(entry.id)) { next.delete(entry.id); } else { next.add(entry.id); }
                               return next;
                             });
+                          } else if (firstImg) {
+                            setResults(entry.results);
+                            setResultActiveIdx(0);
+                            setHistoryPanelOpen(false);
                           }
                         }}
                         onDoubleClick={() => {
