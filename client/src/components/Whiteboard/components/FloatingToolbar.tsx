@@ -33,9 +33,11 @@ const TEMPLATES = [
     name: "文生图",
     desc: "提示词 → AI 生成",
     icon: "✨",
-    create: (addNode: ReturnType<typeof useCanvasStore.getState>["addNode"], onConnect: ReturnType<typeof useCanvasStore.getState>["onConnect"]) => {
-      const textId = addNode("text", { x: 100, y: 200 }, { label: "提示词", prompt: "一只可爱的猫咪，写实风格" });
-      const genId = addNode("generate", { x: 420, y: 200 }, { label: "AI 生成" });
+    create: (addNode: ReturnType<typeof useCanvasStore.getState>["addNode"], onConnect: ReturnType<typeof useCanvasStore.getState>["onConnect"], center?: { x: number; y: number }) => {
+      const cx = center?.x ?? 200;
+      const cy = center?.y ?? 200;
+      const textId = addNode("text", { x: cx - 160, y: cy }, { label: "提示词", prompt: "一只可爱的猫咪，写实风格" });
+      const genId = addNode("generate", { x: cx + 160, y: cy }, { label: "AI 生成" });
       setTimeout(() => onConnect({ source: textId, target: genId, sourceHandle: null, targetHandle: null }), 50);
     },
   },
@@ -44,10 +46,12 @@ const TEMPLATES = [
     name: "图生图",
     desc: "图片 + 提示词 → AI 生成",
     icon: "🖼️",
-    create: (addNode: ReturnType<typeof useCanvasStore.getState>["addNode"], onConnect: ReturnType<typeof useCanvasStore.getState>["onConnect"]) => {
-      const imgId = addNode("image", { x: 80, y: 150 }, { label: "参考图", width: 200, height: 200 });
-      const textId = addNode("text", { x: 80, y: 390 }, { label: "提示词", prompt: "保持风格，改变背景为星空" });
-      const genId = addNode("generate", { x: 400, y: 260 }, { label: "AI 生成" });
+    create: (addNode: ReturnType<typeof useCanvasStore.getState>["addNode"], onConnect: ReturnType<typeof useCanvasStore.getState>["onConnect"], center?: { x: number; y: number }) => {
+      const cx = center?.x ?? 200;
+      const cy = center?.y ?? 200;
+      const imgId = addNode("image", { x: cx - 160, y: cy - 90 }, { label: "参考图", width: 200, height: 200 });
+      const textId = addNode("text", { x: cx - 160, y: cy + 130 }, { label: "提示词", prompt: "保持风格，改变背景为星空" });
+      const genId = addNode("generate", { x: cx + 160, y: cy }, { label: "AI 生成" });
       setTimeout(() => {
         onConnect({ source: imgId, target: genId, sourceHandle: null, targetHandle: null });
         onConnect({ source: textId, target: genId, sourceHandle: null, targetHandle: null });
@@ -59,11 +63,13 @@ const TEMPLATES = [
     name: "串联生成",
     desc: "生成 → 变体 → 放大",
     icon: "⛓️",
-    create: (addNode: ReturnType<typeof useCanvasStore.getState>["addNode"], onConnect: ReturnType<typeof useCanvasStore.getState>["onConnect"]) => {
-      const textId = addNode("text", { x: 60, y: 200 }, { label: "提示词", prompt: "赛博朋克城市夜景" });
-      const gen1Id = addNode("generate", { x: 340, y: 200 }, { label: "初稿生成" });
-      const imgId = addNode("image", { x: 640, y: 200 }, { label: "结果图", width: 200, height: 200 });
-      const gen2Id = addNode("generate", { x: 900, y: 200 }, { label: "变体生成" });
+    create: (addNode: ReturnType<typeof useCanvasStore.getState>["addNode"], onConnect: ReturnType<typeof useCanvasStore.getState>["onConnect"], center?: { x: number; y: number }) => {
+      const cx = center?.x ?? 200;
+      const cy = center?.y ?? 200;
+      const textId = addNode("text", { x: cx - 300, y: cy }, { label: "提示词", prompt: "赛博朋克城市夜景" });
+      const gen1Id = addNode("generate", { x: cx - 60, y: cy }, { label: "初稿生成" });
+      const imgId = addNode("image", { x: cx + 180, y: cy }, { label: "结果图", width: 200, height: 200 });
+      const gen2Id = addNode("generate", { x: cx + 440, y: cy }, { label: "变体生成" });
       setTimeout(() => {
         onConnect({ source: textId, target: gen1Id, sourceHandle: null, targetHandle: null });
         onConnect({ source: gen1Id, target: imgId, sourceHandle: null, targetHandle: null });
@@ -123,7 +129,8 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ onClose }) => {
   const handleLoadTemplate = (tpl: typeof TEMPLATES[0]) => {
     if (nodes.length > 0 && !confirm("加载模板会清空当前画布，确定继续？")) return;
     clearCanvas();
-    setTimeout(() => tpl.create(addNode, onConnect), 100);
+    const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    setTimeout(() => tpl.create(addNode, onConnect, c), 100);
     setShowTemplates(false);
   };
 
@@ -179,7 +186,10 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({ onClose }) => {
           {NODE_TYPES.map((t) => (
             <button
               key={t.kind}
-              onClick={() => addNode(t.kind)}
+              onClick={() => {
+                const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+                addNode(t.kind, { x: c.x, y: c.y });
+              }}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border text-xs font-medium transition ${t.color}`}
             >
               {t.icon}

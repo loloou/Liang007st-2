@@ -446,7 +446,8 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
           },
         ];
         const handleAdd = (kind: "image" | "text" | "generate") => {
-          addNode(kind, { x: dblClickMenu.flowX, y: dblClickMenu.flowY });
+          const center = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+          addNode(kind, { x: center.x, y: center.y });
           setDblClickMenu(null);
         };
         // 防止菜单超出屏幕
@@ -509,9 +510,9 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
             {/* 快速启动模板 */}
             <div className="grid grid-cols-3 gap-2 mb-5">
               {[
-                { icon: "✨", label: "文生图", desc: "输入提示词生成图片", action: () => { const t = useCanvasStore.getState(); const tid = t.addNode("text", { x: 100, y: 200 }, { label: "提示词", prompt: "一只可爱的猫咪，写实风格" }); const gid = t.addNode("generate", { x: 420, y: 200 }, { label: "AI 生成" }); setTimeout(() => t.onConnect({ source: tid, target: gid, sourceHandle: null, targetHandle: null }), 50); } },
-                { icon: "🖼️", label: "图生图", desc: "上传图片生成变体", action: () => { const t = useCanvasStore.getState(); const iid = t.addNode("image", { x: 80, y: 200 }, { label: "参考图", width: 200, height: 200 }); const gid = t.addNode("generate", { x: 380, y: 200 }, { label: "AI 生成" }); setTimeout(() => t.onConnect({ source: iid, target: gid, sourceHandle: null, targetHandle: null }), 50); } },
-                { icon: "⛓️", label: "串联工作流", desc: "多步骤生成流程", action: () => { const t = useCanvasStore.getState(); const tid = t.addNode("text", { x: 60, y: 200 }, { label: "提示词", prompt: "赛博朋克城市夜景" }); const g1 = t.addNode("generate", { x: 340, y: 200 }, { label: "初稿" }); const g2 = t.addNode("generate", { x: 640, y: 200 }, { label: "变体" }); setTimeout(() => { t.onConnect({ source: tid, target: g1, sourceHandle: null, targetHandle: null }); t.onConnect({ source: g1, target: g2, sourceHandle: null, targetHandle: null }); }, 50); } },
+                { icon: "✨", label: "文生图", desc: "输入提示词生成图片", action: () => { const t = useCanvasStore.getState(); const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); const tid = t.addNode("text", { x: c.x - 160, y: c.y }, { label: "提示词", prompt: "一只可爱的猫咪，写实风格" }); const gid = t.addNode("generate", { x: c.x + 160, y: c.y }, { label: "AI 生成" }); setTimeout(() => t.onConnect({ source: tid, target: gid, sourceHandle: null, targetHandle: null }), 50); } },
+                { icon: "🖼️", label: "图生图", desc: "上传图片生成变体", action: () => { const t = useCanvasStore.getState(); const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); const iid = t.addNode("image", { x: c.x - 160, y: c.y }, { label: "参考图", width: 200, height: 200 }); const gid = t.addNode("generate", { x: c.x + 160, y: c.y }, { label: "AI 生成" }); setTimeout(() => t.onConnect({ source: iid, target: gid, sourceHandle: null, targetHandle: null }), 50); } },
+                { icon: "⛓️", label: "串联工作流", desc: "多步骤生成流程", action: () => { const t = useCanvasStore.getState(); const c = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }); const tid = t.addNode("text", { x: c.x - 240, y: c.y }, { label: "提示词", prompt: "赛博朋克城市夜景" }); const g1 = t.addNode("generate", { x: c.x, y: c.y }, { label: "初稿" }); const g2 = t.addNode("generate", { x: c.x + 240, y: c.y }, { label: "变体" }); setTimeout(() => { t.onConnect({ source: tid, target: g1, sourceHandle: null, targetHandle: null }); t.onConnect({ source: g1, target: g2, sourceHandle: null, targetHandle: null }); }, 50); } },
               ].map((tpl) => (
                 <button
                   key={tpl.label}
