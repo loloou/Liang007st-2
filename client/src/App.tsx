@@ -954,7 +954,7 @@ function App() {
               关于
             </button>
           </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <button
             className={`px-3 py-1.5 rounded-lg text-xs btn-hover-lift glass-button transition-all ${whiteboardOpen ? "ring-1 ring-primary-500/30 text-primary-400" : ""}`}
             onClick={() => setWhiteboardOpen(!whiteboardOpen)}
