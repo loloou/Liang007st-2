@@ -191,17 +191,17 @@ function App() {
     }
   }, []);
 
-  // ── 清理超时的"生图中..."条目（超过5分钟自动标记为失败）──────────────
+  // ── 清理超时的"生图中..."条目（超过12分钟自动标记为失败）──────────────
   useEffect(() => {
     const now = Date.now();
-    const TIMEOUT = 5 * 60 * 1000; // 5分钟超时
+    const TIMEOUT = 12 * 60 * 1000; // 12分钟超时
     const hasStuck = generationHistory.some(
       entry => entry.results.length === 0 && !entry.error && entry.createdAt && (now - entry.createdAt > TIMEOUT)
     );
     if (hasStuck) {
       setGenerationHistory(prev => prev.map(entry => {
         if (entry.results.length === 0 && !entry.error && entry.createdAt && (now - entry.createdAt > TIMEOUT)) {
-          return { ...entry, error: "生成超时（超过5分钟）" };
+          return { ...entry, error: "生成超时（超过12分钟）" };
         }
         return entry;
       }));
@@ -420,7 +420,7 @@ function App() {
     if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
     elapsedTimerRef.current = setInterval(() => {
       const current = useGenerationStore.getState();
-      if (current.elapsedSeconds < 300) { // 5分钟超时
+      if (current.elapsedSeconds < 720) { // 12分钟超时
         useGenerationStore.setState({ elapsedSeconds: current.elapsedSeconds + 1 });
       }
     }, 1000);
@@ -1461,7 +1461,7 @@ function App() {
                                       endpoint: `生成图片${elapsedStr}`,
                                       error: entry.error,
                                       request: `[模型] ${entry.model}\n[尺寸] ${entry.width}×${entry.height}\n[批次] ${entry.batchSize}\n[正向提示词]\n${entry.prompt}${entry.negativePrompt ? `\n\n[反向提示词]\n${entry.negativePrompt}` : ""}`,
-                                      httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（5分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || Date.now()).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
+                                      httpErrorBody: `错误类型: ${entry.error?.includes("超时") ? "生成超时（12分钟）" : "生成失败"}\n记录时间: ${new Date(entry.createdAt || Date.now()).toLocaleString()}${entry.createdAt ? `\n开始时间: ${new Date(entry.createdAt).toLocaleString()}` : ""}${elapsedMs ? `\n总耗时: ${Math.floor(elapsedMs / 60000)}分${Math.floor((elapsedMs % 60000) / 1000)}秒` : ""}`,
                                     };
                                     useUiStore.getState().setSelectedLogEntry(errorLog);
                                     useUiStore.getState().setShowDetailedLog(true);
