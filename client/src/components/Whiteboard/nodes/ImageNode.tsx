@@ -1,4 +1,4 @@
-import React, { memo, useState } from "react";
+import React, { memo, useRef, useState } from "react";
 import { Handle, Position, type NodeProps, NodeResizer } from "@xyflow/react";
 import { useCanvasStore, type CanvasNodeData } from "../store/useCanvasStore";
 import { safeUrl } from "../../../utils/safeUrl";
@@ -16,6 +16,25 @@ const ImageNode: React.FC<NodeProps> = ({ id, data, selected }) => {
   const [urlInput, setUrlInput] = useState(d.imageUrl || "");
   const [editingLabel, setEditingLabel] = useState(false);
   const [labelInput, setLabelInput] = useState(d.label || "图片");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        updateNode(id, { imageUrl: reader.result, label: file.name.replace(/\.[^.]+$/, ""), lastError: undefined });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleDoubleClickUpload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fileInputRef.current?.click();
+  };
 
   const handleSaveUrl = () => {
     if (urlInput.trim()) updateNode(id, { imageUrl: urlInput.trim(), lastError: undefined });
@@ -153,14 +172,20 @@ const ImageNode: React.FC<NodeProps> = ({ id, data, selected }) => {
       </div>
 
       {d.imageUrl ? (
-        <div className="relative group cursor-pointer" style={{ height: "calc(100% - 32px)" }} onClick={(e) => { e.stopPropagation(); setLightbox(d.imageUrl!); }}>
+        <div className="relative group cursor-pointer" style={{ height: "calc(100% - 32px)" }} onClick={(e) => { e.stopPropagation(); setLightbox(d.imageUrl!); }} onDoubleClick={handleDoubleClickUpload}>
            <img src={safeUrl(d.imageUrl)} alt="" className="w-full h-full object-cover bg-slate-950" draggable={false} onError={() => updateNode(id, { lastError: "图片加载失败" })} />
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
             <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
           </div>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
         </div>
       ) : (
-        <div className="flex items-center justify-center bg-slate-950/50 border-2 border-dashed border-white/[0.06] p-3" style={{ height: "calc(100% - 32px)" }}>
+        <div
+          className="flex items-center justify-center bg-slate-950/50 border-2 border-dashed border-white/[0.06] p-3 cursor-pointer"
+          style={{ height: "calc(100% - 32px)" }}
+          onDoubleClick={handleDoubleClickUpload}
+        >
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
           {editingUrl ? (
             <div className="w-full space-y-2" onClick={(e) => e.stopPropagation()}>
               <input type="text" placeholder="粘贴图片 URL..." value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveUrl(); if (e.key === "Escape") setEditingUrl(false); }} autoFocus className="w-full px-2 py-1.5 text-[10px] bg-slate-800 border border-white/[0.08] rounded-lg text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500/30" />
@@ -174,7 +199,7 @@ const ImageNode: React.FC<NodeProps> = ({ id, data, selected }) => {
               <svg className="w-8 h-8 text-slate-600 mx-auto mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <p className="text-[9px] text-slate-600 mb-2">拖入图片或</p>
+              <p className="text-[9px] text-slate-600 mb-2">双击上传图片</p>
               <div className="flex gap-1 justify-center">
                 <button
                   onClick={(e) => { e.stopPropagation(); setEditingUrl(true); setUrlInput(""); }}
