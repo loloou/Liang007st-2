@@ -206,16 +206,6 @@ const ResultPanel: React.FC<Props> = ({
                           >
                             <img src={safeUrl(thumbUrl)} alt="" className="w-full h-full object-cover" />
                           </button>
-                          <button
-                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center transition text-xs leading-none"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setResults((prev) => prev.filter((_, i) => i !== idx));
-                              if (idx < safeIdx) setResultActiveIdx(safeIdx - 1);
-                              else if (idx === safeIdx && results.length > 1) setResultActiveIdx(Math.min(safeIdx, results.length - 2));
-                            }}
-                            title="删除此图片"
-                          >×</button>
                         </div>
                       );
                     })}

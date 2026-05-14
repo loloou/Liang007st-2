@@ -1443,9 +1443,10 @@ function App() {
                                     return next;
                                   });
                                 } else if (firstImg) {
-                                  setResults(entry.results);
-                                  setResultActiveIdx(0);
-                                  setHistoryPanelOpen(false);
+                                  if (status !== "running") {
+                                    setResults(entry.results);
+                                    setResultActiveIdx(0);
+                                  }
                                 }
                               }}
                               onDoubleClick={(e) => {
@@ -1532,9 +1533,10 @@ function App() {
                               return next;
                             });
                           } else if (firstImg) {
-                            setResults(entry.results);
-                            setResultActiveIdx(0);
-                            setHistoryPanelOpen(false);
+                            if (status !== "running") {
+                              setResults(entry.results);
+                              setResultActiveIdx(0);
+                            }
                           }
                         }}
                         onDoubleClick={() => {

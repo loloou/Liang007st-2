@@ -225,6 +225,8 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
         edgeTypes={edgeTypes}
         fitView
         zoomOnDoubleClick={false}
+        selectionKeyCode="Control"
+        panOnDrag={[1, 2]}
         defaultEdgeOptions={{
           type: "canvasEdge",
           animated: false,
@@ -446,8 +448,7 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
           },
         ];
         const handleAdd = (kind: "image" | "text" | "generate") => {
-          const center = rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-          addNode(kind, { x: center.x, y: center.y });
+          addNode(kind, { x: dblClickMenu.flowX, y: dblClickMenu.flowY });
           setDblClickMenu(null);
         };
         // 防止菜单超出屏幕

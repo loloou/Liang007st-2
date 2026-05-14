@@ -6,7 +6,8 @@
   },
   "files": [
     "electron/**/*",
-    "client/dist/**/*"
+    "client/dist/**/*",
+    "logo.ico"
   ],
   "win": {
     "target": [
