@@ -13,6 +13,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, nodeId, onClose }) => {
   const ref = useRef<HTMLDivElement>(null);
   const node = nodes.find((n) => n.id === nodeId);
   const kind = node?.data?.kind as string | undefined;
+  const selectedNodes = nodes.filter((n) => n.selected);
+  const isMultiSelect = selectedNodes.length > 1;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -20,21 +22,27 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, nodeId, onClose }) => {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const deleteSelected = () => {
+    const ids = isMultiSelect ? selectedNodes.map((n) => n.id) : [nodeId];
+    ids.forEach((id) => removeNode(id));
+    onClose();
+  };
+
   const items = [
-    ...(kind === "generate" ? [{
+    ...(kind === "generate" && !isMultiSelect ? [{
       label: "▶ 执行生成",
       color: "text-purple-400",
       action: () => { runGenerate(nodeId); onClose(); },
     }] : []),
-    {
+    ...(!isMultiSelect ? [{
       label: "📋 复制节点",
       color: "text-slate-300",
       action: () => { duplicateNode(nodeId); onClose(); },
-    },
+    }] : []),
     {
-      label: "🗑 删除节点",
+      label: isMultiSelect ? `🗑 删除 ${selectedNodes.length} 个节点` : "🗑 删除节点",
       color: "text-red-400",
-      action: () => { removeNode(nodeId); onClose(); },
+      action: deleteSelected,
     },
   ];
 
@@ -45,7 +53,9 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, nodeId, onClose }) => {
       style={{ left: x, top: y }}
     >
       <div className="px-3 py-1 border-b border-white/[0.06] mb-1">
-        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{kind || "节点"}</span>
+        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">
+          {isMultiSelect ? `已选 ${selectedNodes.length} 个节点` : (kind || "节点")}
+        </span>
       </div>
       {items.map((item, i) => (
         <button

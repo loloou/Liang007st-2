@@ -85,9 +85,10 @@ const CanvasInner: React.FC<Props> = ({ onClose }) => {
         onClose();
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
+      if ((e.key === "Delete" || e.key === "Backspace") && useCanvasStore.getState().nodes.some(n => n.selected)) {
         e.preventDefault();
-        removeNode(selectedNodeId);
+        const selectedIds = useCanvasStore.getState().nodes.filter(n => n.selected).map(n => n.id);
+        selectedIds.forEach(id => removeNode(id));
       }
       // Ctrl+A 全选节点
       if ((e.ctrlKey || e.metaKey) && e.key === "a") {
