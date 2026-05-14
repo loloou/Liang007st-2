@@ -498,111 +498,147 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
             )}
 
             {settingsTab === "chat" && (
-              <>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">共 {cfgDraft.chatModels.length} 个模型</span>
+              <div className="grid grid-cols-[1fr_260px] gap-4">
+                {/* 左侧：Chat 模型列表 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">共 {cfgDraft.chatModels.length} 个模型</span>
+                      <button
+                        type="button"
+                        className="px-2 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
+                        onClick={() => handleFetchModels("chat")}
+                        disabled={fetching}
+                      >{fetching ? "获取中…" : "自动获取模型"}</button>
+                    </div>
                     <button
                       type="button"
-                      className="px-2 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
-                      onClick={() => handleFetchModels("chat")}
-                      disabled={fetching}
-                    >{fetching ? "获取中…" : "自动获取模型"}</button>
+                      className="px-2 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition"
+                      onClick={addChatModel}
+                    >+ 手动添加</button>
                   </div>
-                  <button
-                    type="button"
-                    className="px-2 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition"
-                    onClick={addChatModel}
-                  >+ 手动添加</button>
+                  {fetchErr && <p className="text-[10px] text-red-400 mb-2">{fetchErr}</p>}
+
+                  {cfgDraft.chatModels.map((m) => {
+                    const ts = modelTestStatus[m.id] || "idle";
+                    const tmsg = modelTestMsg[m.id] || "";
+                    return (
+                      <div key={m.id} className="glass-card rounded-xl p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                            placeholder="Model ID（如 gpt-4o）"
+                            value={m.modelId}
+                            onChange={(e) => updateChatModel(m.id, { modelId: e.target.value })}
+                          />
+                          <input
+                            type="text"
+                            className="w-24 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                            placeholder="别名"
+                            value={m.label || ""}
+                            onChange={(e) => updateChatModel(m.id, { label: e.target.value })}
+                          />
+                          <button
+                            type="button"
+                            className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
+                            onClick={() => removeChatModel(m.id)}
+                            title="删除此模型"
+                          >×</button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
+                            placeholder="Base URL（留空继承全局）"
+                            value={m.baseUrl || ""}
+                            onChange={(e) => updateChatModel(m.id, { baseUrl: e.target.value })}
+                          />
+                          <input
+                            type="password"
+                            className="w-36 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
+                            placeholder="API Key（留空继承全局）"
+                            value={m.apiKey || ""}
+                            onChange={(e) => updateChatModel(m.id, { apiKey: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1 ${
+                              ts === "ok" ? "bg-emerald-500/10 text-emerald-400" :
+                              ts === "fail" ? "bg-red-500/10 text-red-400" :
+                              ts === "testing" ? "bg-amber-500/10 text-amber-400" :
+                              "bg-white/[0.04] text-slate-400 hover:bg-white/[0.08]"
+                            }`}
+                            disabled={ts === "testing"}
+                            onClick={async () => {
+                              setModelTestStatus((s) => ({ ...s, [m.id]: "testing" }));
+                              setModelTestMsg((s) => ({ ...s, [m.id]: "" }));
+                              const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl;
+                              const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey;
+                              const result = await testModelConnection(baseUrl, apiKey, m.modelId);
+                              setModelTestStatus((s) => ({ ...s, [m.id]: result.ok ? "ok" : "fail" }));
+                              setModelTestMsg((s) => ({ ...s, [m.id]: result.message + (result.ok ? "" : (result.detail ? `\n${result.detail}` : "")) }));
+                            }}
+                          >
+                            {ts === "testing" ? (
+                              <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
+                            ) : ts === "ok" ? (
+                              <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>联通</>
+                            ) : ts === "fail" ? (
+                              <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>失败</>
+                            ) : (
+                              <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
+                            )}
+                          </button>
+                        </div>
+                        {tmsg && (
+                          <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
+                            ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
+                          }`}>{tmsg}</div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {fetchErr && <p className="text-[10px] text-red-400 mb-2">{fetchErr}</p>}
 
-                {cfgDraft.chatModels.map((m) => {
-                  const ts = modelTestStatus[m.id] || "idle";
-                  const tmsg = modelTestMsg[m.id] || "";
-                  return (
-                    <div key={m.id} className="glass-card rounded-xl p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
-                          placeholder="Model ID（如 gpt-4o）"
-                          value={m.modelId}
-                          onChange={(e) => updateChatModel(m.id, { modelId: e.target.value })}
-                        />
-                        <input
-                          type="text"
-                          className="w-24 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
-                          placeholder="别名"
-                          value={m.label || ""}
-                          onChange={(e) => updateChatModel(m.id, { label: e.target.value })}
-                        />
-                        <button
-                          type="button"
-                          className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
-                          onClick={() => removeChatModel(m.id)}
-                          title="删除此模型"
-                        >×</button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
-                          placeholder="Base URL（留空继承全局）"
-                          value={m.baseUrl || ""}
-                          onChange={(e) => updateChatModel(m.id, { baseUrl: e.target.value })}
-                        />
-                        <input
-                          type="password"
-                          className="w-36 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
-                          placeholder="API Key（留空继承全局）"
-                          value={m.apiKey || ""}
-                          onChange={(e) => updateChatModel(m.id, { apiKey: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className={`px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1 ${
-                            ts === "ok" ? "bg-emerald-500/10 text-emerald-400" :
-                            ts === "fail" ? "bg-red-500/10 text-red-400" :
-                            ts === "testing" ? "bg-amber-500/10 text-amber-400" :
-                            "bg-white/[0.04] text-slate-400 hover:bg-white/[0.08]"
-                          }`}
-                          disabled={ts === "testing"}
-                          onClick={async () => {
-                            setModelTestStatus((s) => ({ ...s, [m.id]: "testing" }));
-                            setModelTestMsg((s) => ({ ...s, [m.id]: "" }));
-                            const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl;
-                            const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey;
-                            const result = await testModelConnection(baseUrl, apiKey, m.modelId);
-                            setModelTestStatus((s) => ({ ...s, [m.id]: result.ok ? "ok" : "fail" }));
-                            setModelTestMsg((s) => ({ ...s, [m.id]: result.message + (result.ok ? "" : (result.detail ? `\n${result.detail}` : "")) }));
-                          }}
-                        >
-                          {ts === "testing" ? (
-                            <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
-                          ) : ts === "ok" ? (
-                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>联通</>
-                          ) : ts === "fail" ? (
-                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>失败</>
-                          ) : (
-                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
-                          )}
-                        </button>
-                      </div>
-                      {tmsg && (
-                        <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
-                          ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
-                        }`}>{tmsg}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </>
+                {/* 右侧：令牌余额配置 */}
+                <div className="glass-card rounded-xl p-3 space-y-3 h-fit sticky top-0">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span className="text-xs font-bold text-amber-400">令牌余额</span>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1 font-medium">USER ID</label>
+                    <input
+                      type="text"
+                      className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 font-mono"
+                      placeholder="输入用户 ID"
+                      value={cfgDraft.balanceUserId || ""}
+                      onChange={(e) => setCfgDraft((prev) => ({ ...prev, balanceUserId: e.target.value.trim() }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1 font-medium">系统访问令牌 Token</label>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 font-mono"
+                      placeholder="输入 Token"
+                      value={cfgDraft.balanceToken || ""}
+                      onChange={(e) => setCfgDraft((prev) => ({ ...prev, balanceToken: e.target.value.trim() }))}
+                    />
+                  </div>
+                  <p className="text-[9px] text-slate-500 leading-relaxed">
+                    配置后，主界面「余额」按钮将通过令牌 API 查询余额。
+                  </p>
+                </div>
+              </div>
             )}
+
           </div>
 
           {/* 底部操作栏 */}

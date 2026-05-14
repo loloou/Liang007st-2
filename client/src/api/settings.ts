@@ -71,6 +71,10 @@ export type ApiConfig = {
   apiVendors: ApiVendor[];
   /** 当前激活的供应商 id（空表示使用手动输入的 globalBaseUrl） */
   activeVendorId: string;
+  /** 令牌余额 — 用户 ID */
+  balanceUserId?: string;
+  /** 令牌余额 — 系统访问令牌 */
+  balanceToken?: string;
 };
 
 // ── 工具函数 ────────────────────────────────────────────────────────────────
@@ -194,7 +198,9 @@ export function getApiConfig(): ApiConfig {
         activeImageModelId: parsed.activeImageModelId ?? "",
         apiValidateJson:    typeof parsed.apiValidateJson === "boolean" ? parsed.apiValidateJson : true,
         apiVendors:         Array.isArray(parsed.apiVendors) ? parsed.apiVendors : [],
-        activeVendorId:     (parsed.activeVendorId as string | undefined) ?? ""
+        activeVendorId:     (parsed.activeVendorId as string | undefined) ?? "",
+        balanceUserId:      (parsed.balanceUserId as string | undefined) ?? "",
+        balanceToken:       (parsed.balanceToken as string | undefined) ?? ""
       };
     }
   } catch {/* ignore */}

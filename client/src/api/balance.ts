@@ -10,15 +10,44 @@ const BALANCE_PATHS = ["/v1/balance", "/v1/user/balance", "/balance", "/api/bala
 export type BalanceResult = { ok: true; data: unknown } | { ok: false; message: string };
 
 /**
- * 尝试调用服务商余额查询接口；若不存在则不修改（返回 ok: false）
- * 使用新版配置结构 getApiConfig() + getActiveImageModel() 确保读取正确的 baseUrl/apiKey
+ * 尝试查询余额，优先级：
+ * 1. 如果配置了 balanceUserId + balanceToken，调用令牌余额接口
+ * 2. 否则尝试调用服务商余额查询接口
  */
 export async function fetchBalance(): Promise<BalanceResult> {
   const cfg = getApiConfig();
+
+  // 优先使用令牌余额（USER ID + Token）
+  if (cfg.balanceUserId?.trim() && cfg.balanceToken?.trim()) {
+    return fetchTokenBalance(cfg.balanceUserId.trim(), cfg.balanceToken.trim());
+  }
+
+  // 回退到服务商余额查询
   const active = getActiveImageModel(cfg);
   const baseUrl = active.baseUrl || cfg.globalBaseUrl;
   const apiKey = active.apiKey || cfg.globalApiKey;
+  return fetchServiceBalance(baseUrl, apiKey);
+}
 
+async function fetchTokenBalance(userId: string, token: string): Promise<BalanceResult> {
+  try {
+    const resp = await fetch("https://api.wuaiapi.com/v1/user/credits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, token }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return { ok: true, data };
+    }
+    const text = await resp.text();
+    return { ok: false, message: `令牌余额查询失败: HTTP ${resp.status}: ${text.slice(0, 120)}` };
+  } catch (err) {
+    return { ok: false, message: `令牌余额查询失败: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+async function fetchServiceBalance(baseUrl: string, apiKey: string): Promise<BalanceResult> {
   const base = normalizeBaseUrl(baseUrl);
   if (!base) return { ok: false, message: "请先配置 API 地址" };
 
