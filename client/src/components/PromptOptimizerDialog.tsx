@@ -12,8 +12,8 @@
  * 8. 色盲友好高亮色值规范
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { getApiConfig } from "../api/settings";
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { getApiConfig } from '../api/settings'
 import {
   SPECIMEN_CONFIGS,
   SPECIMEN_TYPE_LIST,
@@ -24,59 +24,55 @@ import {
   generateSpecimenPrompt,
   type SpecimenType,
   type SpecimenParams,
-} from "../data/specimenDatabase";
-import {
-  computeDiff,
-  type DiffSegment,
-  type ModificationDetail,
-} from "../utils/diffUtils";
+} from '../data/specimenDatabase'
+import { computeDiff, type DiffSegment, type ModificationDetail } from '../utils/diffUtils'
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────
 
 type OptimizeRecord = {
-  id: string;
-  timestamp: number;
-  originalPrompt: string;
-  optimizedPrompt: string;
-  details: ModificationDetail[];
-  duration: number;
-  templateName?: string;
-  isFavorite?: boolean;
-};
+  id: string
+  timestamp: number
+  originalPrompt: string
+  optimizedPrompt: string
+  details: ModificationDetail[]
+  duration: number
+  templateName?: string
+  isFavorite?: boolean
+}
 
 type SystemTemplate = {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt: string;
-  isDefault: boolean;
-  createdAt: number;
-};
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  isDefault: boolean
+  createdAt: number
+}
 
 type DiffStats = {
-  totalChanges: number;
-  addedChars: number;
-  removedChars: number;
-  replacedCount: number;
-  addedCount: number;
-  removedCount: number;
-  formatCount: number;
-};
+  totalChanges: number
+  addedChars: number
+  removedChars: number
+  replacedCount: number
+  addedCount: number
+  removedCount: number
+  formatCount: number
+}
 
 // ── 模板图标映射 ──────────────────────────────────────────────────────
 
 // ── 常量 ──────────────────────────────────────────────────────────────
 
-const STORAGE_KEY_RECORDS = "liang007_optimize_records";
-const STORAGE_KEY_TEMPLATES = "liang007_optimize_templates";
-const STORAGE_KEY_FAVORITES = "liang007_optimize_favorites";
-const MAX_CHARS = 10000;
+const STORAGE_KEY_RECORDS = 'liang007_optimize_records'
+const STORAGE_KEY_TEMPLATES = 'liang007_optimize_templates'
+const STORAGE_KEY_FAVORITES = 'liang007_optimize_favorites'
+const MAX_CHARS = 10000
 
 const DEFAULT_TEMPLATES: SystemTemplate[] = [
   {
-    id: "tcm-museum",
-    name: "中医药博物馆设计",
-    description: "中医药博物馆展陈空间设计，融合传统中医文化与现代展陈理念",
+    id: 'tcm-museum',
+    name: '中医药博物馆设计',
+    description: '中医药博物馆展陈空间设计，融合传统中医文化与现代展陈理念',
     systemPrompt: `你是中医药博物馆设计领域的顶级专家，精通中医文化、传统建筑美学与现代博物馆展陈技术。
 
 请严格按照以下结构输出优化后的提示词：
@@ -140,9 +136,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-herbarium",
-    name: "腊叶标本摄影",
-    description: "中药腊叶标本（干燥植物标本）专业摄影，保留植物形态与色彩",
+    id: 'tcm-herbarium',
+    name: '腊叶标本摄影',
+    description: '中药腊叶标本（干燥植物标本）专业摄影，保留植物形态与色彩',
     systemPrompt: `你是中药植物学摄影专家，精通腊叶标本的拍摄技法与后期处理，能够真实还原标本的形态、色彩与科学价值。
 
 请严格按照以下结构输出优化后的提示词：
@@ -197,9 +193,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-liquid-specimen",
-    name: "浸制标本摄影",
-    description: "中药浸制标本（保色液封存）专业摄影，展现透明瓶中标本的色泽与形态",
+    id: 'tcm-liquid-specimen',
+    name: '浸制标本摄影',
+    description: '中药浸制标本（保色液封存）专业摄影，展现透明瓶中标本的色泽与形态',
     systemPrompt: `你是中药标本摄影专家，精通浸制标本的拍摄技法，能够克服玻璃反光、液体折射等拍摄难点，真实呈现标本的自然色泽与形态。
 
 请严格按照以下结构输出优化后的提示词：
@@ -258,9 +254,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-crude-drug",
-    name: "生药标本摄影",
-    description: "中药生药标本（原生药材）专业摄影，呈现药材的天然形态与质地",
+    id: 'tcm-crude-drug',
+    name: '生药标本摄影',
+    description: '中药生药标本（原生药材）专业摄影，呈现药材的天然形态与质地',
     systemPrompt: `你是中药生药学摄影专家，精通各类中药材的拍摄技法，能够真实展现原生药材的形态特征、纹理质地与药用价值。
 
 请严格按照以下结构输出优化后的提示词：
@@ -331,9 +327,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-slice-specimen",
-    name: "饮片标本摄影",
-    description: "中药饮片（炮制加工后）专业摄影，呈现饮片的切制形态与炮制特征",
+    id: 'tcm-slice-specimen',
+    name: '饮片标本摄影',
+    description: '中药饮片（炮制加工后）专业摄影，呈现饮片的切制形态与炮制特征',
     systemPrompt: `你是中药饮片摄影专家，精通各类中药饮片的拍摄技法，能够真实展现饮片的切制形态、炮制特征与药用价值。
 
 请严格按照以下结构输出优化后的提示词：
@@ -392,9 +388,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-mineral",
-    name: "矿物标本摄影",
-    description: "中药矿物药标本专业摄影，展现矿物的晶体结构与光学特性",
+    id: 'tcm-mineral',
+    name: '矿物标本摄影',
+    description: '中药矿物药标本专业摄影，展现矿物的晶体结构与光学特性',
     systemPrompt: `你是中药矿物学摄影专家，精通矿物标本的拍摄技法，能够真实展现矿物的晶体结构、光泽质感与中药药用价值。
 
 请严格按照以下结构输出优化后的提示词：
@@ -457,9 +453,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-animal",
-    name: "动物标本摄影",
-    description: "中药动物药材标本专业摄影，包括整体标本、骨骼标本与剥制标本",
+    id: 'tcm-animal',
+    name: '动物标本摄影',
+    description: '中药动物药材标本专业摄影，包括整体标本、骨骼标本与剥制标本',
     systemPrompt: `你是中药动物学摄影专家，精通动物药材标本的拍摄技法，能够真实展现动物标本的形态特征、保存状态与药用价值。
 
 请严格按照以下结构输出优化后的提示词：
@@ -518,9 +514,9 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     createdAt: Date.now(),
   },
   {
-    id: "tcm-ecology",
-    name: "生态场景摄影",
-    description: "中药原生态场景摄影，再现道地药材的生长环境与生态特征",
+    id: 'tcm-ecology',
+    name: '生态场景摄影',
+    description: '中药原生态场景摄影，再现道地药材的生长环境与生态特征',
     systemPrompt: `你是中药生态摄影专家，精通中药材原生态场景的拍摄技法，能够真实再现道地药材的生长环境、时节特征与生态美学。
 
 请严格按照以下结构输出优化后的提示词：
@@ -590,89 +586,185 @@ const DEFAULT_TEMPLATES: SystemTemplate[] = [
     isDefault: false,
     createdAt: Date.now(),
   },
-];
+]
 
-const PLACEHOLDER_TEXT = "请输入原始提示词，支持空间布局、灯光、材质、风格、分辨率等全维度描述";
+const PLACEHOLDER_TEXT = '请输入原始提示词，支持空间布局、灯光、材质、风格、分辨率等全维度描述'
 
 /** 提示词丰富度打分（满分 100） */
-function scorePrompt(prompt: string): { score: number; breakdown: { label: string; score: number; max: number }[]; suggestions: string[] } {
-  if (!prompt.trim()) return { score: 0, breakdown: [], suggestions: ["请输入提示词"] };
+function scorePrompt(prompt: string): {
+  score: number
+  breakdown: { label: string; score: number; max: number }[]
+  suggestions: string[]
+} {
+  if (!prompt.trim()) return { score: 0, breakdown: [], suggestions: ['请输入提示词'] }
 
-  const p = prompt.toLowerCase();
-  const breakdown: { label: string; score: number; max: number }[] = [];
-  const suggestions: string[] = [];
+  const p = prompt.toLowerCase()
+  const breakdown: { label: string; score: number; max: number }[] = []
+  const suggestions: string[] = []
 
   // 1. 长度维度（20 分）
-  const len = prompt.length;
-  const lenScore = Math.min(20, Math.floor(len / 5));
-  breakdown.push({ label: "内容长度", score: lenScore, max: 20 });
-  if (lenScore < 10) suggestions.push("建议增加更多描述细节（至少 50 字符）");
+  const len = prompt.length
+  const lenScore = Math.min(20, Math.floor(len / 5))
+  breakdown.push({ label: '内容长度', score: lenScore, max: 20 })
+  if (lenScore < 10) suggestions.push('建议增加更多描述细节（至少 50 字符）')
 
   // 2. 空间描述（15 分）
-  const spaceKeywords = ["空间", "布局", "尺度", "面积", "尺寸", "平面", "立面", "剖面", "层高", "房间", "展厅", "走廊", "大厅", "区域"];
-  const spaceCount = spaceKeywords.filter(k => p.includes(k)).length;
-  const spaceScore = Math.min(15, spaceCount * 5);
-  breakdown.push({ label: "空间描述", score: spaceScore, max: 15 });
-  if (spaceScore < 8) suggestions.push("可补充空间类型、尺度、布局等信息");
+  const spaceKeywords = [
+    '空间',
+    '布局',
+    '尺度',
+    '面积',
+    '尺寸',
+    '平面',
+    '立面',
+    '剖面',
+    '层高',
+    '房间',
+    '展厅',
+    '走廊',
+    '大厅',
+    '区域',
+  ]
+  const spaceCount = spaceKeywords.filter(k => p.includes(k)).length
+  const spaceScore = Math.min(15, spaceCount * 5)
+  breakdown.push({ label: '空间描述', score: spaceScore, max: 15 })
+  if (spaceScore < 8) suggestions.push('可补充空间类型、尺度、布局等信息')
 
   // 3. 灯光描述（15 分）
-  const lightKeywords = ["灯光", "照明", "色温", "照度", "lux", "光影", "自然光", "氛围光", "重点照明", "基础照明", "漫反射", "眩光"];
-  const lightCount = lightKeywords.filter(k => p.includes(k)).length;
-  const lightScore = Math.min(15, lightCount * 5);
-  breakdown.push({ label: "灯光描述", score: lightScore, max: 15 });
-  if (lightScore < 8) suggestions.push("可补充灯光类型、色温、照度等参数");
+  const lightKeywords = [
+    '灯光',
+    '照明',
+    '色温',
+    '照度',
+    'lux',
+    '光影',
+    '自然光',
+    '氛围光',
+    '重点照明',
+    '基础照明',
+    '漫反射',
+    '眩光',
+  ]
+  const lightCount = lightKeywords.filter(k => p.includes(k)).length
+  const lightScore = Math.min(15, lightCount * 5)
+  breakdown.push({ label: '灯光描述', score: lightScore, max: 15 })
+  if (lightScore < 8) suggestions.push('可补充灯光类型、色温、照度等参数')
 
   // 4. 材质描述（15 分）
-  const matKeywords = ["材质", "材料", "石材", "木材", "金属", "玻璃", "混凝土", "纹理", "质感", "表面", "环保", "阻燃", "大理石", "木材"];
-  const matCount = matKeywords.filter(k => p.includes(k)).length;
-  const matScore = Math.min(15, matCount * 5);
-  breakdown.push({ label: "材质描述", score: matScore, max: 15 });
-  if (matScore < 8) suggestions.push("可补充材质类型、表面处理、质感等信息");
+  const matKeywords = [
+    '材质',
+    '材料',
+    '石材',
+    '木材',
+    '金属',
+    '玻璃',
+    '混凝土',
+    '纹理',
+    '质感',
+    '表面',
+    '环保',
+    '阻燃',
+    '大理石',
+    '木材',
+  ]
+  const matCount = matKeywords.filter(k => p.includes(k)).length
+  const matScore = Math.min(15, matCount * 5)
+  breakdown.push({ label: '材质描述', score: matScore, max: 15 })
+  if (matScore < 8) suggestions.push('可补充材质类型、表面处理、质感等信息')
 
   // 5. 风格描述（15 分）
-  const styleKeywords = ["风格", "现代", "极简", "古典", "工业", "中式", "欧式", "当代", "传统", "未来", "抽象", "写实", "氛围"];
-  const styleCount = styleKeywords.filter(k => p.includes(k)).length;
-  const styleScore = Math.min(15, styleCount * 5);
-  breakdown.push({ label: "风格描述", score: styleScore, max: 15 });
-  if (styleScore < 8) suggestions.push("可补充设计风格、视觉氛围等信息");
+  const styleKeywords = [
+    '风格',
+    '现代',
+    '极简',
+    '古典',
+    '工业',
+    '中式',
+    '欧式',
+    '当代',
+    '传统',
+    '未来',
+    '抽象',
+    '写实',
+    '氛围',
+  ]
+  const styleCount = styleKeywords.filter(k => p.includes(k)).length
+  const styleScore = Math.min(15, styleCount * 5)
+  breakdown.push({ label: '风格描述', score: styleScore, max: 15 })
+  if (styleScore < 8) suggestions.push('可补充设计风格、视觉氛围等信息')
 
   // 6. 技术参数（10 分）
-  const techKeywords = ["分辨率", "4k", "8k", "渲染", "渲染器", "视角", "画幅", "比例", "细节", "精度", "高清"];
-  const techCount = techKeywords.filter(k => p.includes(k)).length;
-  const techScore = Math.min(10, techCount * 5);
-  breakdown.push({ label: "技术参数", score: techScore, max: 10 });
-  if (techScore < 5) suggestions.push("可补充渲染分辨率、视角、精度等技术参数");
+  const techKeywords = [
+    '分辨率',
+    '4k',
+    '8k',
+    '渲染',
+    '渲染器',
+    '视角',
+    '画幅',
+    '比例',
+    '细节',
+    '精度',
+    '高清',
+  ]
+  const techCount = techKeywords.filter(k => p.includes(k)).length
+  const techScore = Math.min(10, techCount * 5)
+  breakdown.push({ label: '技术参数', score: techScore, max: 10 })
+  if (techScore < 5) suggestions.push('可补充渲染分辨率、视角、精度等技术参数')
 
   // 7. 合规性（10 分）
-  const complianceKeywords = ["无障碍", "消防", "安全", "规范", "标准", "防火", "疏散", "人流", "动线", "文物保护"];
-  const complianceCount = complianceKeywords.filter(k => p.includes(k)).length;
-  const complianceScore = Math.min(10, complianceCount * 5);
-  breakdown.push({ label: "合规性", score: complianceScore, max: 10 });
-  if (complianceScore < 5) suggestions.push("可补充无障碍设计、消防规范等合规要求");
+  const complianceKeywords = [
+    '无障碍',
+    '消防',
+    '安全',
+    '规范',
+    '标准',
+    '防火',
+    '疏散',
+    '人流',
+    '动线',
+    '文物保护',
+  ]
+  const complianceCount = complianceKeywords.filter(k => p.includes(k)).length
+  const complianceScore = Math.min(10, complianceCount * 5)
+  breakdown.push({ label: '合规性', score: complianceScore, max: 10 })
+  if (complianceScore < 5) suggestions.push('可补充无障碍设计、消防规范等合规要求')
 
-  const totalScore = breakdown.reduce((s, b) => s + b.score, 0);
+  const totalScore = breakdown.reduce((s, b) => s + b.score, 0)
 
-  return { score: totalScore, breakdown, suggestions };
+  return { score: totalScore, breakdown, suggestions }
 }
 
 // ── 工具函数 ─────────────────────────────────────────────────────────────
 
 function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
 function computeStats(details: ModificationDetail[]): DiffStats {
-  let addedChars = 0, removedChars = 0;
-  let addedCount = 0, removedCount = 0, replacedCount = 0, formatCount = 0;
+  let addedChars = 0,
+    removedChars = 0
+  let addedCount = 0,
+    removedCount = 0,
+    replacedCount = 0,
+    formatCount = 0
   for (const d of details) {
-    addedChars += d.optimized.length;
-    removedChars += d.original.length;
-    if (d.type === "added") addedCount++;
-    else if (d.type === "removed") removedCount++;
-    else if (d.type === "replaced") replacedCount++;
-    else if (d.type === "format") formatCount++;
+    addedChars += d.optimized.length
+    removedChars += d.original.length
+    if (d.type === 'added') addedCount++
+    else if (d.type === 'removed') removedCount++
+    else if (d.type === 'replaced') replacedCount++
+    else if (d.type === 'format') formatCount++
   }
-  return { totalChanges: details.length, addedChars, removedChars, replacedCount, addedCount, removedCount, formatCount };
+  return {
+    totalChanges: details.length,
+    addedChars,
+    removedChars,
+    replacedCount,
+    addedCount,
+    removedCount,
+    formatCount,
+  }
 }
 
 // ── 主组件 ──────────────────────────────────────────────────────────────
@@ -683,375 +775,493 @@ export default function PromptOptimizerDialog({
   originalPrompt,
   onAdopt,
 }: {
-  open: boolean;
-  onClose: () => void;
-  originalPrompt: string;
-  onAdopt: (optimized: string) => void;
+  open: boolean
+  onClose: () => void
+  originalPrompt: string
+  onAdopt: (optimized: string) => void
 }) {
-  const [inputPrompt, setInputPrompt] = useState(originalPrompt);
-  const [optimizedPrompt, setOptimizedPrompt] = useState("");
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [optimizeError, setOptimizeError] = useState("");
-  const [isEditingOutput, setIsEditingOutput] = useState(false);
-  const [optimizeTime, setOptimizeTime] = useState("");
-  const [_tokenUsage, setTokenUsage] = useState<{ prompt: number; completion: number; total: number } | null>(null);
+  const [inputPrompt, setInputPrompt] = useState(originalPrompt)
+  const [optimizedPrompt, setOptimizedPrompt] = useState('')
+  const [isOptimizing, setIsOptimizing] = useState(false)
+  const [optimizeError, setOptimizeError] = useState('')
+  const [isEditingOutput, setIsEditingOutput] = useState(false)
+  const [optimizeTime, setOptimizeTime] = useState('')
+  const [_tokenUsage, setTokenUsage] = useState<{
+    prompt: number
+    completion: number
+    total: number
+  } | null>(null)
 
-  const [diffResult, setDiffResult] = useState<{ segments: DiffSegment[]; details: ModificationDetail[] } | null>(null);
-  const [activeDetailTab, setActiveDetailTab] = useState<"overview" | "details">("overview");
-  const [filterType, setFilterType] = useState<"all" | "added" | "removed" | "replaced">("all");
-  const [highlightedChange, setHighlightedChange] = useState<number | null>(null);
+  const [diffResult, setDiffResult] = useState<{
+    segments: DiffSegment[]
+    details: ModificationDetail[]
+  } | null>(null)
+  const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'details'>('overview')
+  const [filterType, setFilterType] = useState<'all' | 'added' | 'removed' | 'replaced'>('all')
+  const [highlightedChange, setHighlightedChange] = useState<number | null>(null)
 
-  const leftScrollRef = useRef<HTMLDivElement>(null);
-  const rightScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncScrolling = useRef(false);
+  const leftScrollRef = useRef<HTMLDivElement>(null)
+  const rightScrollRef = useRef<HTMLDivElement>(null)
+  const isSyncScrolling = useRef(false)
 
   const [records, setRecords] = useState<OptimizeRecord[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_RECORDS);
+      const saved = localStorage.getItem(STORAGE_KEY_RECORDS)
       if (saved) {
-        const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed.map((r: OptimizeRecord) => ({
-          ...r,
-          details: r.details || [],
-          duration: r.duration || 0,
-        })) : [];
+        const parsed = JSON.parse(saved)
+        return Array.isArray(parsed)
+          ? parsed.map((r: OptimizeRecord) => ({
+              ...r,
+              details: r.details || [],
+              duration: r.duration || 0,
+            }))
+          : []
       }
-    } catch { /* ignore */ }
-    return [];
-  });
-  const [showHistory, setShowHistory] = useState(false);
+    } catch {
+      /* ignore */
+    }
+    return []
+  })
+  const [showHistory, setShowHistory] = useState(false)
 
   const [templates, setTemplates] = useState<SystemTemplate[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES);
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    return DEFAULT_TEMPLATES;
-  });
+      const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES)
+      if (saved) return JSON.parse(saved)
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_TEMPLATES
+  })
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES);
+      const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES)
       if (saved) {
-        const parsed: SystemTemplate[] = JSON.parse(saved);
-        const def = parsed.find(t => t.isDefault);
-        if (def) return def.id;
+        const parsed: SystemTemplate[] = JSON.parse(saved)
+        const def = parsed.find(t => t.isDefault)
+        if (def) return def.id
       }
-    } catch { /* ignore */ }
-    return DEFAULT_TEMPLATES[0].id;
-  });
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<Partial<SystemTemplate> | null>(null);
-  const [showTemplateEdit, setShowTemplateEdit] = useState(false);
-  const [showScoreDetail, setShowScoreDetail] = useState(false);
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_TEMPLATES[0].id
+  })
+  const [showTemplateManager, setShowTemplateManager] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<Partial<SystemTemplate> | null>(null)
+  const [showTemplateEdit, setShowTemplateEdit] = useState(false)
+  const [showScoreDetail, setShowScoreDetail] = useState(false)
 
   // ── 中药标本选择状态 ─────────────────────────────────────────────────
-  const [specimenTypes, setSpecimenTypes] = useState<SpecimenType[]>([]);
-  const [specimenParams, setSpecimenParams] = useState<Record<string, SpecimenParams>>({});
-  const [showSpecimenPanel, setShowSpecimenPanel] = useState(false);
-  const [specimenInsertMode, setSpecimenInsertMode] = useState<"cursor" | "append">("cursor");
-  const [slashCommandActive, setSlashCommandActive] = useState(false);
-  const [slashFilter, setSlashFilter] = useState("");
-  const [ignoredRecommendations, setIgnoredRecommendations] = useState<Set<string>>(new Set());
+  const [specimenTypes, setSpecimenTypes] = useState<SpecimenType[]>([])
+  const [specimenParams, setSpecimenParams] = useState<Record<string, SpecimenParams>>({})
+  const [showSpecimenPanel, setShowSpecimenPanel] = useState(false)
+  const [specimenInsertMode, setSpecimenInsertMode] = useState<'cursor' | 'append'>('cursor')
+  const [slashCommandActive, setSlashCommandActive] = useState(false)
+  const [slashFilter, setSlashFilter] = useState('')
+  const [ignoredRecommendations, setIgnoredRecommendations] = useState<Set<string>>(new Set())
 
   // ── 自定义标本类型状态 ─────────────────────────────────────────────────
   type CustomSpecimen = {
-    id: string;
-    label: string;
-    icon: string;
-    basePrompt: string;
-    negativePrompt: string;
-  };
+    id: string
+    label: string
+    icon: string
+    basePrompt: string
+    negativePrompt: string
+  }
   const [customSpecimens, setCustomSpecimens] = useState<CustomSpecimen[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_SPECIMEN);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-  const [showCustomSpecimenDialog, setShowCustomSpecimenDialog] = useState(false);
-  const [_editingCustomSpecimen, setEditingCustomSpecimen] = useState<CustomSpecimen | null>(null);
-  const [newCustomSpecimen, setNewCustomSpecimen] = useState<CustomSpecimen>({ id: "", label: "", icon: "🔬", basePrompt: "", negativePrompt: "" });
+      const saved = localStorage.getItem(STORAGE_KEY_SPECIMEN)
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
+  const [showCustomSpecimenDialog, setShowCustomSpecimenDialog] = useState(false)
+  const [_editingCustomSpecimen, setEditingCustomSpecimen] = useState<CustomSpecimen | null>(null)
+  const [newCustomSpecimen, setNewCustomSpecimen] = useState<CustomSpecimen>({
+    id: '',
+    label: '',
+    icon: '🔬',
+    basePrompt: '',
+    negativePrompt: '',
+  })
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_SPECIMEN, JSON.stringify(customSpecimens));
-    } catch { /* quota exceeded */ }
-  }, [customSpecimens]);
+      localStorage.setItem(STORAGE_KEY_SPECIMEN, JSON.stringify(customSpecimens))
+    } catch {
+      /* quota exceeded */
+    }
+  }, [customSpecimens])
 
-  const [tplDialogSize, setTplDialogSize] = useState({ w: 600, h: 600 });
-  const [histDialogSize, setHistDialogSize] = useState({ w: 560, h: 500 });
-  const [isTplResizing, setIsTplResizing] = useState(false);
-  const [isHistResizing, setIsHistResizing] = useState(false);
-  const tplResizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
-  const histResizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [tplDialogSize, setTplDialogSize] = useState({ w: 600, h: 600 })
+  const [histDialogSize, setHistDialogSize] = useState({ w: 560, h: 500 })
+  const [isTplResizing, setIsTplResizing] = useState(false)
+  const [isHistResizing, setIsHistResizing] = useState(false)
+  const tplResizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
+  const histResizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
 
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-  const [showShortcuts, setShowShortcuts] = useState(false);
-  const [showFavorites, setShowFavorites] = useState(false);
+  // ── 双栏分隔线拖动 ─────────────────────────────────────────────────
+  const [splitRatio, setSplitRatio] = useState(0.5) // 左栏占比，默认 50%
+  const [isDraggingSplit, setIsDraggingSplit] = useState(false)
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showFavorites, setShowFavorites] = useState(false)
   const [favorites, setFavorites] = useState<OptimizeRecord[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY_FAVORITES);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+      const saved = localStorage.getItem(STORAGE_KEY_FAVORITES)
+      return saved ? JSON.parse(saved) : []
+    } catch {
+      return []
+    }
+  })
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(records.slice(0, 50)));
-    } catch { /* quota exceeded */ }
-  }, [records]);
+      localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(records.slice(0, 50)))
+    } catch {
+      /* quota exceeded */
+    }
+  }, [records])
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(templates));
-    } catch { /* quota exceeded */ }
-  }, [templates]);
+      localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(templates))
+    } catch {
+      /* quota exceeded */
+    }
+  }, [templates])
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_FAVORITES, JSON.stringify(favorites.slice(0, 50)));
-    } catch { /* quota exceeded */ }
-  }, [favorites]);
+      localStorage.setItem(STORAGE_KEY_FAVORITES, JSON.stringify(favorites.slice(0, 50)))
+    } catch {
+      /* quota exceeded */
+    }
+  }, [favorites])
 
   useEffect(() => {
     if (open) {
-      setInputPrompt(originalPrompt);
-      setOptimizedPrompt("");
-      setDiffResult(null);
-      setOptimizeError("");
-      setOptimizeTime("");
-      setIsEditingOutput(false);
+      setInputPrompt(originalPrompt)
+      setOptimizedPrompt('')
+      setDiffResult(null)
+      setOptimizeError('')
+      setOptimizeTime('')
+      setIsEditingOutput(false)
     }
-  }, [open, originalPrompt]);
+  }, [open, originalPrompt])
 
-  const showToast = useCallback((message: string, type: "success" | "error" | "info") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3000)
+  }, [])
 
   // ── 弹窗拖拽调整尺寸 ─────────────────────────────────────────────────
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
       if (isTplResizing && tplResizeStart.current) {
-        const dx = e.clientX - tplResizeStart.current.x;
-        const dy = e.clientY - tplResizeStart.current.y;
+        const dx = e.clientX - tplResizeStart.current.x
+        const dy = e.clientY - tplResizeStart.current.y
         setTplDialogSize({
           w: Math.max(400, Math.min(1000, tplResizeStart.current.w + dx)),
           h: Math.max(300, Math.min(800, tplResizeStart.current.h + dy)),
-        });
+        })
       }
       if (isHistResizing && histResizeStart.current) {
-        const dx = e.clientX - histResizeStart.current.x;
-        const dy = e.clientY - histResizeStart.current.y;
+        const dx = e.clientX - histResizeStart.current.x
+        const dy = e.clientY - histResizeStart.current.y
         setHistDialogSize({
           w: Math.max(400, Math.min(1000, histResizeStart.current.w + dx)),
           h: Math.max(300, Math.min(800, histResizeStart.current.h + dy)),
-        });
+        })
       }
-    };
-    const handleUp = () => {
-      setIsTplResizing(false);
-      setIsHistResizing(false);
-      tplResizeStart.current = null;
-      histResizeStart.current = null;
-    };
-    if (isTplResizing || isHistResizing) {
-      window.addEventListener("mousemove", handleMove);
-      window.addEventListener("mouseup", handleUp);
-      return () => {
-        window.removeEventListener("mousemove", handleMove);
-        window.removeEventListener("mouseup", handleUp);
-      };
     }
-  }, [isTplResizing, isHistResizing]);
+    const handleUp = () => {
+      setIsTplResizing(false)
+      setIsHistResizing(false)
+      tplResizeStart.current = null
+      histResizeStart.current = null
+    }
+    if (isTplResizing || isHistResizing) {
+      window.addEventListener('mousemove', handleMove)
+      window.addEventListener('mouseup', handleUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMove)
+        window.removeEventListener('mouseup', handleUp)
+      }
+    }
+  }, [isTplResizing, isHistResizing])
 
-  const handleTplResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsTplResizing(true);
-    tplResizeStart.current = { x: e.clientX, y: e.clientY, w: tplDialogSize.w, h: tplDialogSize.h };
-  }, [tplDialogSize]);
+  // ── 双栏分隔线拖动逻辑 ─────────────────────────────────────────────
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingSplit || !splitContainerRef.current) return
+      const rect = splitContainerRef.current.getBoundingClientRect()
+      let ratio = (e.clientX - rect.left) / rect.width
+      ratio = Math.max(0.2, Math.min(0.8, ratio))
+      setSplitRatio(ratio)
+    }
+    const handleMouseUp = () => {
+      setIsDraggingSplit(false)
+    }
+    if (isDraggingSplit) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [isDraggingSplit])
 
-  const handleHistResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsHistResizing(true);
-    histResizeStart.current = { x: e.clientX, y: e.clientY, w: histDialogSize.w, h: histDialogSize.h };
-  }, [histDialogSize]);
+  const handleTplResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      setIsTplResizing(true)
+      tplResizeStart.current = {
+        x: e.clientX,
+        y: e.clientY,
+        w: tplDialogSize.w,
+        h: tplDialogSize.h,
+      }
+    },
+    [tplDialogSize],
+  )
+
+  const handleHistResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      setIsHistResizing(true)
+      histResizeStart.current = {
+        x: e.clientX,
+        y: e.clientY,
+        w: histDialogSize.w,
+        h: histDialogSize.h,
+      }
+    },
+    [histDialogSize],
+  )
 
   // ── 提示词打分 ───────────────────────────────────────────────────────
-  const promptScore = useMemo(() => scorePrompt(inputPrompt), [inputPrompt]);
+  const promptScore = useMemo(() => scorePrompt(inputPrompt), [inputPrompt])
 
   const handleLeftScroll = useCallback(() => {
-    if (isSyncScrolling.current || !leftScrollRef.current || !rightScrollRef.current) return;
-    isSyncScrolling.current = true;
-    const ratio = leftScrollRef.current.scrollTop / (leftScrollRef.current.scrollHeight - leftScrollRef.current.clientHeight || 1);
-    rightScrollRef.current.scrollTop = ratio * (rightScrollRef.current.scrollHeight - rightScrollRef.current.clientHeight);
-    requestAnimationFrame(() => { isSyncScrolling.current = false; });
-  }, []);
+    if (isSyncScrolling.current || !leftScrollRef.current || !rightScrollRef.current) return
+    isSyncScrolling.current = true
+    const ratio =
+      leftScrollRef.current.scrollTop /
+      (leftScrollRef.current.scrollHeight - leftScrollRef.current.clientHeight || 1)
+    rightScrollRef.current.scrollTop =
+      ratio * (rightScrollRef.current.scrollHeight - rightScrollRef.current.clientHeight)
+    requestAnimationFrame(() => {
+      isSyncScrolling.current = false
+    })
+  }, [])
 
   const handleRightScroll = useCallback(() => {
-    if (isSyncScrolling.current || !leftScrollRef.current || !rightScrollRef.current) return;
-    isSyncScrolling.current = true;
-    const ratio = rightScrollRef.current.scrollTop / (rightScrollRef.current.scrollHeight - rightScrollRef.current.clientHeight || 1);
-    leftScrollRef.current.scrollTop = ratio * (leftScrollRef.current.scrollHeight - leftScrollRef.current.clientHeight);
-    requestAnimationFrame(() => { isSyncScrolling.current = false; });
-  }, []);
+    if (isSyncScrolling.current || !leftScrollRef.current || !rightScrollRef.current) return
+    isSyncScrolling.current = true
+    const ratio =
+      rightScrollRef.current.scrollTop /
+      (rightScrollRef.current.scrollHeight - rightScrollRef.current.clientHeight || 1)
+    leftScrollRef.current.scrollTop =
+      ratio * (leftScrollRef.current.scrollHeight - leftScrollRef.current.clientHeight)
+    requestAnimationFrame(() => {
+      isSyncScrolling.current = false
+    })
+  }, [])
 
   useEffect(() => {
     if (optimizedPrompt && inputPrompt) {
-      const result = computeDiff(inputPrompt, optimizedPrompt);
-      setDiffResult(result);
+      const result = computeDiff(inputPrompt, optimizedPrompt)
+      setDiffResult(result)
     } else {
-      setDiffResult(null);
+      setDiffResult(null)
     }
-  }, [optimizedPrompt, inputPrompt]);
+  }, [optimizedPrompt, inputPrompt])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!open) return;
-      if (e.key === "Escape") {
-        if (showTemplateManager) { setShowTemplateManager(false); setEditingTemplate(null); setShowTemplateEdit(false); }
-        else if (showTemplateEdit) { setShowTemplateEdit(false); setEditingTemplate(null); }
-        else if (showHistory) setShowHistory(false);
-        else if (showFavorites) setShowFavorites(false);
-        else if (showShortcuts) setShowShortcuts(false);
-        else onClose();
+      if (!open) return
+      if (e.key === 'Escape') {
+        if (showTemplateManager) {
+          setShowTemplateManager(false)
+          setEditingTemplate(null)
+          setShowTemplateEdit(false)
+        } else if (showTemplateEdit) {
+          setShowTemplateEdit(false)
+          setEditingTemplate(null)
+        } else if (showHistory) setShowHistory(false)
+        else if (showFavorites) setShowFavorites(false)
+        else if (showShortcuts) setShowShortcuts(false)
+        else onClose()
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !isOptimizing && !showTemplateManager && !showTemplateEdit) {
-        e.preventDefault();
-        handleOptimize();
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key === 'Enter' &&
+        !isOptimizing &&
+        !showTemplateManager &&
+        !showTemplateEdit
+      ) {
+        e.preventDefault()
+        handleOptimize()
       }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isOptimizing, inputPrompt, showTemplateManager, showTemplateEdit, showHistory, showFavorites, showShortcuts, onClose]);
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    isOptimizing,
+    inputPrompt,
+    showTemplateManager,
+    showTemplateEdit,
+    showHistory,
+    showFavorites,
+    showShortcuts,
+    onClose,
+  ])
 
   const activeTemplate = useMemo(() => {
-    return templates.find(t => t.id === selectedTemplateId) || templates[0];
-  }, [templates, selectedTemplateId]);
+    return templates.find(t => t.id === selectedTemplateId) || templates[0]
+  }, [templates, selectedTemplateId])
 
   // 当前模板的标本关联信息
   const currentSpecimenHint = useMemo(() => {
-    const hint = TEMPLATE_SPECIMEN_HINTS[selectedTemplateId];
-    if (!hint) return null;
+    const hint = TEMPLATE_SPECIMEN_HINTS[selectedTemplateId]
+    if (!hint) return null
 
     const activeSpecimenLabels = hint.types
-      .map(t => SPECIMEN_CONFIGS[t as Exclude<SpecimenType, "none">]?.label)
-      .filter(Boolean);
+      .map(t => SPECIMEN_CONFIGS[t as Exclude<SpecimenType, 'none'>]?.label)
+      .filter(Boolean)
 
     return {
       types: hint.types,
       hint: hint.hint,
       labels: activeSpecimenLabels as string[],
-      recommended: activeSpecimenLabels.length > 0
-    };
-  }, [selectedTemplateId]);
+      recommended: activeSpecimenLabels.length > 0,
+    }
+  }, [selectedTemplateId])
 
   // 当前使用的完整配置摘要
   const currentConfigSummary = useMemo(() => {
-    const parts: string[] = [];
-    const icon = TEMPLATE_ICONS[selectedTemplateId] || "📝";
-    parts.push(`${icon} ${activeTemplate?.name || "默认"}`);
+    const parts: string[] = []
+    const icon = TEMPLATE_ICONS[selectedTemplateId] || '📝'
+    parts.push(`${icon} ${activeTemplate?.name || '默认'}`)
 
-    const activeSpecimens = specimenTypes.filter(t => t !== "none");
+    const activeSpecimens = specimenTypes.filter(t => t !== 'none')
     if (activeSpecimens.length > 0) {
       const labels = activeSpecimens
-        .map(t => SPECIMEN_CONFIGS[t as Exclude<SpecimenType, "none">]?.label)
-        .filter(Boolean);
+        .map(t => SPECIMEN_CONFIGS[t as Exclude<SpecimenType, 'none'>]?.label)
+        .filter(Boolean)
       if (labels.length > 0) {
-        parts.push(`+ ${labels.join(", ")}`);
+        parts.push(`+ ${labels.join(', ')}`)
       }
     }
 
-    return parts.join(" | ");
-  }, [selectedTemplateId, activeTemplate, specimenTypes]);
+    return parts.join(' | ')
+  }, [selectedTemplateId, activeTemplate, specimenTypes])
 
   const handleOptimize = useCallback(async () => {
     if (!inputPrompt.trim()) {
-      setOptimizeError("请输入有效的提示词");
-      return;
+      setOptimizeError('请输入有效的提示词')
+      return
     }
 
-    const cfg = getApiConfig();
-    const chatModels = cfg.chatModels.filter((m) => m.modelId.trim());
+    const cfg = getApiConfig()
+    const chatModels = cfg.chatModels.filter(m => m.modelId.trim())
     if (chatModels.length === 0) {
-      setOptimizeError("请先在「设置 → Chat」标签配置有效模型后再使用优化功能");
-      return;
+      setOptimizeError('请先在「设置 → Chat」标签配置有效模型后再使用优化功能')
+      return
     }
 
-    const tpl = activeTemplate;
+    const tpl = activeTemplate
     if (!tpl?.systemPrompt?.trim()) {
-      setOptimizeError("当前系统模板为空，请检查模板配置");
-      return;
+      setOptimizeError('当前系统模板为空，请检查模板配置')
+      return
     }
 
-    setIsOptimizing(true);
-    setOptimizeError("");
-    setOptimizedPrompt("");
-    setDiffResult(null);
+    setIsOptimizing(true)
+    setOptimizeError('')
+    setOptimizedPrompt('')
+    setDiffResult(null)
 
-    const startTime = Date.now();
+    const startTime = Date.now()
 
     try {
-      const chatModel = chatModels[0];
-      const baseUrl = (chatModel.baseUrl?.trim() || cfg.globalBaseUrl?.trim() || "").replace(/\/$/, "");
-      const apiKey = chatModel.apiKey?.trim() || cfg.globalApiKey?.trim() || "";
+      const chatModel = chatModels[0]
+      const baseUrl = (chatModel.baseUrl?.trim() || cfg.globalBaseUrl?.trim() || '').replace(
+        /\/$/,
+        '',
+      )
+      const apiKey = chatModel.apiKey?.trim() || cfg.globalApiKey?.trim() || ''
 
-      if (!baseUrl) throw new Error("未配置 Base URL，请先在「设置 → Global Config」填写接口地址");
+      if (!baseUrl) throw new Error('未配置 Base URL，请先在「设置 → Global Config」填写接口地址')
 
-      const endpoint = `${baseUrl}/v1/chat/completions`;
+      const endpoint = `${baseUrl}/v1/chat/completions`
 
       // 构建标本专业提示
-      let specimenContext = "";
-      const activeSpecimens = specimenTypes.filter(t => t !== "none");
+      let specimenContext = ''
+      const activeSpecimens = specimenTypes.filter(t => t !== 'none')
       if (activeSpecimens.length > 0) {
-        const specimenDetails = activeSpecimens.map(t => {
-          const cfg = SPECIMEN_CONFIGS[t as Exclude<SpecimenType, "none">];
-          if (!cfg) return "";
-          const params = specimenParams[t] || { name: "", hasLabel: true };
-          const prompt = generateSpecimenPrompt(t, params);
-          return `【${cfg.label}】${prompt}\n负面词：${cfg.negativePrompt}`;
-        }).filter(Boolean).join("\n");
-        specimenContext = `\n\n【中药标本专业要求】\n用户选择了以下标本类型，请严格遵循对应标本类型的专业规范，将标本的形态、展陈、质感、渲染细节完整融合到优化后的提示词中，逻辑连贯，无生硬拼接：\n${specimenDetails}`;
+        const specimenDetails = activeSpecimens
+          .map(t => {
+            const cfg = SPECIMEN_CONFIGS[t as Exclude<SpecimenType, 'none'>]
+            if (!cfg) return ''
+            const params = specimenParams[t] || { name: '', hasLabel: true }
+            const prompt = generateSpecimenPrompt(t, params)
+            return `【${cfg.label}】${prompt}\n负面词：${cfg.negativePrompt}`
+          })
+          .filter(Boolean)
+          .join('\n')
+        specimenContext = `\n\n【中药标本专业要求】\n用户选择了以下标本类型，请严格遵循对应标本类型的专业规范，将标本的形态、展陈、质感、渲染细节完整融合到优化后的提示词中，逻辑连贯，无生硬拼接：\n${specimenDetails}`
       }
 
       const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           model: chatModel.modelId,
           messages: [
-            { role: "system", content: tpl.systemPrompt + specimenContext },
-            { role: "user", content: `请优化以下提示词：\n\n${inputPrompt}` },
+            { role: 'system', content: tpl.systemPrompt + specimenContext },
+            { role: 'user', content: `请优化以下提示词：\n\n${inputPrompt}` },
           ],
           temperature: 0.7,
         }),
-      });
+      })
 
-      if (!res.ok) throw new Error(`API 请求失败，状态码：${res.status}`);
+      if (!res.ok) throw new Error(`API 请求失败，状态码：${res.status}`)
 
-      const data = await res.json();
-      const choices = data?.choices as Array<{ message?: { content?: string } }> | undefined;
-      const optimized = choices?.[0]?.message?.content?.trim();
+      const data = await res.json()
+      const choices = data?.choices as Array<{ message?: { content?: string } }> | undefined
+      const optimized = choices?.[0]?.message?.content?.trim()
 
-      if (!optimized) throw new Error("API 返回数据为空");
+      if (!optimized) throw new Error('API 返回数据为空')
 
       // 提取 token 用量
-      const usage = data?.usage as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+      const usage = data?.usage as
+        | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+        | undefined
       if (usage?.total_tokens) {
         setTokenUsage({
           prompt: usage.prompt_tokens || 0,
           completion: usage.completion_tokens || 0,
           total: usage.total_tokens || 0,
-        });
+        })
       } else {
-        setTokenUsage(null);
+        setTokenUsage(null)
       }
 
-      const duration = Date.now() - startTime;
-      setOptimizedPrompt(optimized);
-      setOptimizeTime(new Date().toLocaleTimeString("zh-CN"));
+      const duration = Date.now() - startTime
+      setOptimizedPrompt(optimized)
+      setOptimizeTime(new Date().toLocaleTimeString('zh-CN'))
 
-      const diffRes = computeDiff(inputPrompt, optimized);
+      const diffRes = computeDiff(inputPrompt, optimized)
       const record: OptimizeRecord = {
         id: generateId(),
         timestamp: Date.now(),
@@ -1060,90 +1270,95 @@ export default function PromptOptimizerDialog({
         details: diffRes.details,
         duration,
         templateName: tpl.name,
-      };
-      setRecords((prev) => [record, ...prev].slice(0, 50));
-      showToast("优化完成", "success");
+      }
+      setRecords(prev => [record, ...prev].slice(0, 50))
+      showToast('优化完成', 'success')
     } catch (e) {
-      setOptimizeError(e instanceof Error ? e.message : String(e));
-      showToast("优化失败", "error");
+      setOptimizeError(e instanceof Error ? e.message : String(e))
+      showToast('优化失败', 'error')
     } finally {
-      setIsOptimizing(false);
+      setIsOptimizing(false)
     }
-  }, [inputPrompt, showToast, activeTemplate, specimenParams, specimenTypes]);
+  }, [inputPrompt, showToast, activeTemplate, specimenParams, specimenTypes])
 
   const handleCopy = useCallback(async () => {
-    if (!optimizedPrompt.trim()) { showToast("没有可复制的内容", "info"); return; }
-    try {
-      await navigator.clipboard.writeText(optimizedPrompt);
-      showToast("已复制到剪贴板", "success");
-    } catch {
-      showToast("复制失败", "error");
+    if (!optimizedPrompt.trim()) {
+      showToast('没有可复制的内容', 'info')
+      return
     }
-  }, [optimizedPrompt, showToast]);
+    try {
+      await navigator.clipboard.writeText(optimizedPrompt)
+      showToast('已复制到剪贴板', 'success')
+    } catch {
+      showToast('复制失败', 'error')
+    }
+  }, [optimizedPrompt, showToast])
 
-  const handleReset = useCallback(() => {
-    setInputPrompt("");
-    setOptimizedPrompt("");
-    setDiffResult(null);
-    setOptimizeError("");
-    setOptimizeTime("");
-    setTokenUsage(null);
-    setIsEditingOutput(false);
-  }, []);
+  const handleSaveOriginal = useCallback(() => {
+    if (!inputPrompt.trim()) {
+      showToast('没有内容可保存', 'info')
+      return
+    }
+    showToast('已保存原始提示词修改', 'success')
+  }, [inputPrompt, showToast])
 
-  const handleRestoreRecord = useCallback((record: OptimizeRecord) => {
-    setInputPrompt(record.originalPrompt);
-    setOptimizedPrompt(record.optimizedPrompt);
-    setShowHistory(false);
-    showToast("已恢复历史记录", "success");
-  }, [showToast]);
+  const handleRestoreRecord = useCallback(
+    (record: OptimizeRecord) => {
+      setInputPrompt(record.originalPrompt)
+      setOptimizedPrompt(record.optimizedPrompt)
+      setShowHistory(false)
+      showToast('已恢复历史记录', 'success')
+    },
+    [showToast],
+  )
 
   const handleJumpToChange = useCallback((changeIndex: number) => {
-    setHighlightedChange(changeIndex);
-    setTimeout(() => setHighlightedChange(null), 3000);
-  }, []);
+    setHighlightedChange(changeIndex)
+    setTimeout(() => setHighlightedChange(null), 3000)
+  }, [])
 
   const handleExportReport = useCallback(() => {
-    if (!diffResult) return;
-    const stats = computeStats(diffResult.details);
+    if (!diffResult) return
+    const stats = computeStats(diffResult.details)
     const lines = [
-      "提示词优化报告",
-      "=".repeat(50),
-      "",
+      '提示词优化报告',
+      '='.repeat(50),
+      '',
       `优化时间：${optimizeTime}`,
-      `使用模板：${activeTemplate?.name || "默认"}`,
+      `使用模板：${activeTemplate?.name || '默认'}`,
       `总修改处数：${stats.totalChanges}`,
       `新增内容：${stats.addedChars} 字符`,
       `删除内容：${stats.removedChars} 字符`,
-      "",
-      "─ 原始提示词 ─",
+      '',
+      '─ 原始提示词 ─',
       inputPrompt,
-      "",
-      "─ 优化后提示词 ─",
+      '',
+      '─ 优化后提示词 ─',
       optimizedPrompt,
-      "",
-      "─ 修改明细 ─",
-      ...diffResult.details.map((d, i) =>
-        `[${i + 1}] ${d.type === "added" ? "新增" : d.type === "removed" ? "删除" : "替换"}\n原始：${d.original || "(无)"}\n优化后：${d.optimized || "(无)"}\n原因：${d.reason}\n`
-      )
-    ];
-    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `提示词优化报告_${new Date().toLocaleDateString("zh-CN")}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("报告已导出", "success");
-  }, [diffResult, inputPrompt, optimizedPrompt, optimizeTime, showToast, activeTemplate]);
+      '',
+      '─ 修改明细 ─',
+      ...diffResult.details.map(
+        (d, i) =>
+          `[${i + 1}] ${d.type === 'added' ? '新增' : d.type === 'removed' ? '删除' : '替换'}\n原始：${d.original || '(无)'}\n优化后：${d.optimized || '(无)'}\n原因：${d.reason}\n`,
+      ),
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `提示词优化报告_${new Date().toLocaleDateString('zh-CN')}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('报告已导出', 'success')
+  }, [diffResult, inputPrompt, optimizedPrompt, optimizeTime, showToast, activeTemplate])
 
   // ── 收藏 / 取消收藏 ─────────────────────────────────────────────────
   const handleToggleFavorite = useCallback(() => {
-    if (!optimizedPrompt.trim()) return;
-    const exists = favorites.find(f => f.optimizedPrompt === optimizedPrompt);
+    if (!optimizedPrompt.trim()) return
+    const exists = favorites.find(f => f.optimizedPrompt === optimizedPrompt)
     if (exists) {
-      setFavorites(prev => prev.filter(f => f.id !== exists.id));
-      showToast("已取消收藏", "info");
+      setFavorites(prev => prev.filter(f => f.id !== exists.id))
+      showToast('已取消收藏', 'info')
     } else {
       const fav: OptimizeRecord = {
         id: generateId(),
@@ -1154,144 +1369,165 @@ export default function PromptOptimizerDialog({
         duration: 0,
         templateName: activeTemplate?.name,
         isFavorite: true,
-      };
-      setFavorites(prev => [fav, ...prev].slice(0, 50));
-      showToast("已加入收藏", "success");
+      }
+      setFavorites(prev => [fav, ...prev].slice(0, 50))
+      showToast('已加入收藏', 'success')
     }
-  }, [optimizedPrompt, inputPrompt, favorites, diffResult, activeTemplate, showToast]);
+  }, [optimizedPrompt, inputPrompt, favorites, diffResult, activeTemplate, showToast])
 
   // ── 套用收藏到输入框 ─────────────────────────────────────────────────
-  const handleApplyFavorite = useCallback((record: OptimizeRecord) => {
-    setInputPrompt(record.originalPrompt);
-    setOptimizedPrompt(record.optimizedPrompt);
-    setShowFavorites(false);
-    showToast("已套用收藏内容", "success");
-  }, [showToast]);
+  const handleApplyFavorite = useCallback(
+    (record: OptimizeRecord) => {
+      setInputPrompt(record.originalPrompt)
+      setOptimizedPrompt(record.optimizedPrompt)
+      setShowFavorites(false)
+      showToast('已套用收藏内容', 'success')
+    },
+    [showToast],
+  )
 
   // ── 模板导入 ────────────────────────────────────────────────────────
   const handleImportTemplates = useCallback(() => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = e => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = ev => {
         try {
-          const imported: SystemTemplate[] = JSON.parse(ev.target?.result as string);
-          if (!Array.isArray(imported)) throw new Error("格式错误");
-          const merged = [...templates];
+          const imported: SystemTemplate[] = JSON.parse(ev.target?.result as string)
+          if (!Array.isArray(imported)) throw new Error('格式错误')
+          const merged = [...templates]
           for (const tpl of imported) {
             if (!merged.find(t => t.id === tpl.id)) {
-              merged.push({ ...tpl, id: tpl.id || generateId() });
+              merged.push({ ...tpl, id: tpl.id || generateId() })
             }
           }
-          setTemplates(merged);
-          showToast(`已导入 ${imported.length} 个模板`, "success");
+          setTemplates(merged)
+          showToast(`已导入 ${imported.length} 个模板`, 'success')
         } catch {
-          showToast("导入失败，文件格式不正确", "error");
+          showToast('导入失败，文件格式不正确', 'error')
         }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  }, [templates, showToast]);
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }, [templates, showToast])
 
   // ── 模板导出 ────────────────────────────────────────────────────────
   const handleExportTemplates = useCallback(() => {
-    const blob = new Blob([JSON.stringify(templates, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `提示词模板_${new Date().toLocaleDateString("zh-CN")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("模板已导出", "success");
-  }, [templates, showToast]);
+    const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `提示词模板_${new Date().toLocaleDateString('zh-CN')}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('模板已导出', 'success')
+  }, [templates, showToast])
 
   // ── 套用模板到输入框 ─────────────────────────────────────────────────
-  const handleApplyTemplateToInput = useCallback((tpl: SystemTemplate) => {
-    setInputPrompt(tpl.systemPrompt);
-    setShowTemplateManager(false);
-    showToast("模板内容已填入输入框", "success");
-  }, [showToast]);
+  const handleApplyTemplateToInput = useCallback(
+    (tpl: SystemTemplate) => {
+      setInputPrompt(tpl.systemPrompt)
+      setShowTemplateManager(false)
+      showToast('模板内容已填入输入框', 'success')
+    },
+    [showToast],
+  )
 
   // ── 中药标本：切换选中类型 ───────────────────────────────────────────
-  const handleToggleSpecimenType = useCallback((type: SpecimenType) => {
-    if (type === "none") {
-      setSpecimenTypes([]);
-      setSpecimenParams({});
-      return;
-    }
-    setSpecimenTypes(prev => {
-      if (prev.includes(type)) return prev.filter(t => t !== type);
-      return [...prev, type];
-    });
-    // 选中时自动随机填充一个药材名称
-    if (!specimenParams[type]) {
-      const herb = getRandomHerb(type);
-      if (herb) {
-        setSpecimenParams(prev => ({ ...prev, [type]: { hasLabel: true, ...herb } }));
-      } else {
-        setSpecimenParams(prev => ({ ...prev, [type]: { name: "", hasLabel: true } }));
+  const handleToggleSpecimenType = useCallback(
+    (type: SpecimenType) => {
+      if (type === 'none') {
+        setSpecimenTypes([])
+        setSpecimenParams({})
+        return
       }
-    }
-  }, [specimenParams]);
+      setSpecimenTypes(prev => {
+        if (prev.includes(type)) return prev.filter(t => t !== type)
+        return [...prev, type]
+      })
+      // 选中时自动随机填充一个药材名称
+      if (!specimenParams[type]) {
+        const herb = getRandomHerb(type)
+        if (herb) {
+          setSpecimenParams(prev => ({ ...prev, [type]: { hasLabel: true, ...herb } }))
+        } else {
+          setSpecimenParams(prev => ({ ...prev, [type]: { name: '', hasLabel: true } }))
+        }
+      }
+    },
+    [specimenParams],
+  )
 
   // ── 中药标本：更新参数 ──────────────────────────────────────────────
-  const handleUpdateSpecimenParam = useCallback((type: SpecimenType, field: keyof SpecimenParams, value: string | boolean) => {
-    setSpecimenParams(prev => ({
-      ...prev,
-      [type]: { ...(prev[type] || { name: "", hasLabel: true }), [field]: value }
-    }));
-  }, []);
+  const handleUpdateSpecimenParam = useCallback(
+    (type: SpecimenType, field: keyof SpecimenParams, value: string | boolean) => {
+      setSpecimenParams(prev => ({
+        ...prev,
+        [type]: { ...(prev[type] || { name: '', hasLabel: true }), [field]: value },
+      }))
+    },
+    [],
+  )
 
   // ── 中药标本：插入提示词到输入框 ─────────────────────────────────────
-  const handleInsertSpecimenPrompt = useCallback((type: SpecimenType) => {
-    const params = specimenParams[type] || { name: "", hasLabel: true };
-    const prompt = generateSpecimenPrompt(type, params);
-    if (!prompt) return;
-    setInputPrompt(prev => {
-      if (!prev.trim()) return prompt;
-      return prev + "\n" + prompt;
-    });
-    setShowSpecimenPanel(false);
-    setSlashCommandActive(false);
-    showToast(`${SPECIMEN_CONFIGS[type as Exclude<SpecimenType, "none">]?.label || ""} 提示词已插入`, "success");
-  }, [specimenParams, showToast]);
+  const handleInsertSpecimenPrompt = useCallback(
+    (type: SpecimenType) => {
+      const params = specimenParams[type] || { name: '', hasLabel: true }
+      const prompt = generateSpecimenPrompt(type, params)
+      if (!prompt) return
+      setInputPrompt(prev => {
+        if (!prev.trim()) return prompt
+        return prev + '\n' + prompt
+      })
+      setShowSpecimenPanel(false)
+      setSlashCommandActive(false)
+      showToast(
+        `${SPECIMEN_CONFIGS[type as Exclude<SpecimenType, 'none'>]?.label || ''} 提示词已插入`,
+        'success',
+      )
+    },
+    [specimenParams, showToast],
+  )
 
   // ── 中药标本：插入全部 ──────────────────────────────────────────────
   const handleInsertAllSpecimens = useCallback(() => {
     const prompts = specimenTypes
-      .filter(t => t !== "none")
-      .map(t => generateSpecimenPrompt(t, specimenParams[t] || { name: "", hasLabel: true }))
-      .filter(Boolean);
+      .filter(t => t !== 'none')
+      .map(t => generateSpecimenPrompt(t, specimenParams[t] || { name: '', hasLabel: true }))
+      .filter(Boolean)
     if (prompts.length === 0) {
-      showToast("请先选择标本类型", "info");
-      return;
+      showToast('请先选择标本类型', 'info')
+      return
     }
-    const combined = prompts.join("\n");
+    const combined = prompts.join('\n')
     setInputPrompt(prev => {
-      if (!prev.trim()) return combined;
-      return prev + "\n" + combined;
-    });
-    setShowSpecimenPanel(false);
-    showToast(`已插入 ${prompts.length} 个标本提示词`, "success");
-  }, [specimenTypes, specimenParams, showToast]);
+      if (!prev.trim()) return combined
+      return prev + '\n' + combined
+    })
+    setShowSpecimenPanel(false)
+    showToast(`已插入 ${prompts.length} 个标本提示词`, 'success')
+  }, [specimenTypes, specimenParams, showToast])
 
   // ── 中药标本：保存为模板 ────────────────────────────────────────────
   const handleSaveSpecimenAsTemplate = useCallback(() => {
     if (specimenTypes.length === 0) {
-      showToast("请先选择标本类型", "info");
-      return;
+      showToast('请先选择标本类型', 'info')
+      return
     }
-    const labels = specimenTypes.filter(t => t !== "none").map(t => SPECIMEN_CONFIGS[t]?.label).join(" + ");
+    const labels = specimenTypes
+      .filter(t => t !== 'none')
+      .map(t => SPECIMEN_CONFIGS[t]?.label)
+      .join(' + ')
     const prompt = specimenTypes
-      .filter(t => t !== "none")
-      .map(t => generateSpecimenPrompt(t, specimenParams[t] || { name: "", hasLabel: true }))
+      .filter(t => t !== 'none')
+      .map(t => generateSpecimenPrompt(t, specimenParams[t] || { name: '', hasLabel: true }))
       .filter(Boolean)
-      .join("\n");
+      .join('\n')
     const newTpl: SystemTemplate = {
       id: generateId(),
       name: `${labels} 标本模板`,
@@ -1299,192 +1535,227 @@ export default function PromptOptimizerDialog({
       systemPrompt: prompt,
       isDefault: false,
       createdAt: Date.now(),
-    };
-    setTemplates(prev => [...prev, newTpl]);
-    showToast("标本配置已保存为模板", "success");
-  }, [specimenTypes, specimenParams, showToast]);
+    }
+    setTemplates(prev => [...prev, newTpl])
+    showToast('标本配置已保存为模板', 'success')
+  }, [specimenTypes, specimenParams, showToast])
 
   // ── 智能推荐：识别输入中的标本类型（完全匹配标本名称才触发） ──────────────────
   const detectedSpecimens = useMemo(() => {
-    if (!inputPrompt.trim()) return [];
-    const p = inputPrompt;
-    const detected: SpecimenType[] = [];
+    if (!inputPrompt.trim()) return []
+    const p = inputPrompt
+    const detected: SpecimenType[] = []
     for (const [type, cfg] of Object.entries(SPECIMEN_CONFIGS)) {
       // 只有完全匹配标本正式名称才触发（如"浸制标本"、"腊叶标本"、"生药标本"、"饮片标本"）
-      const exactMatch = p.includes(cfg.label);
+      const exactMatch = p.includes(cfg.label)
       if (exactMatch && !ignoredRecommendations.has(type)) {
-        detected.push(type as SpecimenType);
+        detected.push(type as SpecimenType)
       }
     }
-    return detected;
-  }, [inputPrompt, ignoredRecommendations]);
+    return detected
+  }, [inputPrompt, ignoredRecommendations])
 
   // ── 智能推荐：插入推荐标本 ──────────────────────────────────────────
-  const handleInsertRecommendation = useCallback((type: SpecimenType) => {
-    const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, "none">];
-    if (!cfg) return;
+  const handleInsertRecommendation = useCallback(
+    (type: SpecimenType) => {
+      const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, 'none'>]
+      if (!cfg) return
 
-    // 确保有药材名称（如果缺失则随机填充）
-    let currentParams = specimenParams[type];
-    if (!currentParams?.name) {
-      const herb = getRandomHerb(type);
-      if (herb) {
-        setSpecimenParams(prev => ({ ...prev, [type]: { hasLabel: true, ...herb } }));
-        currentParams = { hasLabel: true, ...herb };
-      } else {
-        currentParams = { name: "XXX", hasLabel: true };
+      // 确保有药材名称（如果缺失则随机填充）
+      let currentParams = specimenParams[type]
+      if (!currentParams?.name) {
+        const herb = getRandomHerb(type)
+        if (herb) {
+          setSpecimenParams(prev => ({ ...prev, [type]: { hasLabel: true, ...herb } }))
+          currentParams = { hasLabel: true, ...herb }
+        } else {
+          currentParams = { name: 'XXX', hasLabel: true }
+        }
       }
-    }
 
-    const prompt = generateSpecimenPrompt(type, currentParams);
+      const prompt = generateSpecimenPrompt(type, currentParams)
 
-    setInputPrompt(prev => {
-      if (!prev.trim()) return prompt;
-      return prev + "\n" + prompt;
-    });
-    setIgnoredRecommendations(prev => new Set(prev).add(type));
-    showToast(`已插入${cfg.label}提示词`, "success");
-  }, [specimenParams, showToast]);
+      setInputPrompt(prev => {
+        if (!prev.trim()) return prompt
+        return prev + '\n' + prompt
+      })
+      setIgnoredRecommendations(prev => new Set(prev).add(type))
+      showToast(`已插入${cfg.label}提示词`, 'success')
+    },
+    [specimenParams, showToast],
+  )
 
   const handleIgnoreRecommendation = useCallback((type: SpecimenType) => {
-    setIgnoredRecommendations(prev => new Set(prev).add(type));
-  }, []);
+    setIgnoredRecommendations(prev => new Set(prev).add(type))
+  }, [])
 
   // ── 斜杠命令处理 ────────────────────────────────────────────────────
-  const handleTextareaKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (slashCommandActive) {
-      if (e.key === "Escape") {
-        setSlashCommandActive(false);
-        setSlashFilter("");
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const filtered = SPECIMEN_TYPE_LIST.filter(s =>
-          s.value !== "none" && s.label.includes(slashFilter)
-        );
-        if (filtered.length > 0) {
-          handleInsertSpecimenPrompt(filtered[0].value);
+  const handleTextareaKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (slashCommandActive) {
+        if (e.key === 'Escape') {
+          setSlashCommandActive(false)
+          setSlashFilter('')
+          return
         }
-        return;
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          const filtered = SPECIMEN_TYPE_LIST.filter(
+            s => s.value !== 'none' && s.label.includes(slashFilter),
+          )
+          if (filtered.length > 0) {
+            handleInsertSpecimenPrompt(filtered[0].value)
+          }
+          return
+        }
       }
-    }
-  }, [slashCommandActive, slashFilter, handleInsertSpecimenPrompt]);
+    },
+    [slashCommandActive, slashFilter, handleInsertSpecimenPrompt],
+  )
 
   const handleTextareaInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
+    const val = e.target.value
     if (val.length <= MAX_CHARS) {
-      setInputPrompt(val);
+      setInputPrompt(val)
     }
-    const cursorPos = (e.target as HTMLTextAreaElement).selectionStart;
-    const textBeforeCursor = val.slice(0, cursorPos);
-    const slashMatch = textBeforeCursor.match(/\/([^\s]*)$/);
+    const cursorPos = (e.target as HTMLTextAreaElement).selectionStart
+    const textBeforeCursor = val.slice(0, cursorPos)
+    const slashMatch = textBeforeCursor.match(/\/([^\s]*)$/)
     if (slashMatch) {
-      setSlashCommandActive(true);
-      setSlashFilter(slashMatch[1]);
+      setSlashCommandActive(true)
+      setSlashFilter(slashMatch[1])
     } else {
-      setSlashCommandActive(false);
-      setSlashFilter("");
+      setSlashCommandActive(false)
+      setSlashFilter('')
     }
-  }, []);
+  }, [])
 
   // ── 标本专业维度打分 ────────────────────────────────────────────────
   const specimenScore = useMemo(() => {
-    if (specimenTypes.length === 0 || specimenTypes.every(t => t === "none")) return null;
-    let score = 0;
-    const maxScore = specimenTypes.length * 25;
+    if (specimenTypes.length === 0 || specimenTypes.every(t => t === 'none')) return null
+    let score = 0
+    const maxScore = specimenTypes.length * 25
     for (const type of specimenTypes) {
-      if (type === "none") continue;
-      const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, "none">];
-      if (!cfg) continue;
-      const params = specimenParams[type] || { name: "", hasLabel: true };
-      const filled = cfg.requiredFields.filter(f => params[f] && String(params[f]).trim()).length;
-      score += Math.floor((filled / cfg.requiredFields.length) * 20);
-      const optFilled = cfg.optionalFields.filter(f => params[f] && String(params[f]).trim()).length;
-      score += Math.floor((optFilled / cfg.optionalFields.length) * 5);
+      if (type === 'none') continue
+      const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, 'none'>]
+      if (!cfg) continue
+      const params = specimenParams[type] || { name: '', hasLabel: true }
+      const filled = cfg.requiredFields.filter(f => params[f] && String(params[f]).trim()).length
+      score += Math.floor((filled / cfg.requiredFields.length) * 20)
+      const optFilled = cfg.optionalFields.filter(f => params[f] && String(params[f]).trim()).length
+      score += Math.floor((optFilled / cfg.optionalFields.length) * 5)
     }
-    return { score: Math.min(score, maxScore), max: maxScore };
-  }, [specimenTypes, specimenParams]);
+    return { score: Math.min(score, maxScore), max: maxScore }
+  }, [specimenTypes, specimenParams])
 
   // ── 模板管理 ────────────────────────────────────────────────────────
   const handleSaveTemplate = useCallback(() => {
     if (!editingTemplate?.name?.trim() || !editingTemplate?.systemPrompt?.trim()) {
-      showToast("请输入模板名称和优化规则", "error");
-      return;
+      showToast('请输入模板名称和优化规则', 'error')
+      return
     }
     if (editingTemplate.id) {
-      setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? { ...t, ...editingTemplate, name: editingTemplate.name!.trim(), systemPrompt: editingTemplate.systemPrompt!.trim() } as SystemTemplate : t));
-      showToast("模板已更新", "success");
+      setTemplates(prev =>
+        prev.map(t =>
+          t.id === editingTemplate.id
+            ? ({
+                ...t,
+                ...editingTemplate,
+                name: editingTemplate.name!.trim(),
+                systemPrompt: editingTemplate.systemPrompt!.trim(),
+              } as SystemTemplate)
+            : t,
+        ),
+      )
+      showToast('模板已更新', 'success')
     } else {
       const newTpl: SystemTemplate = {
         id: generateId(),
         name: editingTemplate.name.trim(),
-        description: editingTemplate.description?.trim() || "",
+        description: editingTemplate.description?.trim() || '',
         systemPrompt: editingTemplate.systemPrompt.trim(),
         isDefault: false,
         createdAt: Date.now(),
-      };
-      setTemplates(prev => [...prev, newTpl]);
-      showToast("模板已创建", "success");
-    }
-    setEditingTemplate(null);
-  }, [editingTemplate, showToast]);
-
-  const handleDeleteTemplate = useCallback((id: string) => {
-    const tpl = templates.find(t => t.id === id);
-    if (!tpl) return;
-    if (!confirm(`确定要删除模板「${tpl.name}」吗？`)) return;
-    setTemplates(prev => {
-      const next = prev.filter(t => t.id !== id);
-      if (selectedTemplateId === id) {
-        setSelectedTemplateId(next[0]?.id || "");
       }
-      return next;
-    });
-    showToast("模板已删除", "success");
-  }, [selectedTemplateId, showToast, templates]);
+      setTemplates(prev => [...prev, newTpl])
+      showToast('模板已创建', 'success')
+    }
+    setEditingTemplate(null)
+  }, [editingTemplate, showToast])
 
-  const handleSetDefaultTemplate = useCallback((id: string) => {
-    setTemplates(prev => prev.map(t => ({ ...t, isDefault: t.id === id })));
-    setSelectedTemplateId(id);
-    showToast("已设为默认模板", "success");
-  }, [showToast]);
+  const handleDeleteTemplate = useCallback(
+    (id: string) => {
+      const tpl = templates.find(t => t.id === id)
+      if (!tpl) return
+      if (!confirm(`确定要删除模板「${tpl.name}」吗？`)) return
+      setTemplates(prev => {
+        const next = prev.filter(t => t.id !== id)
+        if (selectedTemplateId === id) {
+          setSelectedTemplateId(next[0]?.id || '')
+        }
+        return next
+      })
+      showToast('模板已删除', 'success')
+    },
+    [selectedTemplateId, showToast, templates],
+  )
 
-  const stats = useMemo(() => diffResult ? computeStats(diffResult.details) : null, [diffResult]);
+  const handleSetDefaultTemplate = useCallback(
+    (id: string) => {
+      setTemplates(prev => prev.map(t => ({ ...t, isDefault: t.id === id })))
+      setSelectedTemplateId(id)
+      showToast('已设为默认模板', 'success')
+    },
+    [showToast],
+  )
+
+  const stats = useMemo(() => (diffResult ? computeStats(diffResult.details) : null), [diffResult])
   const filteredDetails = useMemo(() => {
-    if (!diffResult) return [];
-    if (filterType === "all") return diffResult.details;
-    return diffResult.details.filter(d => d.type === filterType);
-  }, [diffResult, filterType]);
+    if (!diffResult) return []
+    if (filterType === 'all') return diffResult.details
+    return diffResult.details.filter(d => d.type === filterType)
+  }, [diffResult, filterType])
 
-  const isValidInput = inputPrompt.trim().length > 0;
+  const isValidInput = inputPrompt.trim().length > 0
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <div
       className="overlay-dark fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backdropFilter: "blur(4px)" }}
+      style={{ backdropFilter: 'blur(4px)' }}
       onClick={onClose}
     >
       <div
-        className="bg-white/[0.06] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: "min(96vw, 1400px)", height: "min(92vh, 900px)" }}
-        onClick={(e) => e.stopPropagation()}
+        className="flex flex-col overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl"
+        style={{ width: 'min(96vw, 1400px)', height: 'min(92vh, 900px)' }}
+        onClick={e => e.stopPropagation()}
       >
         {/* ═══════════════════════════════════════════════════════
             顶部操作栏
         ═══════════════════════════════════════════════════════ */}
-        <div className="flex-shrink-0 px-5 py-3 border-b border-white/[0.08] bg-white/[0.04] flex items-center justify-between">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-5 py-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-sm">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 shadow-sm">
+              <svg
+                className="h-5 w-5 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
               </svg>
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-100">提示词优化器</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">自定义系统模板 · 差异对比 · 专业优化</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                自定义系统模板 · 差异对比 · 专业优化
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1492,13 +1763,14 @@ export default function PromptOptimizerDialog({
             <div className="flex items-center gap-1">
               <select
                 value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-xs text-slate-400 bg-white/[0.06] hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[140px]"
+                onChange={e => setSelectedTemplateId(e.target.value)}
+                className="min-w-[140px] cursor-pointer rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-xs text-slate-400 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 title="选择系统模板"
               >
                 {templates.map(t => (
                   <option key={t.id} value={t.id}>
-                    {(TEMPLATE_ICONS[t.id] || "📝")} {t.name}{t.isDefault ? " ★" : ""}
+                    {TEMPLATE_ICONS[t.id] || '📝'} {t.name}
+                    {t.isDefault ? ' ★' : ''}
                   </option>
                 ))}
               </select>
@@ -1507,13 +1779,18 @@ export default function PromptOptimizerDialog({
                 <button
                   onClick={() => {
                     // 自动选中推荐标本类型
-                    const newTypes = currentSpecimenHint.types.filter(t => !specimenTypes.includes(t));
+                    const newTypes = currentSpecimenHint.types.filter(
+                      t => !specimenTypes.includes(t),
+                    )
                     if (newTypes.length > 0) {
-                      setSpecimenTypes(prev => [...prev.filter(t => !currentSpecimenHint.types.includes(t)), ...newTypes]);
+                      setSpecimenTypes(prev => [
+                        ...prev.filter(t => !currentSpecimenHint.types.includes(t)),
+                        ...newTypes,
+                      ])
                     }
-                    setShowSpecimenPanel(true);
+                    setShowSpecimenPanel(true)
                   }}
-                  className="px-2 py-1 rounded border border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-400 hover:bg-emerald-500/15 transition flex items-center gap-1"
+                  className="flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-400 transition hover:bg-emerald-500/15"
                   title={currentSpecimenHint.hint}
                 >
                   <span>🎯</span>
@@ -1522,57 +1799,103 @@ export default function PromptOptimizerDialog({
               )}
             </div>
             {/* 当前配置摘要 */}
-            <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-white/[0.08] rounded text-[10px] text-slate-500 max-w-[200px] truncate" title={currentConfigSummary}>
+            <div
+              className="hidden max-w-[200px] items-center gap-1 truncate rounded bg-white/[0.08] px-2 py-1 text-[10px] text-slate-500 lg:flex"
+              title={currentConfigSummary}
+            >
               <span>配置:</span>
               <span className="truncate">{currentConfigSummary}</span>
             </div>
             <button
               onClick={() => setShowTemplateManager(true)}
-              className="px-3 py-1.5 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition flex items-center gap-1.5"
+              className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-slate-400 transition hover:bg-white/[0.06]"
               title="管理系统模板"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
               </svg>
               模板管理
             </button>
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="px-3 py-1.5 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition flex items-center gap-1.5"
+              className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-slate-400 transition hover:bg-white/[0.06]"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               历史记录
-              {records.length > 0 && <span className="px-1 bg-blue-500/15 text-blue-400 rounded text-[9px] font-bold">{records.length}</span>}
+              {records.length > 0 && (
+                <span className="rounded bg-blue-500/15 px-1 text-[9px] font-bold text-blue-400">
+                  {records.length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setShowFavorites(!showFavorites)}
-              className="px-3 py-1.5 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition flex items-center gap-1.5"
+              className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-slate-400 transition hover:bg-white/[0.06]"
               title="收藏的优化结果"
             >
-              <svg className="w-3.5 h-3.5" fill={favorites.length > 0 ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              <svg
+                className="h-3.5 w-3.5"
+                fill={favorites.length > 0 ? 'currentColor' : 'none'}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                />
               </svg>
               收藏
-              {favorites.length > 0 && <span className="px-1 bg-amber-500/15 text-amber-400 rounded text-[9px] font-bold">{favorites.length}</span>}
+              {favorites.length > 0 && (
+                <span className="rounded bg-amber-500/15 px-1 text-[9px] font-bold text-amber-400">
+                  {favorites.length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
-              className="p-1.5 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-slate-400 transition-colors"
+              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-400"
               title="快捷键"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                />
               </svg>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-slate-400 transition-colors"
+              className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-slate-400"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -1581,548 +1904,816 @@ export default function PromptOptimizerDialog({
         {/* ═══════════════════════════════════════════════════════
             主体双栏对比区
         ═══════════════════════════════════════════════════════ */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 flex overflow-hidden">
-             {/* ── 左栏：原始提示词 ── */}
-             <div className="flex-1 flex flex-col border-r border-white/[0.08]">
-               <div className="flex-shrink-0 px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.04] flex items-center justify-between">
-                 <div className="flex items-center gap-2">
-                   <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">原始提示词</span>
-                   <span className="text-[10px] text-slate-300 bg-white/[0.08] px-1.5 py-0.5 rounded">输入区</span>
-                 </div>
-                 <div className="flex items-center gap-1.5">
-                   {specimenTypes.length > 0 && specimenTypes.some(t => t !== "none") && (
-                     <button
-                       onClick={() => setShowSpecimenPanel(!showSpecimenPanel)}
-                       className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition font-medium"
-                     >
-                       🏷️ 标本 ({specimenTypes.filter(t => t !== "none").length})
-                     </button>
-                   )}
-                   <button onClick={() => setShowSpecimenPanel(!showSpecimenPanel)} className="text-[10px] text-slate-400 hover:text-emerald-400 transition" title="中药标本选择">
-                     + 标本
-                   </button>
-                   {inputPrompt && (
-                     <button onClick={() => { setInputPrompt(""); setOptimizedPrompt(""); setDiffResult(null); setSpecimenTypes([]); setSpecimenParams({}); }} className="text-[10px] text-slate-400 hover:text-red-500 transition">清空</button>
-                   )}
-                 </div>
-               </div>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div
+            ref={splitContainerRef}
+            className="flex flex-1 overflow-hidden"
+          >
+            {/* ── 左栏：原始提示词 ── */}
+            <div
+              className="flex flex-col border-r border-white/[0.08]"
+              style={{ flex: `0 0 ${splitRatio * 100}%`, minWidth: 0 }}
+            >
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] bg-white/[0.04] px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    原始提示词
+                  </span>
+                  <span className="rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-slate-300">
+                    输入区
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {specimenTypes.length > 0 && specimenTypes.some(t => t !== 'none') && (
+                    <button
+                      onClick={() => setShowSpecimenPanel(!showSpecimenPanel)}
+                      className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400 transition hover:bg-emerald-500/25"
+                    >
+                      🏷️ 标本 ({specimenTypes.filter(t => t !== 'none').length})
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowSpecimenPanel(!showSpecimenPanel)}
+                    className="text-[10px] text-slate-400 transition hover:text-emerald-400"
+                    title="中药标本选择"
+                  >
+                    + 标本
+                  </button>
+                  {inputPrompt && (
+                    <button
+                      onClick={() => {
+                        setInputPrompt('')
+                        setOptimizedPrompt('')
+                        setDiffResult(null)
+                        setSpecimenTypes([])
+                        setSpecimenParams({})
+                      }}
+                      className="text-[10px] text-slate-400 transition hover:text-red-500"
+                    >
+                      清空
+                    </button>
+                  )}
+                </div>
+              </div>
 
-                {/* ── 标本选择面板 ── */}
-                {showSpecimenPanel && (
-                  <div className="flex-shrink-0 border-b border-emerald-500/20 bg-white/[0.04]" style={{ maxHeight: 420 }}>
-                     <div className="px-4 py-2 border-b border-emerald-500/20 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-400">标本类型选择</span>
-                        {/* 当前模板关联提示 */}
-                        {currentSpecimenHint && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                            💡 当前模板: {currentSpecimenHint.hint}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => setSpecimenInsertMode(prev => prev === "cursor" ? "append" : "cursor")} className="text-[10px] text-emerald-400 hover:text-emerald-300 underline">
-                          {specimenInsertMode === "cursor" ? "光标插入" : "末尾追加"}
-                        </button>
-                        <button onClick={() => setShowCustomSpecimenDialog(true)} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition font-medium">
-                          + 自定义
-                        </button>
-                        <button onClick={() => { setShowSpecimenPanel(false); }} className="text-[10px] text-slate-400 hover:text-slate-400">✕</button>
-                      </div>
+              {/* ── 标本选择面板 ── */}
+              {showSpecimenPanel && (
+                <div
+                  className="flex-shrink-0 border-b border-emerald-500/20 bg-white/[0.04]"
+                  style={{ maxHeight: 420 }}
+                >
+                  <div className="flex items-center justify-between border-b border-emerald-500/20 px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-emerald-400">标本类型选择</span>
+                      {/* 当前模板关联提示 */}
+                      {currentSpecimenHint && (
+                        <span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-400">
+                          💡 当前模板: {currentSpecimenHint.hint}
+                        </span>
+                      )}
                     </div>
-                    <div className="overflow-auto p-3" style={{ maxHeight: 370 }}>
-                      {/* 类型卡片 + 一键插入 */}
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <div className="grid grid-cols-5 flex-1 gap-1.5">
-                          {SPECIMEN_TYPE_LIST.filter(s => s.value !== "none").map(s => {
-                            const isSelected = specimenTypes.includes(s.value);
-                            const isRecommended = currentSpecimenHint?.types.includes(s.value);
-                            return (
-                              <button
-                                key={s.value}
-                                onClick={() => handleToggleSpecimenType(s.value)}
-                                className={`px-2 py-1.5 rounded-lg border text-[10px] font-medium transition flex items-center gap-1 justify-center relative ${
-                                  isSelected
-                                    ? "border-emerald-400 bg-emerald-500/15 text-emerald-400"
-                                    : isRecommended && currentSpecimenHint?.recommended
-                                      ? "border-blue-300 bg-blue-500/10 text-blue-400 hover:border-blue-400 hover:bg-blue-500/15"
-                                      : "border-white/[0.08] bg-white/[0.06] text-slate-500 hover:border-emerald-300 hover:text-emerald-400"
-                                }`}
-                                title={isRecommended && currentSpecimenHint ? `${currentSpecimenHint.hint} - 推荐配合此模板使用` : s.label}
-                              >
-                                {s.icon && <span>{s.icon}</span>}
-                                <span className="truncate">{s.label}</span>
-                                {isRecommended && !isSelected && (
-                                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
-                                )}
-                              </button>
-                            );
-                          })}
-                          {/* 自定义标本类型 */}
-                          {customSpecimens.map(s => {
-                            const isSelected = specimenTypes.includes(s.id);
-                            return (
-                              <button
-                                key={s.id}
-                                onClick={() => handleToggleSpecimenType(s.id)}
-                                className={`px-2 py-1.5 rounded-lg border text-[10px] font-medium transition flex items-center gap-1 justify-center relative ${
-                                  isSelected
-                                     ? "border-amber-400 bg-amber-500/15 text-amber-400"
-                                     : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:border-amber-400"
-                                }`}
-                              >
-                                <span>{s.icon}</span>
-                                <span className="truncate">{s.label}</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCustomSpecimens(prev => prev.filter(cs => cs.id !== s.id));
-                                    setSpecimenTypes(prev => prev.filter(t => t !== s.id));
-                                  }}
-                                  className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-600"
-                                  title="删除"
-                                >
-                                  ✕
-                                </button>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {specimenTypes.filter(t => t !== "none").length > 0 && (
-                          <button onClick={handleInsertAllSpecimens} className="flex-shrink-0 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[10px] font-bold hover:bg-emerald-700 transition whitespace-nowrap">
-                            一键插入全部
-                          </button>
-                        )}
-                      </div>
-                   {/* 参数表单 */}
-                   {specimenTypes.filter(t => t !== "none").map(type => {
-                     const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, "none">];
-                     const isCustom = customSpecimens.find(cs => cs.id === type);
-                     const params = specimenParams[type] || { name: "", hasLabel: true };
-                     const preview = cfg ? generateSpecimenPrompt(type, params) : (specimenParams[type]?.name || isCustom?.basePrompt || "");
-
-                     return (
-                        <div key={type} className="mb-2 rounded-lg border border-amber-500/20 bg-white/[0.06] overflow-hidden">
-                         {/* 标题栏 */}
-                          <div className="flex items-center justify-between px-2.5 py-1.5 bg-amber-500/10 border-b border-amber-500/20">
-                            <span className="text-[10px] font-bold text-amber-400">{isCustom ? `${isCustom.icon} ${isCustom.label}` : `${cfg?.icon} ${cfg?.label}`}</span>
-                           <div className="flex items-center gap-1.5">
-                             <button onClick={() => {
-                               const text = cfg ? generateSpecimenPrompt(type, params) : (specimenParams[type]?.name || isCustom?.basePrompt || "");
-                               navigator.clipboard.writeText(text);
-                               showToast("已复制", "success");
-                             }} className="text-[9px] text-slate-400 hover:text-blue-500">复制</button>
-                              <button onClick={() => { handleInsertSpecimenPrompt(type); }} className="text-[9px] text-amber-400 hover:text-amber-300 font-medium underline">插入</button>
-                           </div>
-                         </div>
-
-                         {/* 自定义标本：简化表单 */}
-                         {isCustom && (
-                           <div className="p-2.5">
-                             <div className="mb-2">
-                               <label className="block text-[9px] text-slate-400 mb-0.5">标本名称 *</label>
-                               <input
-                                 type="text"
-                                 className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-amber-500/30"
-                                 value={specimenParams[type]?.name || ""}
-                                 onChange={(e) => handleUpdateSpecimenParam(type, "name", e.target.value)}
-                                 placeholder="输入标本名称"
-                               />
-                             </div>
-                             <div className="text-[9px] text-slate-400 mb-1">提示词预览</div>
-                             <div className="p-2 bg-white/[0.04] rounded text-[9px] text-slate-400 whitespace-pre-wrap max-h-20 overflow-auto">
-                               {isCustom.basePrompt.replace(/\[名称\]/g, specimenParams[type]?.name || "XXX")}
-                             </div>
-                           </div>
-                         )}
-
-                         {/* 参数区 */}
-                         <div className="p-2.5">
-                           {/* 必填字段 */}
-                           <div className="mb-2">
-                             <div className="text-[9px] text-slate-400 mb-1 font-medium">必填参数</div>
-                             <div className="grid grid-cols-2 gap-1.5">
-                               {cfg.requiredFields.map(field => (
-                                 <div key={field}>
-                                   <label className="block text-[9px] text-slate-400 mb-0.5">
-                                     {field === "name" ? "中药正式名 *" :
-                                      field === "family" ? "科属 *" :
-                                      field === "origin" ? "产地 *" :
-                                      field === "part" ? "药用部位 *" :
-                                      field === "latinName" ? "拉丁学名 *" :
-                                      field === "processingSpec" ? "炮制规格 *" : field}
-                                   </label>
-                                   {field === "part" ? (
-                                     <select
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                     >
-                                       <option value="">请选择</option>
-                                       <option value="根">根</option>
-                                       <option value="根茎">根茎</option>
-                                       <option value="茎">茎</option>
-                                       <option value="叶">叶</option>
-                                       <option value="花">花</option>
-                                       <option value="果实">果实</option>
-                                       <option value="种子">种子</option>
-                                       <option value="全草">全草</option>
-                                       <option value="皮">皮</option>
-                                       <option value="树脂">树脂</option>
-                                     </select>
-                                   ) : (
-                                     <input
-                                       type="text"
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                       placeholder={field === "name" ? "如：黄芪、当归" : field === "latinName" ? "如：Astragalus membranaceus" : ""}
-                                     />
-                                   )}
-                                 </div>
-                               ))}
-                             </div>
-                           </div>
-
-                           {/* 可选字段 */}
-                           <div>
-                             <div className="text-[9px] text-slate-400 mb-1 font-medium">可选参数</div>
-                             <div className="grid grid-cols-3 gap-1.5">
-                               {cfg.optionalFields.map(field => (
-                                 <div key={field}>
-                                   <label className="block text-[9px] text-slate-400 mb-0.5">
-                                     {field === "bottleType" ? "瓶型" :
-                                      field === "liquidType" ? "浸制液" :
-                                      field === "cabinetType" ? "展柜" :
-                                      field === "hasLabel" ? "带标签" :
-                                      field === "sheetSpec" ? "台纸规格" :
-                                      field === "collector" ? "采集人" :
-                                      field === "collectTime" ? "采集时间" :
-                                      field === "showSection" ? "展示断面" :
-                                      field === "standMaterial" ? "展台材质" :
-                                      field === "sliceShape" ? "片型" :
-                                      field === "thickness" ? "厚度" : field}
-                                   </label>
-                                   {field === "hasLabel" || field === "showSection" ? (
-                                     <select
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={params[field] ? "true" : "false"}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value === "true")}
-                                     >
-                                       <option value="true">是</option>
-                                       <option value="false">否</option>
-                                     </select>
-                                   ) : field === "bottleType" ? (
-                                     <select
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                     >
-                                       <option value="">默认</option>
-                                       <option value="广口瓶">广口瓶</option>
-                                       <option value="磨砂瓶">磨砂瓶</option>
-                                       <option value="透明瓶">透明瓶</option>
-                                     </select>
-                                   ) : field === "liquidType" ? (
-                                     <select
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                     >
-                                       <option value="">默认</option>
-                                       <option value="保色浸制液">保色浸制液</option>
-                                       <option value="中性浸制液">中性浸制液</option>
-                                       <option value="防腐浸制液">防腐浸制液</option>
-                                     </select>
-                                   ) : field === "cabinetType" ? (
-                                     <select
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                     >
-                                       <option value="">默认</option>
-                                       <option value="恒温恒湿展柜">恒温恒湿展柜</option>
-                                       <option value="普通展柜">普通展柜</option>
-                                     </select>
-                                   ) : field === "sliceShape" ? (
-                                     <select
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                     >
-                                       <option value="">默认</option>
-                                       <option value="类圆形厚片">类圆形厚片</option>
-                                       <option value="斜片">斜片</option>
-                                       <option value="段状">段状</option>
-                                       <option value="薄片">薄片</option>
-                                     </select>
-                                   ) : (
-                                     <input
-                                       type="text"
-                                       className="w-full px-2 py-1 rounded border border-white/[0.08] text-[10px] bg-white/[0.06] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
-                                       value={String(params[field] || "")}
-                                       onChange={(e) => handleUpdateSpecimenParam(type, field, e.target.value)}
-                                       placeholder={field === "sheetSpec" ? "40cm×30cm" : ""}
-                                     />
-                                   )}
-                                 </div>
-                               ))}
-                             </div>
-                           </div>
-                         </div>
-
-                         {/* 预览区 */}
-                         {preview && (
-                           <div className="px-2.5 pb-2.5">
-                             <div className="text-[9px] text-slate-400 mb-1 font-medium">生成预览</div>
-                             <div className="p-2 rounded bg-white/[0.04] border border-white/[0.06] text-[10px] text-slate-400 leading-relaxed max-h-20 overflow-auto whitespace-pre-wrap">
-                               {preview}
-                             </div>
-                           </div>
-                         )}
-                       </div>
-                     );
-                   })}
-                    {/* 操作按钮 */}
-                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-emerald-500/20">
-                      <button onClick={handleSaveSpecimenAsTemplate} className="text-[10px] text-emerald-400 hover:text-emerald-300 underline">保存为模板</button>
-                      <span className="text-[10px] text-slate-400">已选 {specimenTypes.filter(t => t !== "none").length} 个类型</span>
-                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() =>
+                          setSpecimenInsertMode(prev => (prev === 'cursor' ? 'append' : 'cursor'))
+                        }
+                        className="text-[10px] text-emerald-400 underline hover:text-emerald-300"
+                      >
+                        {specimenInsertMode === 'cursor' ? '光标插入' : '末尾追加'}
+                      </button>
+                      <button
+                        onClick={() => setShowCustomSpecimenDialog(true)}
+                        className="rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400 transition hover:bg-amber-500/25"
+                      >
+                        + 自定义
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSpecimenPanel(false)
+                        }}
+                        className="text-[10px] text-slate-400 hover:text-slate-400"
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
-                )}
-
-                {/* ── 智能推荐条 ── */}
-                {detectedSpecimens.length > 0 && (
-                  <div className="flex-shrink-0 px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center gap-2">
-                    <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                      检测到标本关键词：
-                    </span>
-                    {detectedSpecimens.map(type => {
-                      const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, "none">];
-                      if (!cfg) return null;
-                      return (
-                        <div key={type} className="flex items-center gap-1 bg-white/[0.06] rounded px-2 py-1 border border-emerald-500/20 shadow-sm">
-                          <span className="text-[10px]">{cfg.icon}</span>
-                          <span className="text-[10px] text-emerald-400 font-medium">{cfg.label}</span>
-                          <button onClick={() => {
-                            setSpecimenTypes(prev => prev.includes(type) ? prev : [...prev, type]);
-                            if (!specimenParams[type]) {
-                              const herb = getRandomHerb(type);
-                              if (herb) {
-                                setSpecimenParams(prev => ({ ...prev, [type]: { hasLabel: true, ...herb } }));
-                              } else {
-                                setSpecimenParams(prev => ({ ...prev, [type]: { name: "", hasLabel: true } }));
+                  <div className="overflow-auto p-3" style={{ maxHeight: 370 }}>
+                    {/* 类型卡片 + 一键插入 */}
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <div className="grid flex-1 grid-cols-5 gap-1.5">
+                        {SPECIMEN_TYPE_LIST.filter(s => s.value !== 'none').map(s => {
+                          const isSelected = specimenTypes.includes(s.value)
+                          const isRecommended = currentSpecimenHint?.types.includes(s.value)
+                          return (
+                            <button
+                              key={s.value}
+                              onClick={() => handleToggleSpecimenType(s.value)}
+                              className={`relative flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[10px] font-medium transition ${
+                                isSelected
+                                  ? 'border-emerald-400 bg-emerald-500/15 text-emerald-400'
+                                  : isRecommended && currentSpecimenHint?.recommended
+                                    ? 'border-blue-300 bg-blue-500/10 text-blue-400 hover:border-blue-400 hover:bg-blue-500/15'
+                                    : 'border-white/[0.08] bg-white/[0.06] text-slate-500 hover:border-emerald-300 hover:text-emerald-400'
+                              }`}
+                              title={
+                                isRecommended && currentSpecimenHint
+                                  ? `${currentSpecimenHint.hint} - 推荐配合此模板使用`
+                                  : s.label
                               }
-                            }
-                            setShowSpecimenPanel(true);
-                          }} className="text-[9px] text-blue-400 hover:text-blue-300 font-medium underline">配置</button>
-                          <button onClick={() => handleInsertRecommendation(type)} className="text-[9px] text-emerald-400 hover:text-emerald-300 font-medium underline">插入</button>
-                          <button onClick={() => handleIgnoreRecommendation(type)} className="text-[9px] text-slate-400 hover:text-slate-400">✕</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* ── 自定义标本弹窗 ── */}
-                {showCustomSpecimenDialog && (
-                  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-                    <div className="bg-white/[0.06] rounded-xl shadow-2xl w-[480px] max-h-[80vh] overflow-hidden">
-                      <div className="px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
-                        <span className="text-sm font-bold text-amber-400">创建自定义标本类型</span>
-                        <button onClick={() => { setShowCustomSpecimenDialog(false); setEditingCustomSpecimen(null); setNewCustomSpecimen({ id: "", label: "", icon: "🔬", basePrompt: "", negativePrompt: "" }); }} className="text-slate-400 hover:text-slate-400">✕</button>
+                            >
+                              {s.icon && <span>{s.icon}</span>}
+                              <span className="truncate">{s.label}</span>
+                              {isRecommended && !isSelected && (
+                                <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500"></span>
+                              )}
+                            </button>
+                          )
+                        })}
+                        {/* 自定义标本类型 */}
+                        {customSpecimens.map(s => {
+                          const isSelected = specimenTypes.includes(s.id)
+                          return (
+                            <button
+                              key={s.id}
+                              onClick={() => handleToggleSpecimenType(s.id)}
+                              className={`relative flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[10px] font-medium transition ${
+                                isSelected
+                                  ? 'border-amber-400 bg-amber-500/15 text-amber-400'
+                                  : 'border-amber-500/20 bg-amber-500/10 text-amber-400 hover:border-amber-400'
+                              }`}
+                            >
+                              <span>{s.icon}</span>
+                              <span className="truncate">{s.label}</span>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setCustomSpecimens(prev => prev.filter(cs => cs.id !== s.id))
+                                  setSpecimenTypes(prev => prev.filter(t => t !== s.id))
+                                }}
+                                className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] text-white hover:bg-red-600"
+                                title="删除"
+                              >
+                                ✕
+                              </button>
+                            </button>
+                          )
+                        })}
                       </div>
-                      <div className="p-4 space-y-3 max-h-[60vh] overflow-auto">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs text-slate-400 mb-1">名称 *</label>
-                            <input
-                              type="text"
-                              className="w-full px-3 py-2 rounded-lg border border-white/[0.08] text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                              value={newCustomSpecimen.label}
-                              onChange={(e) => setNewCustomSpecimen(prev => ({ ...prev, label: e.target.value, id: `custom_${Date.now()}` }))}
-                              placeholder="如：矿物标本"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-slate-400 mb-1">图标</label>
-                            <input
-                              type="text"
-                              className="w-full px-3 py-2 rounded-lg border border-white/[0.08] text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                              value={newCustomSpecimen.icon}
-                              onChange={(e) => setNewCustomSpecimen(prev => ({ ...prev, icon: e.target.value }))}
-                              placeholder="🔬"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs text-slate-400 mb-1">基础提示词模板 *</label>
-                          <textarea
-                            className="w-full px-3 py-2 rounded-lg border border-white/[0.08] text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 resize-none"
-                            rows={4}
-                            value={newCustomSpecimen.basePrompt}
-                            onChange={(e) => setNewCustomSpecimen(prev => ({ ...prev, basePrompt: e.target.value }))}
-                            placeholder="使用 [名称] 作为标本名称占位符，如：[名称]标本，高清无模糊..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-slate-400 mb-1">负面提示词</label>
-                          <textarea
-                            className="w-full px-3 py-2 rounded-lg border border-white/[0.08] text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 resize-none"
-                            rows={2}
-                            value={newCustomSpecimen.negativePrompt}
-                            onChange={(e) => setNewCustomSpecimen(prev => ({ ...prev, negativePrompt: e.target.value }))}
-                            placeholder="模糊、失真、变形..."
-                          />
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          💡 提示：使用 [名称] 占位符，在插入时会自动替换为实际标本名称
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 border-t border-white/[0.06] flex justify-end gap-2">
+                      {specimenTypes.filter(t => t !== 'none').length > 0 && (
                         <button
-                          onClick={() => { setShowCustomSpecimenDialog(false); setEditingCustomSpecimen(null); setNewCustomSpecimen({ id: "", label: "", icon: "🔬", basePrompt: "", negativePrompt: "" }); }}
-                          className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:bg-white/[0.08] transition"
+                          onClick={handleInsertAllSpecimens}
+                          className="flex-shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white transition hover:bg-emerald-700"
                         >
-                          取消
+                          一键插入全部
                         </button>
+                      )}
+                    </div>
+                    {/* 参数表单 */}
+                    {specimenTypes
+                      .filter(t => t !== 'none')
+                      .map(type => {
+                        const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, 'none'>]
+                        const isCustom = customSpecimens.find(cs => cs.id === type)
+                        const params = specimenParams[type] || { name: '', hasLabel: true }
+                        const preview = cfg
+                          ? generateSpecimenPrompt(type, params)
+                          : specimenParams[type]?.name || isCustom?.basePrompt || ''
+
+                        return (
+                          <div
+                            key={type}
+                            className="mb-2 overflow-hidden rounded-lg border border-amber-500/20 bg-white/[0.06]"
+                          >
+                            {/* 标题栏 */}
+                            <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5">
+                              <span className="text-[10px] font-bold text-amber-400">
+                                {isCustom
+                                  ? `${isCustom.icon} ${isCustom.label}`
+                                  : `${cfg?.icon} ${cfg?.label}`}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    const text = cfg
+                                      ? generateSpecimenPrompt(type, params)
+                                      : specimenParams[type]?.name || isCustom?.basePrompt || ''
+                                    navigator.clipboard.writeText(text)
+                                    showToast('已复制', 'success')
+                                  }}
+                                  className="text-[9px] text-slate-400 hover:text-blue-500"
+                                >
+                                  复制
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleInsertSpecimenPrompt(type)
+                                  }}
+                                  className="text-[9px] font-medium text-amber-400 underline hover:text-amber-300"
+                                >
+                                  插入
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* 自定义标本：简化表单 */}
+                            {isCustom && (
+                              <div className="p-2.5">
+                                <div className="mb-2">
+                                  <label className="mb-0.5 block text-[9px] text-slate-400">
+                                    标本名称 *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                                    value={specimenParams[type]?.name || ''}
+                                    onChange={e =>
+                                      handleUpdateSpecimenParam(type, 'name', e.target.value)
+                                    }
+                                    placeholder="输入标本名称"
+                                  />
+                                </div>
+                                <div className="mb-1 text-[9px] text-slate-400">提示词预览</div>
+                                <div className="max-h-20 overflow-auto whitespace-pre-wrap rounded bg-white/[0.04] p-2 text-[9px] text-slate-400">
+                                  {isCustom.basePrompt.replace(
+                                    /\[名称\]/g,
+                                    specimenParams[type]?.name || 'XXX',
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 参数区 */}
+                            <div className="p-2.5">
+                              {/* 必填字段 */}
+                              <div className="mb-2">
+                                <div className="mb-1 text-[9px] font-medium text-slate-400">
+                                  必填参数
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {cfg.requiredFields.map(field => (
+                                    <div key={field}>
+                                      <label className="mb-0.5 block text-[9px] text-slate-400">
+                                        {field === 'name'
+                                          ? '中药正式名 *'
+                                          : field === 'family'
+                                            ? '科属 *'
+                                            : field === 'origin'
+                                              ? '产地 *'
+                                              : field === 'part'
+                                                ? '药用部位 *'
+                                                : field === 'latinName'
+                                                  ? '拉丁学名 *'
+                                                  : field === 'processingSpec'
+                                                    ? '炮制规格 *'
+                                                    : field}
+                                      </label>
+                                      {field === 'part' ? (
+                                        <select
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                        >
+                                          <option value="">请选择</option>
+                                          <option value="根">根</option>
+                                          <option value="根茎">根茎</option>
+                                          <option value="茎">茎</option>
+                                          <option value="叶">叶</option>
+                                          <option value="花">花</option>
+                                          <option value="果实">果实</option>
+                                          <option value="种子">种子</option>
+                                          <option value="全草">全草</option>
+                                          <option value="皮">皮</option>
+                                          <option value="树脂">树脂</option>
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                          placeholder={
+                                            field === 'name'
+                                              ? '如：黄芪、当归'
+                                              : field === 'latinName'
+                                                ? '如：Astragalus membranaceus'
+                                                : ''
+                                          }
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 可选字段 */}
+                              <div>
+                                <div className="mb-1 text-[9px] font-medium text-slate-400">
+                                  可选参数
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {cfg.optionalFields.map(field => (
+                                    <div key={field}>
+                                      <label className="mb-0.5 block text-[9px] text-slate-400">
+                                        {field === 'bottleType'
+                                          ? '瓶型'
+                                          : field === 'liquidType'
+                                            ? '浸制液'
+                                            : field === 'cabinetType'
+                                              ? '展柜'
+                                              : field === 'hasLabel'
+                                                ? '带标签'
+                                                : field === 'sheetSpec'
+                                                  ? '台纸规格'
+                                                  : field === 'collector'
+                                                    ? '采集人'
+                                                    : field === 'collectTime'
+                                                      ? '采集时间'
+                                                      : field === 'showSection'
+                                                        ? '展示断面'
+                                                        : field === 'standMaterial'
+                                                          ? '展台材质'
+                                                          : field === 'sliceShape'
+                                                            ? '片型'
+                                                            : field === 'thickness'
+                                                              ? '厚度'
+                                                              : field}
+                                      </label>
+                                      {field === 'hasLabel' || field === 'showSection' ? (
+                                        <select
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={params[field] ? 'true' : 'false'}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(
+                                              type,
+                                              field,
+                                              e.target.value === 'true',
+                                            )
+                                          }
+                                        >
+                                          <option value="true">是</option>
+                                          <option value="false">否</option>
+                                        </select>
+                                      ) : field === 'bottleType' ? (
+                                        <select
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                        >
+                                          <option value="">默认</option>
+                                          <option value="广口瓶">广口瓶</option>
+                                          <option value="磨砂瓶">磨砂瓶</option>
+                                          <option value="透明瓶">透明瓶</option>
+                                        </select>
+                                      ) : field === 'liquidType' ? (
+                                        <select
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                        >
+                                          <option value="">默认</option>
+                                          <option value="保色浸制液">保色浸制液</option>
+                                          <option value="中性浸制液">中性浸制液</option>
+                                          <option value="防腐浸制液">防腐浸制液</option>
+                                        </select>
+                                      ) : field === 'cabinetType' ? (
+                                        <select
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                        >
+                                          <option value="">默认</option>
+                                          <option value="恒温恒湿展柜">恒温恒湿展柜</option>
+                                          <option value="普通展柜">普通展柜</option>
+                                        </select>
+                                      ) : field === 'sliceShape' ? (
+                                        <select
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                        >
+                                          <option value="">默认</option>
+                                          <option value="类圆形厚片">类圆形厚片</option>
+                                          <option value="斜片">斜片</option>
+                                          <option value="段状">段状</option>
+                                          <option value="薄片">薄片</option>
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          className="w-full rounded border border-white/[0.08] bg-white/[0.06] px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                                          value={String(params[field] || '')}
+                                          onChange={e =>
+                                            handleUpdateSpecimenParam(type, field, e.target.value)
+                                          }
+                                          placeholder={field === 'sheetSpec' ? '40cm×30cm' : ''}
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 预览区 */}
+                            {preview && (
+                              <div className="px-2.5 pb-2.5">
+                                <div className="mb-1 text-[9px] font-medium text-slate-400">
+                                  生成预览
+                                </div>
+                                <div className="max-h-20 overflow-auto whitespace-pre-wrap rounded border border-white/[0.06] bg-white/[0.04] p-2 text-[10px] leading-relaxed text-slate-400">
+                                  {preview}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    {/* 操作按钮 */}
+                    <div className="mt-2 flex items-center justify-between border-t border-emerald-500/20 pt-2">
+                      <button
+                        onClick={handleSaveSpecimenAsTemplate}
+                        className="text-[10px] text-emerald-400 underline hover:text-emerald-300"
+                      >
+                        保存为模板
+                      </button>
+                      <span className="text-[10px] text-slate-400">
+                        已选 {specimenTypes.filter(t => t !== 'none').length} 个类型
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── 智能推荐条 ── */}
+              {detectedSpecimens.length > 0 && (
+                <div className="flex flex-shrink-0 items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/10 px-4 py-2">
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400">
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                    检测到标本关键词：
+                  </span>
+                  {detectedSpecimens.map(type => {
+                    const cfg = SPECIMEN_CONFIGS[type as Exclude<SpecimenType, 'none'>]
+                    if (!cfg) return null
+                    return (
+                      <div
+                        key={type}
+                        className="flex items-center gap-1 rounded border border-emerald-500/20 bg-white/[0.06] px-2 py-1 shadow-sm"
+                      >
+                        <span className="text-[10px]">{cfg.icon}</span>
+                        <span className="text-[10px] font-medium text-emerald-400">
+                          {cfg.label}
+                        </span>
                         <button
                           onClick={() => {
-                            if (!newCustomSpecimen.label.trim() || !newCustomSpecimen.basePrompt.trim()) {
-                              showToast("请填写名称和基础提示词", "error");
-                              return;
+                            setSpecimenTypes(prev => (prev.includes(type) ? prev : [...prev, type]))
+                            if (!specimenParams[type]) {
+                              const herb = getRandomHerb(type)
+                              if (herb) {
+                                setSpecimenParams(prev => ({
+                                  ...prev,
+                                  [type]: { hasLabel: true, ...herb },
+                                }))
+                              } else {
+                                setSpecimenParams(prev => ({
+                                  ...prev,
+                                  [type]: { name: '', hasLabel: true },
+                                }))
+                              }
                             }
-                            const newSpec = { ...newCustomSpecimen, id: `custom_${Date.now()}`, label: newCustomSpecimen.label.trim(), basePrompt: newCustomSpecimen.basePrompt.trim(), negativePrompt: newCustomSpecimen.negativePrompt.trim() };
-                            setCustomSpecimens(prev => [...prev, newSpec]);
-                            setSpecimenTypes(prev => [...prev, newSpec.id]);
-                            setShowCustomSpecimenDialog(false);
-                            setNewCustomSpecimen({ id: "", label: "", icon: "🔬", basePrompt: "", negativePrompt: "" });
-                            showToast(`自定义标本「${newSpec.label}」已创建并选中`, "success");
+                            setShowSpecimenPanel(true)
                           }}
-                          className="px-4 py-2 rounded-lg text-sm bg-amber-500 text-white hover:bg-amber-600 transition"
+                          className="text-[9px] font-medium text-blue-400 underline hover:text-blue-300"
                         >
-                          创建并选中
+                          配置
+                        </button>
+                        <button
+                          onClick={() => handleInsertRecommendation(type)}
+                          className="text-[9px] font-medium text-emerald-400 underline hover:text-emerald-300"
+                        >
+                          插入
+                        </button>
+                        <button
+                          onClick={() => handleIgnoreRecommendation(type)}
+                          className="text-[9px] text-slate-400 hover:text-slate-400"
+                        >
+                          ✕
                         </button>
                       </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* ── 自定义标本弹窗 ── */}
+              {showCustomSpecimenDialog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+                  <div className="max-h-[80vh] w-[480px] overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-3">
+                      <span className="text-sm font-bold text-amber-400">创建自定义标本类型</span>
+                      <button
+                        onClick={() => {
+                          setShowCustomSpecimenDialog(false)
+                          setEditingCustomSpecimen(null)
+                          setNewCustomSpecimen({
+                            id: '',
+                            label: '',
+                            icon: '🔬',
+                            basePrompt: '',
+                            negativePrompt: '',
+                          })
+                        }}
+                        className="text-slate-400 hover:text-slate-400"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="max-h-[60vh] space-y-3 overflow-auto p-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-400">名称 *</label>
+                          <input
+                            type="text"
+                            className="w-full rounded-lg border border-white/[0.08] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                            value={newCustomSpecimen.label}
+                            onChange={e =>
+                              setNewCustomSpecimen(prev => ({
+                                ...prev,
+                                label: e.target.value,
+                                id: `custom_${Date.now()}`,
+                              }))
+                            }
+                            placeholder="如：矿物标本"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-slate-400">图标</label>
+                          <input
+                            type="text"
+                            className="w-full rounded-lg border border-white/[0.08] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                            value={newCustomSpecimen.icon}
+                            onChange={e =>
+                              setNewCustomSpecimen(prev => ({ ...prev, icon: e.target.value }))
+                            }
+                            placeholder="🔬"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-400">
+                          基础提示词模板 *
+                        </label>
+                        <textarea
+                          className="w-full resize-none rounded-lg border border-white/[0.08] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          rows={4}
+                          value={newCustomSpecimen.basePrompt}
+                          onChange={e =>
+                            setNewCustomSpecimen(prev => ({ ...prev, basePrompt: e.target.value }))
+                          }
+                          placeholder="使用 [名称] 作为标本名称占位符，如：[名称]标本，高清无模糊..."
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-slate-400">负面提示词</label>
+                        <textarea
+                          className="w-full resize-none rounded-lg border border-white/[0.08] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          rows={2}
+                          value={newCustomSpecimen.negativePrompt}
+                          onChange={e =>
+                            setNewCustomSpecimen(prev => ({
+                              ...prev,
+                              negativePrompt: e.target.value,
+                            }))
+                          }
+                          placeholder="模糊、失真、变形..."
+                        />
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        💡 提示：使用 [名称] 占位符，在插入时会自动替换为实际标本名称
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 border-t border-white/[0.06] px-4 py-3">
+                      <button
+                        onClick={() => {
+                          setShowCustomSpecimenDialog(false)
+                          setEditingCustomSpecimen(null)
+                          setNewCustomSpecimen({
+                            id: '',
+                            label: '',
+                            icon: '🔬',
+                            basePrompt: '',
+                            negativePrompt: '',
+                          })
+                        }}
+                        className="rounded-lg px-4 py-2 text-sm text-slate-400 transition hover:bg-white/[0.08]"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (
+                            !newCustomSpecimen.label.trim() ||
+                            !newCustomSpecimen.basePrompt.trim()
+                          ) {
+                            showToast('请填写名称和基础提示词', 'error')
+                            return
+                          }
+                          const newSpec = {
+                            ...newCustomSpecimen,
+                            id: `custom_${Date.now()}`,
+                            label: newCustomSpecimen.label.trim(),
+                            basePrompt: newCustomSpecimen.basePrompt.trim(),
+                            negativePrompt: newCustomSpecimen.negativePrompt.trim(),
+                          }
+                          setCustomSpecimens(prev => [...prev, newSpec])
+                          setSpecimenTypes(prev => [...prev, newSpec.id])
+                          setShowCustomSpecimenDialog(false)
+                          setNewCustomSpecimen({
+                            id: '',
+                            label: '',
+                            icon: '🔬',
+                            basePrompt: '',
+                            negativePrompt: '',
+                          })
+                          showToast(`自定义标本「${newSpec.label}」已创建并选中`, 'success')
+                        }}
+                        className="rounded-lg bg-amber-500 px-4 py-2 text-sm text-white transition hover:bg-amber-600"
+                      >
+                        创建并选中
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
-               {/* ── 斜杠命令浮窗 ── */}
-               {slashCommandActive && (
-                 <div className="absolute z-50 bg-white/[0.06] rounded-lg shadow-xl border border-white/[0.08] w-64 overflow-hidden" style={{ top: "200px", left: "50%" }}>
-                   <div className="px-3 py-2 bg-white/[0.04] border-b border-white/[0.06]">
-                     <span className="text-[10px] text-slate-500">输入 / 选择标本类型</span>
-                   </div>
-                   {SPECIMEN_TYPE_LIST.filter(s => s.value !== "none" && s.label.includes(slashFilter)).map(s => (
-                     <button
-                       key={s.value}
-                       onClick={() => handleInsertSpecimenPrompt(s.value)}
-                       className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-500/10 transition flex items-center gap-2 border-b border-white/[0.04] last:border-0"
-                     >
-                       <span>{s.icon}</span>
-                       <span>{s.label}</span>
-                     </button>
-                   ))}
-                   {SPECIMEN_TYPE_LIST.filter(s => s.value !== "none" && s.label.includes(slashFilter)).length === 0 && (
-                     <div className="px-3 py-2 text-[10px] text-slate-400">无匹配结果</div>
-                   )}
-                 </div>
-               )}
+              {/* ── 斜杠命令浮窗 ── */}
+              {slashCommandActive && (
+                <div
+                  className="absolute z-50 w-64 overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.06] shadow-xl"
+                  style={{ top: '200px', left: '50%' }}
+                >
+                  <div className="border-b border-white/[0.06] bg-white/[0.04] px-3 py-2">
+                    <span className="text-[10px] text-slate-500">输入 / 选择标本类型</span>
+                  </div>
+                  {SPECIMEN_TYPE_LIST.filter(
+                    s => s.value !== 'none' && s.label.includes(slashFilter),
+                  ).map(s => (
+                    <button
+                      key={s.value}
+                      onClick={() => handleInsertSpecimenPrompt(s.value)}
+                      className="flex w-full items-center gap-2 border-b border-white/[0.04] px-3 py-2 text-left text-xs transition last:border-0 hover:bg-emerald-500/10"
+                    >
+                      <span>{s.icon}</span>
+                      <span>{s.label}</span>
+                    </button>
+                  ))}
+                  {SPECIMEN_TYPE_LIST.filter(
+                    s => s.value !== 'none' && s.label.includes(slashFilter),
+                  ).length === 0 && (
+                    <div className="px-3 py-2 text-[10px] text-slate-400">无匹配结果</div>
+                  )}
+                </div>
+              )}
 
-               <div ref={leftScrollRef} className="flex-1 overflow-auto relative" onScroll={handleLeftScroll}>
-                 <textarea
-                    className="w-full h-full px-4 py-3 text-sm text-slate-300 resize-none focus:outline-none leading-relaxed bg-transparent"
-                   style={{ minHeight: 200 }}
-                   placeholder={PLACEHOLDER_TEXT}
-                   value={inputPrompt}
-                   onChange={handleTextareaInput}
-                   onKeyDown={handleTextareaKeyDown}
-                 />
-               </div>
-               <div className="flex-shrink-0 px-4 py-1.5 border-t border-white/[0.06] bg-white/[0.04] flex items-center justify-between">
-                 <div className="flex items-center gap-2">
-                   <span className="text-[10px] text-slate-400">支持多行输入 · 最大 {MAX_CHARS.toLocaleString()} 字符</span>
-                   {inputPrompt.trim() && (
-                     <button
-                       onClick={() => setShowScoreDetail(!showScoreDetail)}
-                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition ${
-                         promptScore.score >= 80 ? "bg-green-100 text-emerald-400 hover:bg-green-200" :
-                         promptScore.score >= 60 ? "bg-blue-500/15 text-blue-400 hover:bg-blue-500/20" :
-                         promptScore.score >= 40 ? "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25" :
-                         "bg-red-100 text-red-400 hover:bg-red-200"
-                       }`}
-                     >
-                       丰富度 {promptScore.score}/100 {showScoreDetail ? "▲" : "▼"}
-                     </button>
-                   )}
-                   {specimenScore && specimenScore.score > 0 && (
-                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">
-                       标本专业 {specimenScore.score}/{specimenScore.max}
-                     </span>
-                   )}
-                 </div>
-                 <span className={`text-[10px] font-mono ${inputPrompt.length > MAX_CHARS * 0.9 ? "text-amber-500" : "text-slate-400"}`}>
-                   {inputPrompt.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
-                 </span>
-               </div>
-             </div>
+              <div
+                ref={leftScrollRef}
+                className="relative flex-1 overflow-auto"
+                onScroll={handleLeftScroll}
+              >
+                <textarea
+                  className="h-full w-full resize-none bg-transparent px-4 py-3 text-sm leading-relaxed text-slate-300 focus:outline-none"
+                  style={{ minHeight: 200 }}
+                  placeholder={PLACEHOLDER_TEXT}
+                  value={inputPrompt}
+                  onChange={handleTextareaInput}
+                  onKeyDown={handleTextareaKeyDown}
+                />
+              </div>
+              <div className="flex flex-shrink-0 items-center justify-between border-t border-white/[0.06] bg-white/[0.04] px-4 py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400">
+                    支持多行输入 · 最大 {MAX_CHARS.toLocaleString()} 字符
+                  </span>
+                  {inputPrompt.trim() && (
+                    <button
+                      onClick={() => setShowScoreDetail(!showScoreDetail)}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition ${
+                        promptScore.score >= 80
+                          ? 'bg-green-100 text-emerald-400 hover:bg-green-200'
+                          : promptScore.score >= 60
+                            ? 'bg-blue-500/15 text-blue-400 hover:bg-blue-500/20'
+                            : promptScore.score >= 40
+                              ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+                              : 'bg-red-100 text-red-400 hover:bg-red-200'
+                      }`}
+                    >
+                      丰富度 {promptScore.score}/100 {showScoreDetail ? '▲' : '▼'}
+                    </button>
+                  )}
+                  {specimenScore && specimenScore.score > 0 && (
+                    <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                      标本专业 {specimenScore.score}/{specimenScore.max}
+                    </span>
+                  )}
+                </div>
+                <span
+                  className={`font-mono text-[10px] ${inputPrompt.length > MAX_CHARS * 0.9 ? 'text-amber-500' : 'text-slate-400'}`}
+                >
+                  {inputPrompt.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
+                </span>
+              </div>
+            </div>
 
             {/* ── 丰富度打分详情面板 ── */}
             {showScoreDetail && inputPrompt.trim() && (
               <div className="flex-shrink-0 border-t border-white/[0.08] bg-white/[0.04] px-4 py-3">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="mb-2 flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                      promptScore.score >= 80 ? "bg-green-100 text-emerald-400" :
-                      promptScore.score >= 60 ? "bg-blue-500/15 text-blue-400" :
-                      promptScore.score >= 40 ? "bg-amber-500/15 text-amber-400" :
-                      "bg-red-100 text-red-400"
-                    }`}>
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
+                        promptScore.score >= 80
+                          ? 'bg-green-100 text-emerald-400'
+                          : promptScore.score >= 60
+                            ? 'bg-blue-500/15 text-blue-400'
+                            : promptScore.score >= 40
+                              ? 'bg-amber-500/15 text-amber-400'
+                              : 'bg-red-100 text-red-400'
+                      }`}
+                    >
                       {promptScore.score}
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-slate-300">提示词丰富度评分</div>
                       <div className="text-[10px] text-slate-400">
-                        {promptScore.score >= 80 ? "优秀，描述丰富全面" :
-                         promptScore.score >= 60 ? "良好，可继续补充细节" :
-                         promptScore.score >= 40 ? "一般，建议增加更多维度" :
-                         "较简单，需要大幅补充"}
+                        {promptScore.score >= 80
+                          ? '优秀，描述丰富全面'
+                          : promptScore.score >= 60
+                            ? '良好，可继续补充细节'
+                            : promptScore.score >= 40
+                              ? '一般，建议增加更多维度'
+                              : '较简单，需要大幅补充'}
                       </div>
                     </div>
                   </div>
                 </div>
                 {/* 维度进度条 */}
-                <div className="space-y-1.5 mb-2">
+                <div className="mb-2 space-y-1.5">
                   {promptScore.breakdown.map(b => (
                     <div key={b.label} className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-500 w-16 flex-shrink-0">{b.label}</span>
-                      <div className="flex-1 h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
+                      <span className="w-16 flex-shrink-0 text-[10px] text-slate-500">
+                        {b.label}
+                      </span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            b.score / b.max >= 0.8 ? "bg-emerald-500/100" :
-                            b.score / b.max >= 0.5 ? "bg-blue-500" :
-                            b.score / b.max >= 0.3 ? "bg-amber-500" :
-                            "bg-red-400"
+                            b.score / b.max >= 0.8
+                              ? 'bg-emerald-500/100'
+                              : b.score / b.max >= 0.5
+                                ? 'bg-blue-500'
+                                : b.score / b.max >= 0.3
+                                  ? 'bg-amber-500'
+                                  : 'bg-red-400'
                           }`}
                           style={{ width: `${(b.score / b.max) * 100}%` }}
                         />
                       </div>
-                      <span className="text-[10px] text-slate-400 w-12 text-right font-mono">{b.score}/{b.max}</span>
+                      <span className="w-12 text-right font-mono text-[10px] text-slate-400">
+                        {b.score}/{b.max}
+                      </span>
                     </div>
                   ))}
                 </div>
                 {/* 改进建议 */}
                 {promptScore.suggestions.length > 0 && (
-                  <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] px-3 py-2">
-                    <div className="text-[10px] font-medium text-slate-500 mb-1">改进建议：</div>
+                  <div className="rounded-lg border border-white/[0.08] bg-white/[0.06] px-3 py-2">
+                    <div className="mb-1 text-[10px] font-medium text-slate-500">改进建议：</div>
                     <div className="space-y-0.5">
                       {promptScore.suggestions.map((s, i) => (
-                        <div key={i} className="text-[10px] text-slate-400 flex items-start gap-1">
-                          <span className="text-amber-400 flex-shrink-0">•</span>
+                        <div key={i} className="flex items-start gap-1 text-[10px] text-slate-400">
+                          <span className="flex-shrink-0 text-amber-400">•</span>
                           <span>{s}</span>
                         </div>
                       ))}
@@ -2132,89 +2723,211 @@ export default function PromptOptimizerDialog({
               </div>
             )}
 
+            {/* ── 分隔线拖动手柄 ── */}
+            <div
+              className="relative flex-shrink-0 cursor-col-resize"
+              style={{ width: 8, marginLeft: -4, zIndex: 10 }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setIsDraggingSplit(true)
+              }}
+            >
+              <div
+                className={`absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-colors ${
+                  isDraggingSplit ? 'bg-blue-400' : 'bg-white/[0.08] hover:bg-blue-400/60'
+                }`}
+              />
+            </div>
+
             {/* ── 右栏：优化后结果 ── */}
-            <div className="flex-1 flex flex-col">
-              <div className="flex-shrink-0 px-4 py-2.5 border-b border-white/[0.06] bg-blue-500/10 flex items-center justify-between">
+            <div
+              className="flex flex-col"
+              style={{ flex: `0 0 ${(1 - splitRatio) * 100}%`, minWidth: 0 }}
+            >
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] bg-blue-500/10 px-4 py-2.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">优化结果</span>
-                  {activeTemplate && <span className="text-[10px] text-blue-500 bg-blue-500/15 px-1.5 py-0.5 rounded">{activeTemplate.name}</span>}
-                  {optimizeTime && <span className="text-[10px] text-slate-400">{optimizeTime}</span>}
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    优化结果
+                  </span>
+                  {activeTemplate && (
+                    <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] text-blue-500">
+                      {activeTemplate.name}
+                    </span>
+                  )}
+                  {optimizeTime && (
+                    <span className="text-[10px] text-slate-400">{optimizeTime}</span>
+                  )}
                   {stats && stats.totalChanges > 0 && (
-                    <span className="text-[10px] text-blue-400 bg-blue-500/15 px-1.5 py-0.5 rounded font-medium">{stats.totalChanges} 处修改</span>
+                    <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
+                      {stats.totalChanges} 处修改
+                    </span>
                   )}
                 </div>
                 {optimizedPrompt && (
                   <div className="flex items-center gap-1.5">
-                    <button onClick={handleToggleFavorite} className={`text-[10px] px-2 py-0.5 rounded transition ${favorites.find(f => f.optimizedPrompt === optimizedPrompt) ? "bg-amber-500/15 text-amber-400" : "text-slate-400 hover:text-amber-500"}`} title="收藏">
-                      {favorites.find(f => f.optimizedPrompt === optimizedPrompt) ? "★ 已收藏" : "☆ 收藏"}
+                    <button
+                      onClick={handleToggleFavorite}
+                      className={`rounded px-2 py-0.5 text-[10px] transition ${favorites.find(f => f.optimizedPrompt === optimizedPrompt) ? 'bg-amber-500/15 text-amber-400' : 'text-slate-400 hover:text-amber-500'}`}
+                      title="收藏"
+                    >
+                      {favorites.find(f => f.optimizedPrompt === optimizedPrompt)
+                        ? '★ 已收藏'
+                        : '☆ 收藏'}
                     </button>
-                    <button onClick={() => setIsEditingOutput(!isEditingOutput)} className={`text-[10px] px-2 py-0.5 rounded transition ${isEditingOutput ? "bg-blue-500/15 text-blue-400" : "text-slate-400 hover:text-blue-500"}`}>
-                      {isEditingOutput ? "锁定编辑" : "解锁编辑"}
+                    <button
+                      onClick={() => setIsEditingOutput(!isEditingOutput)}
+                      className={`rounded px-2 py-0.5 text-[10px] transition ${isEditingOutput ? 'bg-blue-500/15 text-blue-400' : 'text-slate-400 hover:text-blue-500'}`}
+                    >
+                      {isEditingOutput ? '锁定编辑' : '解锁编辑'}
                     </button>
-                    <button onClick={handleCopy} className="text-[10px] text-slate-400 hover:text-blue-500 transition">复制</button>
+                    <button
+                      onClick={handleCopy}
+                      className="text-[10px] text-slate-400 transition hover:text-blue-500"
+                    >
+                      复制
+                    </button>
                   </div>
                 )}
               </div>
-              <div ref={rightScrollRef} className="flex-1 overflow-auto" onScroll={handleRightScroll}>
+              <div
+                ref={rightScrollRef}
+                className="flex-1 overflow-auto"
+                onScroll={handleRightScroll}
+              >
                 {isOptimizing ? (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-                    <svg className="animate-spin w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
+                    <svg
+                      className="h-8 w-8 animate-spin text-blue-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
                     </svg>
                     <span className="text-sm">优化中，请稍候...</span>
-                    <span className="text-[10px] text-slate-300">正在调用「{activeTemplate?.name}」模板进行优化</span>
+                    <span className="text-[10px] text-slate-300">
+                      正在调用「{activeTemplate?.name}」模板进行优化
+                    </span>
                   </div>
                 ) : optimizedPrompt ? (
                   isEditingOutput ? (
                     <textarea
-                      className="w-full h-full px-4 py-3 text-sm text-slate-300 resize-none focus:outline-none leading-relaxed bg-white/[0.06]"
+                      className="h-full w-full resize-none bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-300 focus:outline-none"
                       style={{ minHeight: 200 }}
                       value={optimizedPrompt}
-                      onChange={(e) => setOptimizedPrompt(e.target.value)}
+                      onChange={e => setOptimizedPrompt(e.target.value)}
                     />
                   ) : diffResult && diffResult.segments.length > 0 ? (
-                    <div className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+                    <div className="whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">
                       {diffResult.segments.map((seg, idx) => {
-                        const isHighlighted = highlightedChange !== null && seg.changeIndex === highlightedChange;
+                        const isHighlighted =
+                          highlightedChange !== null && seg.changeIndex === highlightedChange
                         switch (seg.type) {
-                          case "added":
+                          case 'added':
                             return (
-                              <span key={idx} className="rounded px-0.5" style={{ backgroundColor: "rgba(45,164,78,0.15)", borderBottom: "2px solid #2da44e", color: "#2da44e", outline: isHighlighted ? "2px solid #2da44e" : "none" }}>{seg.text}</span>
-                            );
-                          case "removed":
+                              <span
+                                key={idx}
+                                className="rounded px-0.5"
+                                style={{
+                                  backgroundColor: 'rgba(45,164,78,0.15)',
+                                  borderBottom: '2px solid #2da44e',
+                                  color: '#2da44e',
+                                  outline: isHighlighted ? '2px solid #2da44e' : 'none',
+                                }}
+                              >
+                                {seg.text}
+                              </span>
+                            )
+                          case 'removed':
                             return (
-                              <span key={idx} className="rounded px-0.5" style={{ backgroundColor: "rgba(207,34,46,0.1)", textDecoration: "line-through", textDecorationColor: "#cf222e", color: "#cf222e", outline: isHighlighted ? "2px solid #cf222e" : "none" }}>{seg.text}</span>
-                            );
-                          case "replaced":
+                              <span
+                                key={idx}
+                                className="rounded px-0.5"
+                                style={{
+                                  backgroundColor: 'rgba(207,34,46,0.1)',
+                                  textDecoration: 'line-through',
+                                  textDecorationColor: '#cf222e',
+                                  color: '#cf222e',
+                                  outline: isHighlighted ? '2px solid #cf222e' : 'none',
+                                }}
+                              >
+                                {seg.text}
+                              </span>
+                            )
+                          case 'replaced':
                             return (
-                              <span key={idx} className="rounded px-0.5" style={{ backgroundColor: "rgba(9,105,218,0.1)", border: "1px solid #0969da", color: "#0969da", outline: isHighlighted ? "2px solid #0969da" : "none" }}>{seg.text}</span>
-                            );
+                              <span
+                                key={idx}
+                                className="rounded px-0.5"
+                                style={{
+                                  backgroundColor: 'rgba(9,105,218,0.1)',
+                                  border: '1px solid #0969da',
+                                  color: '#0969da',
+                                  outline: isHighlighted ? '2px solid #0969da' : 'none',
+                                }}
+                              >
+                                {seg.text}
+                              </span>
+                            )
                           default:
-                            return <span key={idx} className="text-slate-300">{seg.text}</span>;
+                            return (
+                              <span key={idx} className="text-slate-300">
+                                {seg.text}
+                              </span>
+                            )
                         }
                       })}
                     </div>
                   ) : (
-                    <div className="px-4 py-3 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{optimizedPrompt}</div>
+                    <div className="whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed text-slate-300">
+                      {optimizedPrompt}
+                    </div>
                   )
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-2">
-                    <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-300">
+                    <svg
+                      className="h-12 w-12 opacity-30"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
                     </svg>
                     <span className="text-sm">请输入原始提示词，点击一键优化</span>
-                    <span className="text-[10px]">将使用「{activeTemplate?.name}」模板进行专业优化</span>
+                    <span className="text-[10px]">
+                      将使用「{activeTemplate?.name}」模板进行专业优化
+                    </span>
                   </div>
                 )}
               </div>
               {optimizedPrompt && (
-                <div className="flex-shrink-0 px-4 py-1.5 border-t border-white/[0.06] bg-white/[0.04] flex items-center justify-between">
+                <div className="flex flex-shrink-0 items-center justify-between border-t border-white/[0.06] bg-white/[0.04] px-4 py-1.5">
                   <span className="text-[10px] text-slate-400">
                     优化前后字数变化：
-                    <span className="text-emerald-400 ml-1">{optimizedPrompt.length - inputPrompt.length > 0 ? "+" : ""}{optimizedPrompt.length - inputPrompt.length} 字符</span>
+                    <span className="ml-1 text-emerald-400">
+                      {optimizedPrompt.length - inputPrompt.length > 0 ? '+' : ''}
+                      {optimizedPrompt.length - inputPrompt.length} 字符
+                    </span>
                   </span>
-                  <span className="text-[10px] font-mono text-slate-400">{optimizedPrompt.length.toLocaleString()} 字符</span>
+                  <span className="font-mono text-[10px] text-slate-400">
+                    {optimizedPrompt.length.toLocaleString()} 字符
+                  </span>
                 </div>
               )}
             </div>
@@ -2225,67 +2938,115 @@ export default function PromptOptimizerDialog({
           ═══════════════════════════════════════════════════════ */}
           {diffResult && diffResult.details.length > 0 && (
             <div className="flex-shrink-0 border-t border-white/[0.08]" style={{ maxHeight: 280 }}>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-white/[0.04]">
+              <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.04] px-4 py-2">
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setActiveDetailTab("overview")} className={`px-3 py-1 rounded text-xs font-medium transition ${activeDetailTab === "overview" ? "bg-blue-500/15 text-blue-400" : "text-slate-500 hover:bg-white/[0.06]"}`}>修改总览</button>
-                  <button onClick={() => setActiveDetailTab("details")} className={`px-3 py-1 rounded text-xs font-medium transition ${activeDetailTab === "details" ? "bg-blue-500/15 text-blue-400" : "text-slate-500 hover:bg-white/[0.06]"}`}>逐行修改明细 ({diffResult.details.length})</button>
+                  <button
+                    onClick={() => setActiveDetailTab('overview')}
+                    className={`rounded px-3 py-1 text-xs font-medium transition ${activeDetailTab === 'overview' ? 'bg-blue-500/15 text-blue-400' : 'text-slate-500 hover:bg-white/[0.06]'}`}
+                  >
+                    修改总览
+                  </button>
+                  <button
+                    onClick={() => setActiveDetailTab('details')}
+                    className={`rounded px-3 py-1 text-xs font-medium transition ${activeDetailTab === 'details' ? 'bg-blue-500/15 text-blue-400' : 'text-slate-500 hover:bg-white/[0.06]'}`}
+                  >
+                    逐行修改明细 ({diffResult.details.length})
+                  </button>
                 </div>
-                {activeDetailTab === "details" && (
+                {activeDetailTab === 'details' && (
                   <div className="flex items-center gap-1">
-                    {(["all", "added", "removed", "replaced"] as const).map(ft => (
-                      <button key={ft} onClick={() => setFilterType(ft)} className={`px-2 py-0.5 rounded text-[10px] transition ${filterType === ft ? "bg-blue-500/15 text-blue-400 font-medium" : "text-slate-400 hover:bg-white/[0.06]"}`}>
-                        {ft === "all" ? "全部" : ft === "added" ? "新增" : ft === "removed" ? "删除" : "替换"}
+                    {(['all', 'added', 'removed', 'replaced'] as const).map(ft => (
+                      <button
+                        key={ft}
+                        onClick={() => setFilterType(ft)}
+                        className={`rounded px-2 py-0.5 text-[10px] transition ${filterType === ft ? 'bg-blue-500/15 font-medium text-blue-400' : 'text-slate-400 hover:bg-white/[0.06]'}`}
+                      >
+                        {ft === 'all'
+                          ? '全部'
+                          : ft === 'added'
+                            ? '新增'
+                            : ft === 'removed'
+                              ? '删除'
+                              : '替换'}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
               <div className="overflow-auto" style={{ maxHeight: 230 }}>
-                {activeDetailTab === "overview" && stats ? (
-                  <div className="p-4 grid grid-cols-5 gap-3">
-                    <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
+                {activeDetailTab === 'overview' && stats ? (
+                  <div className="grid grid-cols-5 gap-3 p-4">
+                    <div className="rounded-lg border border-white/[0.08] bg-white/[0.06] p-3 text-center">
                       <div className="text-2xl font-bold text-slate-100">{stats.totalChanges}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">总修改处数</div>
+                      <div className="mt-1 text-[10px] text-slate-400">总修改处数</div>
                     </div>
-                    <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
+                    <div className="rounded-lg border border-white/[0.08] bg-white/[0.06] p-3 text-center">
                       <div className="text-2xl font-bold text-emerald-400">+{stats.addedChars}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">新增内容（字符）</div>
+                      <div className="mt-1 text-[10px] text-slate-400">新增内容（字符）</div>
                     </div>
-                    <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
+                    <div className="rounded-lg border border-white/[0.08] bg-white/[0.06] p-3 text-center">
                       <div className="text-2xl font-bold text-red-500">-{stats.removedChars}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">删除内容（字符）</div>
+                      <div className="mt-1 text-[10px] text-slate-400">删除内容（字符）</div>
                     </div>
-                    <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
+                    <div className="rounded-lg border border-white/[0.08] bg-white/[0.06] p-3 text-center">
                       <div className="text-2xl font-bold text-blue-400">{stats.replacedCount}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">替换处数</div>
+                      <div className="mt-1 text-[10px] text-slate-400">替换处数</div>
                     </div>
-                    <div className="bg-white/[0.06] rounded-lg border border-white/[0.08] p-3 text-center">
-                      <div className="text-2xl font-bold text-indigo-400">{stats.addedCount + stats.replacedCount}</div>
-                      <div className="text-[10px] text-slate-400 mt-1">优化维度覆盖</div>
+                    <div className="rounded-lg border border-white/[0.08] bg-white/[0.06] p-3 text-center">
+                      <div className="text-2xl font-bold text-indigo-400">
+                        {stats.addedCount + stats.replacedCount}
+                      </div>
+                      <div className="mt-1 text-[10px] text-slate-400">优化维度覆盖</div>
                     </div>
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {filteredDetails.map((detail) => (
-                      <div key={detail.changeIndex} className={`px-4 py-2.5 hover:bg-white/[0.04] cursor-pointer transition ${highlightedChange === detail.changeIndex ? "bg-blue-500/10" : ""}`} onClick={() => handleJumpToChange(detail.changeIndex)}>
+                    {filteredDetails.map(detail => (
+                      <div
+                        key={detail.changeIndex}
+                        className={`cursor-pointer px-4 py-2.5 transition hover:bg-white/[0.04] ${highlightedChange === detail.changeIndex ? 'bg-blue-500/10' : ''}`}
+                        onClick={() => handleJumpToChange(detail.changeIndex)}
+                      >
                         <div className="flex items-start gap-3">
-                          <span className={`flex-shrink-0 w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center mt-0.5 ${detail.type === "added" ? "bg-green-100 text-emerald-400" : detail.type === "removed" ? "bg-red-100 text-red-500" : "bg-blue-500/15 text-blue-400"}`}>
+                          <span
+                            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[10px] font-bold ${detail.type === 'added' ? 'bg-green-100 text-emerald-400' : detail.type === 'removed' ? 'bg-red-100 text-red-500' : 'bg-blue-500/15 text-blue-400'}`}
+                          >
                             {detail.changeIndex + 1}
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${detail.type === "added" ? "bg-green-100 text-emerald-400" : detail.type === "removed" ? "bg-red-100 text-red-400" : "bg-blue-500/15 text-blue-400"}`}>
-                                {detail.type === "added" ? "新增" : detail.type === "removed" ? "删除" : "替换"}
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex items-center gap-2">
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${detail.type === 'added' ? 'bg-green-100 text-emerald-400' : detail.type === 'removed' ? 'bg-red-100 text-red-400' : 'bg-blue-500/15 text-blue-400'}`}
+                              >
+                                {detail.type === 'added'
+                                  ? '新增'
+                                  : detail.type === 'removed'
+                                    ? '删除'
+                                    : '替换'}
                               </span>
-                              {detail.original && <span className="text-[10px] text-slate-400 truncate max-w-[200px]">原：{detail.original.slice(0, 60)}</span>}
+                              {detail.original && (
+                                <span className="max-w-[200px] truncate text-[10px] text-slate-400">
+                                  原：{detail.original.slice(0, 60)}
+                                </span>
+                              )}
                             </div>
-                            {detail.optimized && <div className="text-xs text-slate-300 mb-1 truncate">优化后：{detail.optimized.slice(0, 100)}</div>}
-                            <div className="text-[10px] text-slate-500 leading-relaxed">{detail.reason}</div>
+                            {detail.optimized && (
+                              <div className="mb-1 truncate text-xs text-slate-300">
+                                优化后：{detail.optimized.slice(0, 100)}
+                              </div>
+                            )}
+                            <div className="text-[10px] leading-relaxed text-slate-500">
+                              {detail.reason}
+                            </div>
                           </div>
                         </div>
                       </div>
                     ))}
-                    {filteredDetails.length === 0 && <div className="px-4 py-8 text-center text-sm text-slate-400">没有匹配的修改记录</div>}
+                    {filteredDetails.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-slate-400">
+                        没有匹配的修改记录
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2296,31 +3057,103 @@ export default function PromptOptimizerDialog({
         {/* ═══════════════════════════════════════════════════════
             底部固定功能栏
         ═══════════════════════════════════════════════════════ */}
-        <div className="flex-shrink-0 px-5 py-3 border-t border-white/[0.08] bg-white/[0.04] flex items-center justify-between">
+        <div className="flex flex-shrink-0 items-center justify-between border-t border-white/[0.08] bg-white/[0.04] px-5 py-3">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] text-slate-400">输入 <span className="font-mono font-medium text-slate-400">{inputPrompt.length}</span> 字符</span>
-            {optimizedPrompt && <span className="text-[10px] text-slate-400">输出 <span className="font-mono font-medium text-slate-400">{optimizedPrompt.length}</span> 字符</span>}
-            {stats && <span className="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">{stats.totalChanges} 处差异</span>}
+            <span className="text-[10px] text-slate-400">
+              输入{' '}
+              <span className="font-mono font-medium text-slate-400">{inputPrompt.length}</span>{' '}
+              字符
+            </span>
+            {optimizedPrompt && (
+              <span className="text-[10px] text-slate-400">
+                输出{' '}
+                <span className="font-mono font-medium text-slate-400">
+                  {optimizedPrompt.length}
+                </span>{' '}
+                字符
+              </span>
+            )}
+            {stats && (
+              <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-400">
+                {stats.totalChanges} 处差异
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleReset} className="px-3 py-2 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition">重置</button>
+            <button
+              onClick={handleSaveOriginal}
+              className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-slate-400 transition hover:bg-emerald-500/10 hover:text-emerald-400"
+            >
+              <svg className="mr-1 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V3"/></svg>
+              保存
+            </button>
             {diffResult && diffResult.details.length > 0 && (
-              <button onClick={handleExportReport} className="px-3 py-2 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              <button
+                onClick={handleExportReport}
+                className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-slate-400 transition hover:bg-white/[0.06]"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
                 导出报告
               </button>
             )}
-            <button onClick={handleOptimize} disabled={!isValidInput || isOptimizing} className={`px-6 py-2 rounded-lg text-white text-sm font-semibold transition shadow-md flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none ${isValidInput && !isOptimizing ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700" : "bg-slate-300"}`} title="Ctrl/Cmd + Enter">
+            <button
+              onClick={handleOptimize}
+              disabled={!isValidInput || isOptimizing}
+              className={`flex items-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${isValidInput && !isOptimizing ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700' : 'bg-slate-300'}`}
+              title="Ctrl/Cmd + Enter"
+            >
               {isOptimizing ? (
-                <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>优化中...</>
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  优化中...
+                </>
               ) : (
-                <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>一键优化提示词</>
+                <>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  一键优化提示词
+                </>
               )}
             </button>
           </div>
           <div className="flex items-center gap-2">
             {optimizedPrompt && (
-              <button onClick={() => { onAdopt(optimizedPrompt.trim()); onClose(); }} className="px-4 py-2 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition shadow-sm">采纳结果</button>
+              <button
+                onClick={() => {
+                  onAdopt(optimizedPrompt.trim())
+                  onClose()
+                }}
+                className="rounded-lg bg-green-600 px-4 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-green-700"
+              >
+                采纳结果
+              </button>
             )}
           </div>
         </div>
@@ -2331,114 +3164,264 @@ export default function PromptOptimizerDialog({
         {showTemplateManager && (
           <div
             className="overlay-dark fixed inset-0 z-[10000] flex items-center justify-center"
-            onClick={() => { setShowTemplateManager(false); setEditingTemplate(null); setShowTemplateEdit(false); }}
+            onClick={() => {
+              setShowTemplateManager(false)
+              setEditingTemplate(null)
+              setShowTemplateEdit(false)
+            }}
           >
             <div
-              className="bg-white/[0.06] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-              style={{ width: tplDialogSize.w, height: tplDialogSize.h, minWidth: 400, minHeight: 300 }}
-              onClick={(e) => e.stopPropagation()}
+              className="flex flex-col overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl"
+              style={{
+                width: tplDialogSize.w,
+                height: tplDialogSize.h,
+                minWidth: 400,
+                minHeight: 300,
+              }}
+              onClick={e => e.stopPropagation()}
             >
-            <div className="flex-shrink-0 px-5 py-3 border-b border-white/[0.08] flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-slate-100">系统模板管理</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">自定义优化规则，创建专属系统 Prompt 模板</p>
-              </div>
-              <button onClick={() => { setShowTemplateManager(false); setEditingTemplate(null); setShowTemplateEdit(false); }} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {/* 模板列表 */}
-              {templates.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-                  <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                  <span className="text-sm">暂无模板</span>
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08] px-5 py-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100">系统模板管理</h3>
+                  <p className="mt-0.5 text-[10px] text-slate-400">
+                    自定义优化规则，创建专属系统 Prompt 模板
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {templates.map((tpl) => (
-                    <div
-                      key={tpl.id}
-                      className={`p-3 rounded-xl border transition cursor-pointer ${
-                        selectedTemplateId === tpl.id
-                          ? "border-blue-300 bg-blue-500/50"
-                          : "border-white/[0.08] hover:border-white/[0.12] hover:bg-white/[0.04]"
-                      }`}
-                      onClick={() => { setSelectedTemplateId(tpl.id); setShowTemplateManager(false); }}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-100">{tpl.name}</span>
-                            {tpl.isDefault && <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-medium">默认</span>}
-                            {selectedTemplateId === tpl.id && <span className="text-[9px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded font-medium">当前使用</span>}
-                          </div>
-                          {tpl.description && <p className="text-[10px] text-slate-400 mt-0.5 truncate">{tpl.description}</p>}
-                          <p className="text-[10px] text-slate-300 mt-1 font-mono truncate">{tpl.systemPrompt.slice(0, 120)}...</p>
-                        </div>
-                        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleApplyTemplateToInput(tpl); }}
-                            className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-400 hover:bg-indigo-500/10 transition"
-                            title="套用模板到输入框"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4m8 4v2m-8-2h8" /></svg>
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleSetDefaultTemplate(tpl.id); }}
-                            className={`p-1.5 rounded-lg transition ${tpl.isDefault ? "text-emerald-500 bg-emerald-500/10" : "text-slate-300 hover:text-emerald-500 hover:bg-emerald-500/10"}`}
-                            title="设为默认"
-                          >
-                            <svg className="w-3.5 h-3.5" fill={tpl.isDefault ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingTemplate({ ...tpl }); setShowTemplateEdit(true); }}
-                            className="p-1.5 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-500/10 transition"
-                            title="编辑"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tpl.id); }}
-                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-500/10 transition"
-                            title="删除"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex-shrink-0 px-5 py-3 border-t border-white/[0.06] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <p className="text-[10px] text-slate-400">点击模板可快速切换 · 编辑后自动保存</p>
-                <button onClick={handleImportTemplates} className="text-[10px] text-slate-400 hover:text-blue-500 transition underline" title="导入模板">导入</button>
-                <button onClick={handleExportTemplates} className="text-[10px] text-slate-400 hover:text-blue-500 transition underline" title="导出模板">导出</button>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { setEditingTemplate({ name: "", description: "", systemPrompt: "" }); setShowTemplateEdit(true); }}
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition flex items-center gap-1.5"
+                  onClick={() => {
+                    setShowTemplateManager(false)
+                    setEditingTemplate(null)
+                    setShowTemplateEdit(false)
+                  }}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-400"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  新建模板
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
                 </button>
               </div>
+              <div className="flex-1 overflow-auto p-4">
+                {/* 模板列表 */}
+                {templates.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                    <svg
+                      className="h-12 w-12 opacity-30"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      />
+                    </svg>
+                    <span className="text-sm">暂无模板</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {templates.map(tpl => (
+                      <div
+                        key={tpl.id}
+                        className={`cursor-pointer rounded-xl border p-3 transition ${
+                          selectedTemplateId === tpl.id
+                            ? 'border-blue-300 bg-blue-500/50'
+                            : 'border-white/[0.08] hover:border-white/[0.12] hover:bg-white/[0.04]'
+                        }`}
+                        onClick={() => {
+                          setSelectedTemplateId(tpl.id)
+                          setShowTemplateManager(false)
+                        }}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-100">
+                                {tpl.name}
+                              </span>
+                              {tpl.isDefault && (
+                                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400">
+                                  默认
+                                </span>
+                              )}
+                              {selectedTemplateId === tpl.id && (
+                                <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-medium text-blue-400">
+                                  当前使用
+                                </span>
+                              )}
+                            </div>
+                            {tpl.description && (
+                              <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                                {tpl.description}
+                              </p>
+                            )}
+                            <p className="mt-1 truncate font-mono text-[10px] text-slate-300">
+                              {tpl.systemPrompt.slice(0, 120)}...
+                            </p>
+                          </div>
+                          <div className="ml-2 flex flex-shrink-0 items-center gap-1">
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                handleApplyTemplateToInput(tpl)
+                              }}
+                              className="rounded-lg p-1.5 text-slate-300 transition hover:bg-indigo-500/10 hover:text-indigo-400"
+                              title="套用模板到输入框"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M16 11V7a4 4 0 00-8 0v4m8 4v2m-8-2h8"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                handleSetDefaultTemplate(tpl.id)
+                              }}
+                              className={`rounded-lg p-1.5 transition ${tpl.isDefault ? 'bg-emerald-500/10 text-emerald-500' : 'text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-500'}`}
+                              title="设为默认"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                fill={tpl.isDefault ? 'currentColor' : 'none'}
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                setEditingTemplate({ ...tpl })
+                                setShowTemplateEdit(true)
+                              }}
+                              className="rounded-lg p-1.5 text-slate-300 transition hover:bg-blue-500/10 hover:text-blue-500"
+                              title="编辑"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                handleDeleteTemplate(tpl.id)
+                              }}
+                              className="rounded-lg p-1.5 text-slate-300 transition hover:bg-red-500/10 hover:text-red-500"
+                              title="删除"
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-shrink-0 items-center justify-between border-t border-white/[0.06] px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] text-slate-400">点击模板可快速切换 · 编辑后自动保存</p>
+                  <button
+                    onClick={handleImportTemplates}
+                    className="text-[10px] text-slate-400 underline transition hover:text-blue-500"
+                    title="导入模板"
+                  >
+                    导入
+                  </button>
+                  <button
+                    onClick={handleExportTemplates}
+                    className="text-[10px] text-slate-400 underline transition hover:text-blue-500"
+                    title="导出模板"
+                  >
+                    导出
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingTemplate({ name: '', description: '', systemPrompt: '' })
+                      setShowTemplateEdit(true)
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-blue-700"
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    新建模板
+                  </button>
+                </div>
+              </div>
+              {/* 拖拽手柄 */}
+              <div
+                className="hover:bg-blue-500/20/50 absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-bl-xl transition-colors"
+                onMouseDown={handleTplResizeStart}
+                title="拖动调整大小"
+              >
+                <svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22 22H20V20H22V22ZM22 18H20V16H22V18ZM18 22H16V20H18V22ZM22 14H20V12H22V14ZM18 18H16V16H18V18ZM14 22H12V20H14V22Z" />
+                </svg>
+              </div>
             </div>
-            {/* 拖拽手柄 */}
-            <div
-              className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize hover:bg-blue-500/20/50 transition-colors rounded-bl-xl"
-              onMouseDown={handleTplResizeStart}
-              title="拖动调整大小"
-            >
-              <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22 22H20V20H22V22ZM22 18H20V16H22V18ZM18 22H16V20H18V22ZM22 14H20V12H22V14ZM18 18H16V16H18V18ZM14 22H12V20H14V22Z" />
-              </svg>
-            </div>
-          </div>
           </div>
         )}
 
@@ -2448,64 +3431,112 @@ export default function PromptOptimizerDialog({
         {showTemplateEdit && editingTemplate && (
           <div
             className="fixed inset-0 z-[10001] flex items-center justify-center"
-            style={{ background: "rgba(15,23,42,0.5)" }}
-            onClick={() => { setShowTemplateEdit(false); setEditingTemplate(null); }}
+            style={{ background: 'rgba(15,23,42,0.5)' }}
+            onClick={() => {
+              setShowTemplateEdit(false)
+              setEditingTemplate(null)
+            }}
           >
             <div
-              className="bg-white/[0.06] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-              style={{ width: "min(90vw, 640px)", height: "min(80vh, 560px)" }}
-              onClick={(e) => e.stopPropagation()}
+              className="flex flex-col overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl"
+              style={{ width: 'min(90vw, 640px)', height: 'min(80vh, 560px)' }}
+              onClick={e => e.stopPropagation()}
             >
-            <div className="flex-shrink-0 px-5 py-3 border-b border-white/[0.08] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-100">{editingTemplate.id ? "编辑模板" : "新建模板"}</h3>
-              <button onClick={() => { setShowTemplateEdit(false); setEditingTemplate(null); }} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-5">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">模板名称 <span className="text-red-400">*</span></label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2.5 rounded-lg border border-white/[0.08] text-sm bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                    value={editingTemplate.name || ""}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
-                    placeholder="如：室内设计优化、博物馆展陈设计..."
-                    autoFocus
-                  />
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08] px-5 py-3">
+                <h3 className="text-sm font-bold text-slate-100">
+                  {editingTemplate.id ? '编辑模板' : '新建模板'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowTemplateEdit(false)
+                    setEditingTemplate(null)
+                  }}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-400"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto p-5">
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-300">
+                      模板名称 <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-white/[0.08] bg-white/[0.06] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      value={editingTemplate.name || ''}
+                      onChange={e =>
+                        setEditingTemplate({ ...editingTemplate, name: e.target.value })
+                      }
+                      placeholder="如：室内设计优化、博物馆展陈设计..."
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-300">
+                      描述（可选）
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full rounded-lg border border-white/[0.08] bg-white/[0.06] px-3 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      value={editingTemplate.description || ''}
+                      onChange={e =>
+                        setEditingTemplate({ ...editingTemplate, description: e.target.value })
+                      }
+                      placeholder="简要说明模板用途"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="mb-1 block text-xs font-medium text-slate-300">
+                      系统 Prompt（优化规则）<span className="text-red-400">*</span>
+                    </label>
+                    <p className="mb-1.5 text-[10px] text-slate-400">
+                      将作为 system message 发送给 AI 模型，指导优化方向
+                    </p>
+                    <textarea
+                      className="w-full resize-none rounded-lg border border-white/[0.08] bg-white/[0.06] px-3 py-2.5 font-mono text-sm leading-relaxed focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      rows={12}
+                      value={editingTemplate.systemPrompt || ''}
+                      onChange={e =>
+                        setEditingTemplate({ ...editingTemplate, systemPrompt: e.target.value })
+                      }
+                      placeholder="输入优化提示词的规则和指导..."
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">描述（可选）</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2.5 rounded-lg border border-white/[0.08] text-sm bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                    value={editingTemplate.description || ""}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, description: e.target.value })}
-                    placeholder="简要说明模板用途"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-slate-300 mb-1">系统 Prompt（优化规则）<span className="text-red-400">*</span></label>
-                  <p className="text-[10px] text-slate-400 mb-1.5">将作为 system message 发送给 AI 模型，指导优化方向</p>
-                  <textarea
-                    className="w-full px-3 py-2.5 rounded-lg border border-white/[0.08] text-sm bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 resize-none font-mono leading-relaxed"
-                    rows={12}
-                    value={editingTemplate.systemPrompt || ""}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, systemPrompt: e.target.value })}
-                    placeholder="输入优化提示词的规则和指导..."
-                  />
+              </div>
+              <div className="flex flex-shrink-0 items-center justify-between border-t border-white/[0.06] bg-white/[0.04] px-5 py-3">
+                <p className="text-[10px] text-slate-400">名称和规则为必填项</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowTemplateEdit(false)
+                      setEditingTemplate(null)
+                    }}
+                    className="rounded-lg border border-white/[0.08] px-4 py-2 text-xs text-slate-400 transition hover:bg-white/[0.06]"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleSaveTemplate}
+                    disabled={
+                      !editingTemplate.name?.trim() || !editingTemplate.systemPrompt?.trim()
+                    }
+                    className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    保存模板
+                  </button>
                 </div>
               </div>
             </div>
-            <div className="flex-shrink-0 px-5 py-3 border-t border-white/[0.06] flex items-center justify-between bg-white/[0.04]">
-              <p className="text-[10px] text-slate-400">名称和规则为必填项</p>
-              <div className="flex gap-2">
-                <button onClick={() => { setShowTemplateEdit(false); setEditingTemplate(null); }} className="px-4 py-2 rounded-lg border border-white/[0.08] text-slate-400 text-xs hover:bg-white/[0.06] transition">取消</button>
-                <button onClick={handleSaveTemplate} disabled={!editingTemplate.name?.trim() || !editingTemplate.systemPrompt?.trim()} className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed">保存模板</button>
-              </div>
-            </div>
-          </div>
           </div>
         )}
 
@@ -2518,51 +3549,99 @@ export default function PromptOptimizerDialog({
             onClick={() => setShowHistory(false)}
           >
             <div
-              className="bg-white/[0.06] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-              style={{ width: histDialogSize.w, height: histDialogSize.h, minWidth: 400, minHeight: 300 }}
-              onClick={(e) => e.stopPropagation()}
+              className="flex flex-col overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl"
+              style={{
+                width: histDialogSize.w,
+                height: histDialogSize.h,
+                minWidth: 400,
+                minHeight: 300,
+              }}
+              onClick={e => e.stopPropagation()}
             >
-            <div className="flex-shrink-0 px-5 py-3 border-b border-white/[0.08] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-100">历史记录 ({records.length})</h3>
-              <button onClick={() => setShowHistory(false)} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {records.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-                  <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <span className="text-sm">暂无历史记录</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {records.map((record) => (
-                    <div key={record.id} className="p-3 rounded-lg border border-white/[0.08] hover:border-blue-300 hover:bg-blue-500/30 transition cursor-pointer" onClick={() => handleRestoreRecord(record)}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] text-slate-400">{new Date(record.timestamp).toLocaleString("zh-CN")}</span>
-                        <span className="text-[10px] text-slate-400">{record.duration}ms · {record.details.length} 处修改{record.templateName ? ` · ${record.templateName}` : ""}</span>
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08] px-5 py-3">
+                <h3 className="text-sm font-bold text-slate-100">历史记录 ({records.length})</h3>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-400"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {records.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                    <svg
+                      className="h-12 w-12 opacity-30"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span className="text-sm">暂无历史记录</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {records.map(record => (
+                      <div
+                        key={record.id}
+                        className="cursor-pointer rounded-lg border border-white/[0.08] p-3 transition hover:border-blue-300 hover:bg-blue-500/30"
+                        onClick={() => handleRestoreRecord(record)}
+                      >
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(record.timestamp).toLocaleString('zh-CN')}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {record.duration}ms · {record.details.length} 处修改
+                            {record.templateName ? ` · ${record.templateName}` : ''}
+                          </span>
+                        </div>
+                        <div className="truncate text-xs text-slate-400">
+                          {record.originalPrompt.slice(0, 80)}
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-400 truncate">{record.originalPrompt.slice(0, 80)}</div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+              {records.length > 0 && (
+                <div className="flex flex-shrink-0 justify-end border-t border-white/[0.06] px-5 py-3">
+                  <button
+                    onClick={() => {
+                      if (confirm('确定清空所有历史记录？')) {
+                        setRecords([])
+                        showToast('记录已清空', 'success')
+                      }
+                    }}
+                    className="rounded-lg border border-red-500/20 px-3 py-1.5 text-xs text-red-500 transition hover:bg-red-500/10"
+                  >
+                    清空全部
+                  </button>
                 </div>
               )}
-            </div>
-            {records.length > 0 && (
-              <div className="flex-shrink-0 px-5 py-3 border-t border-white/[0.06] flex justify-end">
-                <button onClick={() => { if (confirm("确定清空所有历史记录？")) { setRecords([]); showToast("记录已清空", "success"); } }} className="px-3 py-1.5 rounded-lg border border-red-500/20 text-red-500 text-xs hover:bg-red-500/10 transition">清空全部</button>
+              {/* 拖拽手柄 */}
+              <div
+                className="hover:bg-blue-500/20/50 absolute bottom-0 right-0 h-5 w-5 cursor-se-resize rounded-bl-xl transition-colors"
+                onMouseDown={handleHistResizeStart}
+                title="拖动调整大小"
+              >
+                <svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22 22H20V20H22V22ZM22 18H20V16H22V18ZM18 22H16V20H18V22ZM22 14H20V12H22V14ZM18 18H16V16H18V18ZM14 22H12V20H14V22Z" />
+                </svg>
               </div>
-            )}
-            {/* 拖拽手柄 */}
-            <div
-              className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize hover:bg-blue-500/20/50 transition-colors rounded-bl-xl"
-              onMouseDown={handleHistResizeStart}
-              title="拖动调整大小"
-            >
-              <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22 22H20V20H22V22ZM22 18H20V16H22V18ZM18 22H16V20H18V22ZM22 14H20V12H22V14ZM18 18H16V16H18V18ZM14 22H12V20H14V22Z" />
-              </svg>
-            </div>
             </div>
           </div>
         )}
@@ -2576,46 +3655,102 @@ export default function PromptOptimizerDialog({
             onClick={() => setShowFavorites(false)}
           >
             <div
-              className="bg-white/[0.06] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-              style={{ width: "min(90vw, 560px)", height: "min(70vh, 500px)" }}
-              onClick={(e) => e.stopPropagation()}
+              className="flex flex-col overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl"
+              style={{ width: 'min(90vw, 560px)', height: 'min(70vh, 500px)' }}
+              onClick={e => e.stopPropagation()}
             >
-            <div className="flex-shrink-0 px-5 py-3 border-b border-white/[0.08] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-100">收藏的优化结果 ({favorites.length})</h3>
-              <button onClick={() => setShowFavorites(false)} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {favorites.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-                  <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
-                  <span className="text-sm">暂无收藏</span>
-                  <span className="text-[10px]">优化完成后点击「☆ 收藏」即可添加</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {favorites.map((fav) => (
-                    <div key={fav.id} className="p-3 rounded-lg border border-white/[0.08] hover:border-amber-500/30 hover:bg-amber-500/30 transition">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] text-slate-400">{new Date(fav.timestamp).toLocaleString("zh-CN")}{fav.templateName ? ` · ${fav.templateName}` : ""}</span>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => handleApplyFavorite(fav)} className="text-[10px] text-blue-400 hover:text-blue-400 font-medium">套用</button>
-                          <button onClick={() => setFavorites(prev => prev.filter(f => f.id !== fav.id))} className="text-[10px] text-red-400 hover:text-red-400">移除</button>
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08] px-5 py-3">
+                <h3 className="text-sm font-bold text-slate-100">
+                  收藏的优化结果 ({favorites.length})
+                </h3>
+                <button
+                  onClick={() => setShowFavorites(false)}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-400"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {favorites.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                    <svg
+                      className="h-12 w-12 opacity-30"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                      />
+                    </svg>
+                    <span className="text-sm">暂无收藏</span>
+                    <span className="text-[10px]">优化完成后点击「☆ 收藏」即可添加</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {favorites.map(fav => (
+                      <div
+                        key={fav.id}
+                        className="rounded-lg border border-white/[0.08] p-3 transition hover:border-amber-500/30 hover:bg-amber-500/30"
+                      >
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(fav.timestamp).toLocaleString('zh-CN')}
+                            {fav.templateName ? ` · ${fav.templateName}` : ''}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleApplyFavorite(fav)}
+                              className="text-[10px] font-medium text-blue-400 hover:text-blue-400"
+                            >
+                              套用
+                            </button>
+                            <button
+                              onClick={() =>
+                                setFavorites(prev => prev.filter(f => f.id !== fav.id))
+                              }
+                              className="text-[10px] text-red-400 hover:text-red-400"
+                            >
+                              移除
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mb-1 truncate text-xs text-slate-400">
+                          {fav.originalPrompt.slice(0, 80)}
+                        </div>
+                        <div className="truncate text-[10px] text-slate-400">
+                          {fav.optimizedPrompt.slice(0, 100)}
                         </div>
                       </div>
-                      <div className="text-xs text-slate-400 truncate mb-1">{fav.originalPrompt.slice(0, 80)}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{fav.optimizedPrompt.slice(0, 100)}</div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+              {favorites.length > 0 && (
+                <div className="flex flex-shrink-0 justify-end border-t border-white/[0.06] px-5 py-3">
+                  <button
+                    onClick={() => {
+                      if (confirm('确定清空所有收藏？')) {
+                        setFavorites([])
+                        showToast('收藏已清空', 'success')
+                      }
+                    }}
+                    className="rounded-lg border border-red-500/20 px-3 py-1.5 text-xs text-red-500 transition hover:bg-red-500/10"
+                  >
+                    清空全部
+                  </button>
                 </div>
               )}
-            </div>
-            {favorites.length > 0 && (
-              <div className="flex-shrink-0 px-5 py-3 border-t border-white/[0.06] flex justify-end">
-                <button onClick={() => { if (confirm("确定清空所有收藏？")) { setFavorites([]); showToast("收藏已清空", "success"); } }} className="px-3 py-1.5 rounded-lg border border-red-500/20 text-red-500 text-xs hover:bg-red-500/10 transition">清空全部</button>
-              </div>
-            )}
             </div>
           </div>
         )}
@@ -2629,35 +3764,50 @@ export default function PromptOptimizerDialog({
             onClick={() => setShowShortcuts(false)}
           >
             <div
-              className="bg-white/[0.06] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-              style={{ width: "min(90vw, 420px)" }}
-              onClick={(e) => e.stopPropagation()}
+              className="flex flex-col overflow-hidden rounded-xl bg-white/[0.06] shadow-2xl"
+              style={{ width: 'min(90vw, 420px)' }}
+              onClick={e => e.stopPropagation()}
             >
-            <div className="flex-shrink-0 px-5 py-3 border-b border-white/[0.08] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-100">快捷键</h3>
-              <button onClick={() => setShowShortcuts(false)} className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-400 transition">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="space-y-3">
-                {[
-                  { keys: ["Ctrl", "Enter"], desc: "一键优化提示词" },
-                  { keys: ["Esc"], desc: "关闭弹窗" },
-                  { keys: ["Ctrl", "C"], desc: "复制优化结果（结果区聚焦时）" },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">{item.desc}</span>
-                    <div className="flex items-center gap-1">
-                      {item.keys.map((k, j) => (
-                        <span key={j} className="px-2 py-0.5 bg-white/[0.08] border border-white/[0.08] rounded text-[10px] font-mono text-slate-400">{k}</span>
-                      ))}
+              <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.08] px-5 py-3">
+                <h3 className="text-sm font-bold text-slate-100">快捷键</h3>
+                <button
+                  onClick={() => setShowShortcuts(false)}
+                  className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-400"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="space-y-3">
+                  {[
+                    { keys: ['Ctrl', 'Enter'], desc: '一键优化提示词' },
+                    { keys: ['Esc'], desc: '关闭弹窗' },
+                    { keys: ['Ctrl', 'C'], desc: '复制优化结果（结果区聚焦时）' },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400">{item.desc}</span>
+                      <div className="flex items-center gap-1">
+                        {item.keys.map((k, j) => (
+                          <span
+                            key={j}
+                            className="rounded border border-white/[0.08] bg-white/[0.08] px-2 py-0.5 font-mono text-[10px] text-slate-400"
+                          >
+                            {k}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
           </div>
         )}
 
@@ -2665,15 +3815,45 @@ export default function PromptOptimizerDialog({
             错误提示
         ═══════════════════════════════════════════════════════ */}
         {optimizeError && (
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-96 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl shadow-xl z-30">
+          <div className="absolute bottom-16 left-1/2 z-30 w-96 -translate-x-1/2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 shadow-xl">
             <div className="flex items-start gap-2.5">
-              <svg className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <svg
+                className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
               <div className="flex-1">
-                <p className="text-xs text-red-400 leading-relaxed">{optimizeError}</p>
-                <button onClick={() => { setOptimizeError(""); handleOptimize(); }} className="mt-2 text-[10px] text-red-500 hover:text-red-700 font-medium underline">重试</button>
+                <p className="text-xs leading-relaxed text-red-400">{optimizeError}</p>
+                <button
+                  onClick={() => {
+                    setOptimizeError('')
+                    handleOptimize()
+                  }}
+                  className="mt-2 text-[10px] font-medium text-red-500 underline hover:text-red-700"
+                >
+                  重试
+                </button>
               </div>
-              <button onClick={() => setOptimizeError("")} className="text-slate-400 hover:text-slate-400 flex-shrink-0">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              <button
+                onClick={() => setOptimizeError('')}
+                className="flex-shrink-0 text-slate-400 hover:text-slate-400"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
               </button>
             </div>
           </div>
@@ -2683,11 +3863,13 @@ export default function PromptOptimizerDialog({
             Toast 轻提示
         ═══════════════════════════════════════════════════════ */}
         {toast && (
-          <div className={`absolute bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg text-sm font-medium z-40 ${toast.type === "success" ? "bg-emerald-500/100 text-white" : toast.type === "error" ? "bg-red-500 text-white" : "bg-blue-500 text-white"}`}>
+          <div
+            className={`absolute bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg ${toast.type === 'success' ? 'bg-emerald-500/100 text-white' : toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}
+          >
             {toast.message}
           </div>
         )}
       </div>
     </div>
-  );
+  )
 }
