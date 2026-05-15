@@ -1299,8 +1299,9 @@ export default function PromptOptimizerDialog({
       showToast('没有内容可保存', 'info')
       return
     }
+    onAdopt(inputPrompt.trim())
     showToast('已保存原始提示词修改', 'success')
-  }, [inputPrompt, showToast])
+  }, [inputPrompt, showToast, onAdopt])
 
   const handleRestoreRecord = useCallback(
     (record: OptimizeRecord) => {
