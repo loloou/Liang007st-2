@@ -486,12 +486,15 @@ function App() {
         errMsg.includes("unable to read") ||
         errMsg.includes("inform the user") ||
         errMsg.includes("this model does not") ||
+        errMsg.includes("model does not support") ||
         (errMsg.includes("vision") && errMsg.includes("not support")) ||
         (errMsg.includes("multimodal") && errMsg.includes("not support")) ||
         (errMsg.includes("invalid") && errMsg.includes("image_url")) ||
-        (errMsg.includes("unsupported") && errMsg.includes("image"));
+        (errMsg.includes("unsupported") && errMsg.includes("image")) ||
+        (errMsg.includes("cannot read") && errMsg.includes("does not support"));
       console.log(`[图片降级] error含图片关键词: ${isImageUnsupported}, error: ${errMsg.slice(0, 200)}`);
       if (isImageUnsupported) {
+        console.log(`[图片降级] 检测到模型不支持参考图，自动去掉参考图重试...`);
         result = await generateImages({
           prompt,
           negativePrompt: negativePrompt || undefined,
@@ -504,9 +507,9 @@ function App() {
           sizeTier,
         });
         if (!result.error) {
-          const warnMsg = "⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。";
+          const warnMsg = "⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。";
           setError(warnMsg);
-          setTimeout(() => setError((prev) => prev === warnMsg ? null : prev), 8000);
+          setTimeout(() => setError((prev) => prev === warnMsg ? null : prev), 10000);
         } else {
           // 重试也失败，说明模型本身可能不支持图片生成
           const detailedMsg = result.error && (

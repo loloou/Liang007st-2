@@ -51,6 +51,31 @@ export type ApiVendor = {
   isDefault?: boolean;
 };
 
+/** 余额查询配置 — 支持多个服务商 */
+export type BalanceConfig = {
+  id: string;
+  /** 服务商名称 */
+  name: string;
+  /** 余额查询端点 URL */
+  endpoint: string;
+  /** 查询方法 */
+  method: "GET" | "POST";
+  /** 请求头（JSON 格式） */
+  headers?: Record<string, string>;
+  /** 请求体模板（POST 时使用，支持 {{userId}} {{token}} 占位符） */
+  bodyTemplate?: string;
+  /** 用户 ID */
+  userId?: string;
+  /** 访问令牌 */
+  token?: string;
+  /** 自定义备注 */
+  remark?: string;
+  /** 是否为默认配置 */
+  isDefault?: boolean;
+  /** 是否使用 CORS 代理 */
+  useCorsProxy?: boolean;
+};
+
 /** 完整配置 */
 export type ApiConfig = {
   /** 全局 BASE URL，如 https://ai.t8star.cn */
@@ -71,10 +96,10 @@ export type ApiConfig = {
   apiVendors: ApiVendor[];
   /** 当前激活的供应商 id（空表示使用手动输入的 globalBaseUrl） */
   activeVendorId: string;
-  /** 令牌余额 — 用户 ID */
-  balanceUserId?: string;
-  /** 令牌余额 — 系统访问令牌 */
-  balanceToken?: string;
+  /** 余额查询配置列表 */
+  balanceConfigs: BalanceConfig[];
+  /** 当前激活的余额查询配置 id */
+  activeBalanceConfigId?: string;
 };
 
 // ── 工具函数 ────────────────────────────────────────────────────────────────
@@ -137,7 +162,29 @@ function makeDefaultConfig(): ApiConfig {
     activeImageModelId: "",
     apiValidateJson: true,
     apiVendors: [],
-    activeVendorId: ""
+    activeVendorId: "",
+    balanceConfigs: [
+      {
+        id: genId(),
+        name: "通用 API 中转站（/api/user/self）",
+        endpoint: "https://api.example.com/api/user/self",
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        remark: "适用于 One API、New API、Sub2API、One Hub 等中转站。返回 quota 字段为余额。",
+        isDefault: true
+      },
+      {
+        id: genId(),
+        name: "贞贞的AI工坊",
+        endpoint: "https://api.wuaiapi.com/v1/user/credits",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        bodyTemplate: '{"user_id": "{{userId}}", "token": "{{token}}"}',
+        remark: "贞贞的AI工坊 - 令牌余额查询",
+        isDefault: false
+      }
+    ],
+    activeBalanceConfigId: ""
   };
 }
 
@@ -173,7 +220,20 @@ function migrateFromLegacy(): ApiConfig | null {
       activeImageModelId: imageModels[0].id,
       apiValidateJson: typeof parsed.apiValidateJson === "boolean" ? parsed.apiValidateJson : true,
       apiVendors: [],
-      activeVendorId: ""
+      activeVendorId: "",
+      balanceConfigs: [
+        {
+          id: genId(),
+          name: "贞贞的AI工坊",
+          endpoint: "https://api.wuaiapi.com/v1/user/credits",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          bodyTemplate: '{"user_id": "{{userId}}", "token": "{{token}}"}',
+          remark: "贞贞的AI工坊 - 令牌余额查询",
+          isDefault: true
+        }
+      ],
+      activeBalanceConfigId: ""
     };
     return config;
   } catch {
@@ -199,8 +259,8 @@ export function getApiConfig(): ApiConfig {
         apiValidateJson:    typeof parsed.apiValidateJson === "boolean" ? parsed.apiValidateJson : true,
         apiVendors:         Array.isArray(parsed.apiVendors) ? parsed.apiVendors : [],
         activeVendorId:     (parsed.activeVendorId as string | undefined) ?? "",
-        balanceUserId:      (parsed.balanceUserId as string | undefined) ?? "",
-        balanceToken:       (parsed.balanceToken as string | undefined) ?? ""
+        balanceConfigs:     Array.isArray(parsed.balanceConfigs) ? parsed.balanceConfigs : [],
+        activeBalanceConfigId: (parsed.activeBalanceConfigId as string | undefined) ?? ""
       };
     }
   } catch {/* ignore */}
@@ -372,6 +432,48 @@ export function switchApiVendor(vendorId: string): ApiConfig {
   const patch: Partial<ApiConfig> = { activeVendorId: vendorId, globalBaseUrl: vendor.baseUrl };
   if (vendor.apiKey?.trim()) patch.globalApiKey = vendor.apiKey.trim();
   return updateApiConfig(patch);
+}
+
+// ── 余额配置模板管理 ────────────────────────────────────────────────────────
+
+const BALANCE_TEMPLATES_KEY = "liang007_balance_templates";
+
+export type BalanceTemplate = Omit<BalanceConfig, "id" | "userId" | "token" | "isDefault" | "activeBalanceConfigId">;
+
+/** 获取所有保存的余额配置模板 */
+export function getBalanceTemplates(): BalanceTemplate[] {
+  try {
+    const raw = localStorage.getItem(BALANCE_TEMPLATES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as BalanceTemplate[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 保存余额配置为模板 */
+export function saveBalanceTemplate(template: BalanceTemplate): void {
+  try {
+    const templates = getBalanceTemplates();
+    // 检查是否已存在相同名称的模板，如果存在则更新
+    const existingIndex = templates.findIndex(t => t.name === template.name);
+    if (existingIndex >= 0) {
+      templates[existingIndex] = template;
+    } else {
+      templates.push(template);
+    }
+    localStorage.setItem(BALANCE_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch { /* quota exceeded */ }
+}
+
+/** 删除余额配置模板 */
+export function deleteBalanceTemplate(templateName: string): void {
+  try {
+    const templates = getBalanceTemplates();
+    const filtered = templates.filter(t => t.name !== templateName);
+    localStorage.setItem(BALANCE_TEMPLATES_KEY, JSON.stringify(filtered));
+  } catch { /* quota exceeded */ }
 }
 
 // ── 旧版类型兼容 ─────────────────────────────────────────────────────────────

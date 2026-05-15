@@ -5,7 +5,7 @@
  * Image/Chat 模型列表、自动获取模型、模型选择弹窗、测试连接。
  */
 import React, { useState, useEffect } from "react";
-import { getApiConfig, saveApiConfig, addApiVendor, switchApiVendor, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec } from "../api/settings";
+import { getApiConfig, saveApiConfig, addApiVendor, switchApiVendor, getBalanceTemplates, saveBalanceTemplate, deleteBalanceTemplate, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec, type BalanceTemplate } from "../api/settings";
 import VendorManager from "./VendorManager";
 
 // ── 内联 API 函数 ──────────────────────────────────────────────────────────
@@ -48,14 +48,19 @@ interface Props {
 
 const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
   const [cfgDraft, setCfgDraft] = useState<ApiConfig>(() => getApiConfig());
-  const [settingsTab, setSettingsTab] = useState<"image" | "chat">("image");
+  const [settingsTab, setSettingsTab] = useState<"image" | "chat" | "balance">("image");
   const [modelTestStatus, setModelTestStatus] = useState<Record<string, "idle"|"testing"|"ok"|"fail">>({});
   const [modelTestMsg, setModelTestMsg] = useState<Record<string, string>>({});
+  const [balanceTestStatus, setBalanceTestStatus] = useState<Record<string, "idle"|"testing"|"ok"|"fail">>({});
+  const [balanceTestMsg, setBalanceTestMsg] = useState<Record<string, string>>({});
+  const [balanceTestResultVisible, setBalanceTestResultVisible] = useState<Record<string, boolean>>({});
   const [syncToast, setSyncToast] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchErr, setFetchErr] = useState("");
   const [globalSaveVendorName, setGlobalSaveVendorName] = useState("");
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
+  const [balanceTemplates, setBalanceTemplates] = useState<BalanceTemplate[]>([]);
+  const [templateDropdownOpen, setTemplateDropdownOpen] = useState<Record<string, boolean>>({});
 
   // 供应商管理弹窗
   const [vendorManagerOpen, setVendorManagerOpen] = useState(false);
@@ -74,6 +79,8 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
       setModelTestMsg({});
       setFetchErr("");
       setModelPickerOpen(false);
+      setBalanceTemplates(getBalanceTemplates());
+      setBalanceTestResultVisible({});
     }
   }, [open]);
 
@@ -110,12 +117,114 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
       } else {
         setFetchErr(result.error || "获取模型列表失败");
       }
-    } catch (e) {
-      setFetchErr(e instanceof Error ? e.message : "网络错误");
-    } finally {
-      setFetching(false);
-    }
-  };
+     } catch (e) {
+       setFetchErr(e instanceof Error ? e.message : "网络错误");
+     } finally {
+       setFetching(false);
+     }
+   };
+
+    const testBalanceConfig = async (configId: string) => {
+      const config = cfgDraft.balanceConfigs?.find(c => c.id === configId);
+      if (!config) return;
+
+      setBalanceTestStatus(prev => ({ ...prev, [configId]: "testing" }));
+      setBalanceTestMsg(prev => ({ ...prev, [configId]: "" }));
+      setBalanceTestResultVisible(prev => ({ ...prev, [configId]: false }));
+
+      try {
+        const headers: HeadersInit = {
+          "Content-Type": "application/json",
+          ...(config.headers || {})
+        };
+
+        let body: string | undefined;
+        if (config.method === "POST" && config.bodyTemplate) {
+          body = config.bodyTemplate
+            .replace(/\{\{userId\}\}/g, config.userId || "")
+            .replace(/\{\{token\}\}/g, config.token || "");
+        }
+
+        let endpoint = config.endpoint;
+        let responseData: unknown = null;
+        let responseText = "";
+        let resp: Response | null = null;
+
+        // 如果启用 CORS 代理，尝试多个代理
+        if (config.useCorsProxy) {
+          const proxies = [
+            "https://api.allorigins.win/raw?url=",
+            "https://cors-anywhere.herokuapp.com/",
+          ];
+
+          for (const proxy of proxies) {
+            try {
+              const proxyEndpoint = proxy + encodeURIComponent(config.endpoint);
+              resp = await fetch(proxyEndpoint, {
+                method: config.method,
+                headers,
+                body,
+                signal: AbortSignal.timeout(10000)
+              });
+
+              if (resp.ok) {
+                responseText = await resp.text();
+                try {
+                  responseData = JSON.parse(responseText);
+                } catch {
+                  responseData = responseText;
+                }
+                break;
+              }
+            } catch {
+              continue;
+            }
+          }
+
+          if (!resp) {
+            setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
+            setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ CORS 代理失败\n\n所有代理都无法访问该端点，请检查：\n1. 端点 URL 是否正确\n2. 尝试禁用 CORS 代理\n3. 检查服务商是否支持跨域请求` }));
+            setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
+            return;
+          }
+        } else {
+          resp = await fetch(endpoint, {
+            method: config.method,
+            headers,
+            body,
+            signal: AbortSignal.timeout(15000)
+          });
+
+          responseText = await resp.text();
+          try {
+            responseData = JSON.parse(responseText);
+          } catch {
+            responseData = responseText;
+          }
+        }
+
+        if (resp && resp.ok) {
+          setBalanceTestStatus(prev => ({ ...prev, [configId]: "ok" }));
+          const preview = typeof responseData === "string" 
+            ? responseData.slice(0, 150)
+            : JSON.stringify(responseData).slice(0, 150);
+          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✓ HTTP ${resp.status} 成功\n\n响应预览:\n${preview}` }));
+          setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
+        } else {
+          setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
+          const preview = typeof responseData === "string" 
+            ? responseData.slice(0, 150)
+            : JSON.stringify(responseData).slice(0, 150);
+          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ HTTP ${resp?.status || "未知"}\n\n响应预览:\n${preview}` }));
+          setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
+        }
+      } catch (err) {
+        setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ 请求失败\n\n${errMsg}` }));
+        setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
+      }
+    };
 
   const handleModelPickerConfirm = () => {
     const selectedModels = modelPickerList.filter((m) => modelPickerSelected.has(m));
@@ -364,14 +473,14 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
 
           {/* 标签页切换 */}
           <div className="flex border-b border-white/[0.06] px-6 flex-shrink-0">
-            {(["image", "chat"] as const).map((tab) => (
+            {(["image", "chat", "balance"] as const).map((tab) => (
               <button
                 key={tab}
                 className={`px-4 py-2.5 text-xs font-medium transition border-b-2 ${
                   settingsTab === tab ? "border-primary-500 text-primary-400" : "border-transparent text-slate-500 hover:text-slate-300"
                 }`}
                 onClick={() => setSettingsTab(tab)}
-              >{tab === "image" ? "Image 模型" : "Chat 模型"}</button>
+              >{tab === "image" ? "Image 模型" : tab === "chat" ? "Chat 模型" : "令牌余额"}</button>
             ))}
           </div>
 
@@ -498,146 +607,454 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
             )}
 
             {settingsTab === "chat" && (
-              <div className="grid grid-cols-[1fr_260px] gap-4">
-                {/* 左侧：Chat 模型列表 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-slate-400">共 {cfgDraft.chatModels.length} 个模型</span>
-                      <button
-                        type="button"
-                        className="px-2 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
-                        onClick={() => handleFetchModels("chat")}
-                        disabled={fetching}
-                      >{fetching ? "获取中…" : "自动获取模型"}</button>
-                    </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">共 {cfgDraft.chatModels.length} 个模型</span>
                     <button
                       type="button"
-                      className="px-2 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition"
-                      onClick={addChatModel}
-                    >+ 手动添加</button>
+                      className="px-2 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
+                      onClick={() => handleFetchModels("chat")}
+                      disabled={fetching}
+                    >{fetching ? "获取中…" : "自动获取模型"}</button>
                   </div>
-                  {fetchErr && <p className="text-[10px] text-red-400 mb-2">{fetchErr}</p>}
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition"
+                    onClick={addChatModel}
+                  >+ 手动添加</button>
+                </div>
+                {fetchErr && <p className="text-[10px] text-red-400 mb-2">{fetchErr}</p>}
 
-                  {cfgDraft.chatModels.map((m) => {
-                    const ts = modelTestStatus[m.id] || "idle";
-                    const tmsg = modelTestMsg[m.id] || "";
-                    return (
-                      <div key={m.id} className="glass-card rounded-xl p-3 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
-                            placeholder="Model ID（如 gpt-4o）"
-                            value={m.modelId}
-                            onChange={(e) => updateChatModel(m.id, { modelId: e.target.value })}
-                          />
-                          <input
-                            type="text"
-                            className="w-24 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
-                            placeholder="别名"
-                            value={m.label || ""}
-                            onChange={(e) => updateChatModel(m.id, { label: e.target.value })}
-                          />
-                          <button
-                            type="button"
-                            className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
-                            onClick={() => removeChatModel(m.id)}
-                            title="删除此模型"
-                          >×</button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
-                            placeholder="Base URL（留空继承全局）"
-                            value={m.baseUrl || ""}
-                            onChange={(e) => updateChatModel(m.id, { baseUrl: e.target.value })}
-                          />
-                          <input
-                            type="password"
-                            className="w-36 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
-                            placeholder="API Key（留空继承全局）"
-                            value={m.apiKey || ""}
-                            onChange={(e) => updateChatModel(m.id, { apiKey: e.target.value })}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className={`px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1 ${
-                              ts === "ok" ? "bg-emerald-500/10 text-emerald-400" :
-                              ts === "fail" ? "bg-red-500/10 text-red-400" :
-                              ts === "testing" ? "bg-amber-500/10 text-amber-400" :
-                              "bg-white/[0.04] text-slate-400 hover:bg-white/[0.08]"
-                            }`}
-                            disabled={ts === "testing"}
-                            onClick={async () => {
-                              setModelTestStatus((s) => ({ ...s, [m.id]: "testing" }));
-                              setModelTestMsg((s) => ({ ...s, [m.id]: "" }));
-                              const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl;
-                              const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey;
-                              const result = await testModelConnection(baseUrl, apiKey, m.modelId);
-                              setModelTestStatus((s) => ({ ...s, [m.id]: result.ok ? "ok" : "fail" }));
-                              setModelTestMsg((s) => ({ ...s, [m.id]: result.message + (result.ok ? "" : (result.detail ? `\n${result.detail}` : "")) }));
-                            }}
-                          >
-                            {ts === "testing" ? (
-                              <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
-                            ) : ts === "ok" ? (
-                              <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>联通</>
-                            ) : ts === "fail" ? (
-                              <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>失败</>
-                            ) : (
-                              <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
-                            )}
-                          </button>
-                        </div>
-                        {tmsg && (
-                          <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
-                            ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
-                          }`}>{tmsg}</div>
-                        )}
+                {cfgDraft.chatModels.map((m) => {
+                  const ts = modelTestStatus[m.id] || "idle";
+                  const tmsg = modelTestMsg[m.id] || "";
+                  return (
+                    <div key={m.id} className="glass-card rounded-xl p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                          placeholder="Model ID（如 gpt-4o）"
+                          value={m.modelId}
+                          onChange={(e) => updateChatModel(m.id, { modelId: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          className="w-24 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-xs"
+                          placeholder="别名"
+                          value={m.label || ""}
+                          onChange={(e) => updateChatModel(m.id, { label: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
+                          onClick={() => removeChatModel(m.id)}
+                          title="删除此模型"
+                        >×</button>
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* 右侧：令牌余额配置 */}
-                <div className="glass-card rounded-xl p-3 space-y-3 h-fit sticky top-0">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    <span className="text-xs font-bold text-amber-400">令牌余额</span>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-1 font-medium">USER ID</label>
-                    <input
-                      type="text"
-                      className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 font-mono"
-                      placeholder="输入用户 ID"
-                      value={cfgDraft.balanceUserId || ""}
-                      onChange={(e) => setCfgDraft((prev) => ({ ...prev, balanceUserId: e.target.value.trim() }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-1 font-medium">系统访问令牌 Token</label>
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 font-mono"
-                      placeholder="输入 Token"
-                      value={cfgDraft.balanceToken || ""}
-                      onChange={(e) => setCfgDraft((prev) => ({ ...prev, balanceToken: e.target.value.trim() }))}
-                    />
-                  </div>
-                  <p className="text-[9px] text-slate-500 leading-relaxed">
-                    配置后，主界面「余额」按钮将通过令牌 API 查询余额。
-                  </p>
-                </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
+                          placeholder="Base URL（留空继承全局）"
+                          value={m.baseUrl || ""}
+                          onChange={(e) => updateChatModel(m.id, { baseUrl: e.target.value })}
+                        />
+                        <input
+                          type="password"
+                          className="w-36 flex-shrink-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 text-[11px] text-slate-400"
+                          placeholder="API Key（留空继承全局）"
+                          value={m.apiKey || ""}
+                          onChange={(e) => updateChatModel(m.id, { apiKey: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className={`px-2.5 py-1 rounded-lg text-[11px] transition flex items-center gap-1 ${
+                            ts === "ok" ? "bg-emerald-500/10 text-emerald-400" :
+                            ts === "fail" ? "bg-red-500/10 text-red-400" :
+                            ts === "testing" ? "bg-amber-500/10 text-amber-400" :
+                            "bg-white/[0.04] text-slate-400 hover:bg-white/[0.08]"
+                          }`}
+                          disabled={ts === "testing"}
+                          onClick={async () => {
+                            setModelTestStatus((s) => ({ ...s, [m.id]: "testing" }));
+                            setModelTestMsg((s) => ({ ...s, [m.id]: "" }));
+                            const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl;
+                            const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey;
+                            const result = await testModelConnection(baseUrl, apiKey, m.modelId);
+                            setModelTestStatus((s) => ({ ...s, [m.id]: result.ok ? "ok" : "fail" }));
+                            setModelTestMsg((s) => ({ ...s, [m.id]: result.message + (result.ok ? "" : (result.detail ? `\n${result.detail}` : "")) }));
+                          }}
+                        >
+                          {ts === "testing" ? (
+                            <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
+                          ) : ts === "ok" ? (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>联通</>
+                          ) : ts === "fail" ? (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>失败</>
+                          ) : (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
+                          )}
+                        </button>
+                      </div>
+                      {tmsg && (
+                        <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
+                          ts === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
+                        }`}>{tmsg}</div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
+
+                        {settingsTab === "balance" && (
+              <div className="flex-1 px-6 py-4 overflow-y-auto app-scrollbar space-y-4">
+                {/* 模板管理区 */}
+                <div className="bg-white/[0.04] rounded-lg p-3 border border-white/[0.06]">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-semibold text-slate-300">配置模板库</h4>
+                    <span className="text-[10px] text-slate-500">{balanceTemplates.length} 个模板</span>
+                  </div>
+                  {balanceTemplates.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {balanceTemplates.map((template) => (
+                        <button
+                          key={template.name}
+                          type="button"
+                          className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 text-[10px] hover:bg-indigo-500/20 transition border border-indigo-500/20"
+                          onClick={() => {
+                            const newConfig = {
+                              id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+                              ...template,
+                              userId: "",
+                              token: "",
+                              isDefault: false
+                            };
+                            setCfgDraft(prev => ({
+                              ...prev,
+                              balanceConfigs: [...(prev.balanceConfigs || []), newConfig]
+                            }));
+                          }}
+                          title={`从模板 "${template.name}" 创建新配置`}
+                        >
+                          + {template.name}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500">暂无模板，保存配置时可创建模板</p>
+                  )}
+                </div>
+
+                {/* 余额配置列表 */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-slate-100">余额查询配置</h3>
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
+                      onClick={() => {
+                        const newConfig = {
+                          id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+                          name: "新配置",
+                          endpoint: "",
+                          method: "POST" as const,
+                          headers: { "Content-Type": "application/json" },
+                          bodyTemplate: '{"user_id": "{{userId}}", "token": "{{token}}"}',
+                          userId: "",
+                          token: "",
+                          remark: ""
+                        };
+                        setCfgDraft(prev => ({
+                          ...prev,
+                          balanceConfigs: [...(prev.balanceConfigs || []), newConfig]
+                        }));
+                      }}
+                    >+ 新增配置</button>
+                  </div>
+
+                  {cfgDraft.balanceConfigs && cfgDraft.balanceConfigs.length > 0 ? (
+                    <div className="space-y-3">
+                      {cfgDraft.balanceConfigs.map((config) => (
+                        <div key={config.id} className="glass-card rounded-lg p-3 space-y-2">
+                          {/* 配置头部：选择 + 名称 + 删除 */}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={cfgDraft.activeBalanceConfigId === config.id}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setCfgDraft(prev => ({ ...prev, activeBalanceConfigId: config.id }));
+                                }
+                              }}
+                              className="w-4 h-4 rounded"
+                            />
+                            <input
+                              type="text"
+                              className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-xs"
+                              placeholder="配置名称"
+                              value={config.name}
+                              onChange={(e) => {
+                                setCfgDraft(prev => ({
+                                  ...prev,
+                                  balanceConfigs: prev.balanceConfigs?.map(c => 
+                                    c.id === config.id ? { ...c, name: e.target.value } : c
+                                  ) || []
+                                }));
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
+                              onClick={() => {
+                                setCfgDraft(prev => ({
+                                  ...prev,
+                                  balanceConfigs: prev.balanceConfigs?.filter(c => c.id !== config.id) || [],
+                                  activeBalanceConfigId: prev.activeBalanceConfigId === config.id ? "" : prev.activeBalanceConfigId
+                                }));
+                              }}
+                            >×</button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-1">查询端点</label>
+                              <input
+                                type="text"
+                                className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                                placeholder="https://api.example.com/balance"
+                                value={config.endpoint}
+                                onChange={(e) => {
+                                  setCfgDraft(prev => ({
+                                    ...prev,
+                                    balanceConfigs: prev.balanceConfigs?.map(c => 
+                                      c.id === config.id ? { ...c, endpoint: e.target.value } : c
+                                    ) || []
+                                  }));
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-1">请求方法</label>
+                              <select
+                                className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                                value={config.method}
+                                onChange={(e) => {
+                                  setCfgDraft(prev => ({
+                                    ...prev,
+                                    balanceConfigs: prev.balanceConfigs?.map(c => 
+                                      c.id === config.id ? { ...c, method: e.target.value as "GET" | "POST" } : c
+                                    ) || []
+                                  }));
+                                }}
+                              >
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">用户 ID</label>
+                            <input
+                              type="text"
+                              className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                              placeholder="输入用户 ID"
+                              value={config.userId || ""}
+                              onChange={(e) => {
+                                setCfgDraft(prev => ({
+                                  ...prev,
+                                  balanceConfigs: prev.balanceConfigs?.map(c => 
+                                    c.id === config.id ? { ...c, userId: e.target.value } : c
+                                  ) || []
+                                }));
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">访问令牌</label>
+                            <input
+                              type="password"
+                              className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                              placeholder="输入访问令牌"
+                              value={config.token || ""}
+                              onChange={(e) => {
+                                setCfgDraft(prev => ({
+                                  ...prev,
+                                  balanceConfigs: prev.balanceConfigs?.map(c => 
+                                    c.id === config.id ? { ...c, token: e.target.value } : c
+                                  ) || []
+                                }));
+                              }}
+                              autoComplete="off"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">备注</label>
+                            <textarea
+                              className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px] resize-none"
+                              placeholder="例如：服务商名称、API 文档链接等"
+                              rows={2}
+                              value={config.remark || ""}
+                              onChange={(e) => {
+                                setCfgDraft(prev => ({
+                                  ...prev,
+                                  balanceConfigs: prev.balanceConfigs?.map(c => 
+                                    c.id === config.id ? { ...c, remark: e.target.value } : c
+                                  ) || []
+                                }));
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id={`cors-${config.id}`}
+                              checked={config.useCorsProxy || false}
+                              onChange={(e) => {
+                                setCfgDraft(prev => ({
+                                  ...prev,
+                                  balanceConfigs: prev.balanceConfigs?.map(c => 
+                                    c.id === config.id ? { ...c, useCorsProxy: e.target.checked } : c
+                                  ) || []
+                                }));
+                              }}
+                              className="w-4 h-4 rounded"
+                            />
+                            <label htmlFor={`cors-${config.id}`} className="text-[11px] text-slate-400 cursor-pointer">
+                              使用 CORS 代理（解决跨域问题）
+                            </label>
+                          </div>
+
+                          {config.method === "POST" && (
+                            <div>
+                              <label className="block text-[10px] text-slate-500 mb-1">请求体模板</label>
+                              <textarea
+                                className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px] font-mono resize-none"
+                                placeholder='{"user_id": "{{userId}}", "token": "{{token}}"}'
+                                rows={2}
+                                value={config.bodyTemplate || ""}
+                                onChange={(e) => {
+                                  setCfgDraft(prev => ({
+                                    ...prev,
+                                    balanceConfigs: prev.balanceConfigs?.map(c => 
+                                      c.id === config.id ? { ...c, bodyTemplate: e.target.value } : c
+                                    ) || []
+                                  }));
+                                }}
+                              />
+                              <p className="text-[9px] text-slate-500 mt-1">支持占位符：{'{'}userId{'}'} {'{'}token{'}'}</p>
+                            </div>
+                          )}
+
+                          {/* 操作栏：测试连接 + 保存模板 + 应用模板 */}
+                          <div className="flex items-center gap-2 pt-2">
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition flex items-center gap-1 flex-shrink-0"
+                              disabled={balanceTestStatus[config.id] === "testing"}
+                              onClick={() => testBalanceConfig(config.id)}
+                            >
+                              {balanceTestStatus[config.id] === "testing" ? (
+                                <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
+                              ) : (
+                                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[11px] hover:bg-emerald-500/15 transition flex items-center gap-1 flex-shrink-0"
+                              onClick={() => {
+                                const template: BalanceTemplate = {
+                                  name: config.name,
+                                  endpoint: config.endpoint,
+                                  method: config.method,
+                                  headers: config.headers,
+                                  bodyTemplate: config.bodyTemplate,
+                                  remark: config.remark,
+                                  useCorsProxy: config.useCorsProxy
+                                };
+                                saveBalanceTemplate(template);
+                                setSyncToast(true);
+                                setTimeout(() => setSyncToast(false), 2000);
+                                setBalanceTemplates(getBalanceTemplates());
+                              }}
+                              title="将此配置保存为模板，可在其他配置中快速应用"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V3"/></svg>
+                              保存模板
+                            </button>
+
+                            <div className="ml-auto relative">
+                              <button
+                                type="button"
+                                className="px-2.5 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition flex items-center gap-1"
+                                onClick={() => setTemplateDropdownOpen(prev => ({ ...prev, [config.id]: !prev[config.id] }))}
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                应用模板
+                              </button>
+                              {templateDropdownOpen[config.id] && balanceTemplates.length > 0 && (
+                                <div className="absolute top-full right-0 mt-1 z-20 rounded-lg border border-white/[0.08] glass-popup shadow-xl min-w-[150px]">
+                                  {balanceTemplates.map((template) => (
+                                    <button
+                                      key={template.name}
+                                      type="button"
+                                      className="w-full px-3 py-1.5 text-left text-xs text-slate-300 hover:bg-white/[0.06] transition first:rounded-t-lg last:rounded-b-lg"
+                                      onClick={() => {
+                                        setCfgDraft(prev => ({
+                                          ...prev,
+                                          balanceConfigs: prev.balanceConfigs?.map(c => 
+                                            c.id === config.id ? { ...c, ...template } : c
+                                          ) || []
+                                        }));
+                                        setTemplateDropdownOpen(prev => ({ ...prev, [config.id]: false }));
+                                      }}
+                                    >
+                                      {template.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 测试结果显示区 */}
+                          {balanceTestResultVisible[config.id] && balanceTestMsg[config.id] && (
+                            <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
+                              balanceTestStatus[config.id] === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
+                            }`}>{balanceTestMsg[config.id]}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 py-4 text-center">暂无配置，点击「新增配置」添加</p>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-500 leading-relaxed bg-white/[0.04] rounded-lg p-3">
+                  💡 <strong>使用说明：</strong>
+                  <br />1. 添加多个服务商的余额查询配置
+                  <br />2. 勾选要使用的配置，填入用户 ID 和令牌
+                  <br />3. 点击「测试连接」验证配置是否正确
+                  <br />4. 点击「保存模板」将配置保存为模板供后续使用
+                  <br />5. 点击底部「保存」保存配置
+                  <br />6. 点击主界面「余额」按钮查询余额
+                </p>
+              </div>
+            )}
+
 
           </div>
 
@@ -762,3 +1179,4 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
 };
 
 export default SettingsDialog;
+
