@@ -92,6 +92,60 @@ ipcMain.on('window-toggle-maximize', () => {
   }
 });
 
+// ── 代理 HTTP 请求（绕过 CORS） ────────────────────────────────────────────
+ipcMain.handle('fetch-request', async (_event, { url, method, headers, body, timeout }) => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout || 15000);
+
+    const fetchOptions = {
+      method: method || 'GET',
+      headers: headers || {},
+      signal: controller.signal,
+    };
+    if (body && method !== 'GET') {
+      fetchOptions.body = body;
+    }
+
+    const resp = await fetch(url, fetchOptions);
+    clearTimeout(timer);
+
+    const respHeaders = {};
+    resp.headers.forEach((value, key) => { respHeaders[key] = value; });
+
+    let respBody;
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        respBody = await resp.json();
+      } catch {
+        respBody = await resp.text();
+      }
+    } else {
+      respBody = await resp.text();
+    }
+
+    return {
+      ok: resp.ok,
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: respHeaders,
+      body: respBody,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout = msg.includes('abort') || msg.includes('timeout') || msg.includes('Timeout');
+    return {
+      ok: false,
+      status: 0,
+      statusText: isTimeout ? 'Timeout' : 'Network Error',
+      headers: {},
+      body: null,
+      error: isTimeout ? `请求超时 (${timeout || 15000}ms)` : `网络错误: ${msg}`,
+    };
+  }
+});
+
 app.whenReady().then(() => {
   initPortableUserData();
   createWindow();

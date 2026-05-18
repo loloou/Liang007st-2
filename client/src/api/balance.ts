@@ -9,7 +9,144 @@ const QUOTA_CONVERSION_FACTOR = 500000
 const DEFAULT_EXCHANGE_RATE = 7.2
 
 function normalizeBaseUrl(url: string): string {
-  return url.trim().replace(/\/$/, '')
+  return url.trim().replace(/\/+$/, '')
+}
+
+function normalizeEndpointPath(path: string): string {
+  const trimmed = path.trim()
+  if (!trimmed) return '/api/user/self'
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+}
+
+function applyBalanceTemplate(value: string, config: BalanceConfig): string {
+  return value
+    .replace(/\{\{userId\}\}/g, normalizeBalanceUserId(config.userId))
+    .replace(/\{\{token\}\}/g, config.token || '')
+}
+
+function buildBalanceEndpoint(config: BalanceConfig, fallbackPath = '/api/user/self'): string {
+  const base = applyBalanceTemplate(normalizeBaseUrl(config.baseUrl), config)
+  const path = applyBalanceTemplate(normalizeEndpointPath(config.path || fallbackPath), config)
+  return base + path
+}
+
+function getBalanceAuthHeader(config: BalanceConfig): string | undefined {
+  const token = config.token?.trim()
+  if (!token) return undefined
+  return config.siteType === 'aihubmix' ? token : `Bearer ${token}`
+}
+
+function normalizeBalanceUserId(userId: string | undefined): string {
+  return (userId || '')
+    .trim()
+    .replace(/^New-Api-User\s*:\s*/i, '')
+    .replace(/^New-API-User\s*:\s*/i, '')
+    .replace(/^X-User-Id\s*:\s*/i, '')
+    .trim()
+}
+
+function applyBalanceUserHeaders(headers: Record<string, string>, config: BalanceConfig): void {
+  const userId = normalizeBalanceUserId(config.userId)
+  if (!userId) return
+
+  // New API 明确要求该请求头。不要同时发送大小写/别名变体，避免服务端判定重复头格式错误。
+  headers['New-Api-User'] ??= userId
+}
+
+// ── 代理请求（绕过 CORS） ──────────────────────────────────────────────────────
+
+/**
+ * 代理 HTTP 请求：优先使用 Electron 主进程，回退到浏览器直接请求
+ * 在 Electron 环境中自动绕过 CORS 限制
+ */
+export async function proxyFetch(
+  url: string,
+  options: {
+    method?: string
+    headers?: Record<string, string>
+    body?: string
+    timeout?: number
+  } = {}
+): Promise<{
+  ok: boolean
+  status: number
+  statusText: string
+  data: unknown
+  error?: string
+}> {
+  const { method = 'GET', headers = {}, body, timeout = 15000 } = options
+
+  // 优先 Electron 主进程代理
+  if (window.electronAPI?.fetchRequest) {
+    const result = await window.electronAPI.fetchRequest({
+      url,
+      method,
+      headers,
+      body,
+      timeout,
+    })
+    if (result.error) {
+      return { ok: false, status: 0, statusText: 'Network Error', data: null, error: result.error }
+    }
+    return {
+      ok: result.ok,
+      status: result.status,
+      statusText: result.statusText,
+      data: result.body,
+    }
+  }
+
+  // 浏览器开发环境：优先走 Vite 同源代理，避免第三方接口 CORS 拦截
+  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+    try {
+      const proxyResp = await fetch('/__liang007_proxy_fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, method, headers, body, timeout }),
+        signal: AbortSignal.timeout(timeout + 1000),
+      })
+
+      if (proxyResp.ok) {
+        const data = await proxyResp.json()
+        return {
+          ok: Boolean(data.ok),
+          status: Number(data.status || 0),
+          statusText: String(data.statusText || ''),
+          data: data.body,
+          error: data.error,
+        }
+      }
+    } catch {
+      // 代理只在 Vite 开发服务器存在；不可用时继续回退到浏览器 fetch
+    }
+  }
+
+  // 回退：浏览器直接请求（可能受 CORS 限制）
+  try {
+    const resp = await fetch(url, {
+      method,
+      headers,
+      body: method !== 'GET' ? body : undefined,
+      signal: AbortSignal.timeout(timeout),
+    })
+    const text = await resp.text()
+    let data: unknown
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = text
+    }
+    return { ok: resp.ok, status: resp.status, statusText: resp.statusText, data }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return {
+      ok: false,
+      status: 0,
+      statusText: 'Network Error',
+      data: null,
+      error: `${msg}。如果在浏览器中使用，请通过 npm run dev 启动的开发服务访问，或使用 Electron 桌面端以绕过 CORS。`,
+    }
+  }
 }
 
 // ── 站点类型与对应的余额查询策略 ──────────────────────────────────────────────
@@ -194,6 +331,37 @@ export function getSitePresets(): Array<{ value: string; label: string }> {
   ]
 }
 
+export function buildBalanceTestRequest(config: BalanceConfig): {
+  endpoint: string
+  method: 'GET' | 'POST'
+  headers: Record<string, string>
+  body?: string
+} {
+  const siteType = (config.siteType || 'one-api') as SiteType
+  const preset = SITE_PRESETS[siteType]
+  const method = config.method || preset?.method || 'GET'
+  const endpoint = buildBalanceEndpoint(config, preset?.path)
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(config.headers || {}),
+  }
+  const authHeader = getBalanceAuthHeader(config)
+  if (authHeader) {
+    headers.Authorization = authHeader
+  }
+  applyBalanceUserHeaders(headers, config)
+
+  return {
+    endpoint,
+    method,
+    headers,
+    body:
+      method === 'POST' && config.bodyTemplate
+        ? applyBalanceTemplate(config.bodyTemplate, config)
+        : undefined,
+  }
+}
+
 // ── 站点状态类型 ──────────────────────────────────────────────────────────────
 
 /** 从 /api/status 获取的站点信息 */
@@ -286,21 +454,16 @@ export async function fetchSiteStatus(
   const statusPath = preset?.statusPath || '/api/status'
 
   try {
-    const resp = await fetch(`${base}${statusPath}`, {
+    const fetchResult = await proxyFetch(`${base}${statusPath}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(8000),
+      timeout: 8000,
     })
 
-    if (!resp.ok) return null
+    if (!fetchResult.ok || fetchResult.error) return null
 
-    const text = await resp.text()
-    let data: unknown
-    try {
-      data = JSON.parse(text)
-    } catch {
-      return null
-    }
+    const data = fetchResult.data
+    if (!data || typeof data === 'string') return null
 
     // 提取信息
     const result: SiteStatusInfo = { raw: data }
@@ -586,53 +749,49 @@ async function fetchWithConfig(config: BalanceConfig): Promise<BalanceResult> {
     }
 
     // ── Step 2: 查询余额 ────────────────────────────────────────────────────
-    const path = config.path || preset?.path || '/api/user/self'
+    const path = normalizeEndpointPath(config.path || preset?.path || '/api/user/self')
     const method = config.method || preset?.method || 'GET'
-    const endpoint = base + path
+    const endpoint = buildBalanceEndpoint({ ...config, path }, preset?.path)
 
     // 构建请求头
-    const headers: HeadersInit = {
+    const reqHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(config.headers || {}),
     }
 
     // 认证
-    if (config.token?.trim()) {
-      if (siteType === 'aihubmix') {
-        // AIHubMix 不加 Bearer 前缀
-        headers['Authorization'] = config.token.trim()
-      } else {
-        headers['Authorization'] = `Bearer ${config.token.trim()}`
-      }
+    const authHeader = getBalanceAuthHeader(config)
+    if (authHeader) {
+      reqHeaders['Authorization'] = authHeader
     }
+    applyBalanceUserHeaders(reqHeaders, config)
 
     // POST 请求体
     let body: string | undefined
     if (method === 'POST' && config.bodyTemplate) {
-      body = config.bodyTemplate
-        .replace(/\{\{userId\}\}/g, config.userId || '')
-        .replace(/\{\{token\}\}/g, config.token || '')
+      body = applyBalanceTemplate(config.bodyTemplate, config)
     }
 
-    // 发请求
-    const resp = await fetch(endpoint, {
+    // 发请求（通过代理绕过 CORS）
+    const result = await proxyFetch(endpoint, {
       method,
-      headers,
+      headers: reqHeaders,
       body,
-      signal: AbortSignal.timeout(15000),
+      timeout: 15000,
     })
 
-    if (!resp.ok) {
-      const text = await resp.text()
-      const err = categorizeHttpError(resp.status, text, config.name)
+    if (result.error) {
+      return { ok: false, message: `${config.name}: ${result.error}`, errorCode: 'network_error' }
+    }
+
+    if (!result.ok) {
+      const text = typeof result.data === 'string' ? result.data : JSON.stringify(result.data)
+      const err = categorizeHttpError(result.status, text, config.name)
       return { ok: false, message: err.message, errorCode: err.errorCode }
     }
 
-    const text = await resp.text()
-    let data: unknown
-    try {
-      data = JSON.parse(text)
-    } catch {
+    const data = result.data
+    if (!data || typeof data === 'string') {
       return { ok: false, message: `${config.name}: 响应不是有效的 JSON`, errorCode: 'invalid_json' }
     }
 
@@ -647,15 +806,15 @@ async function fetchWithConfig(config: BalanceConfig): Promise<BalanceResult> {
     }
 
     // 提取余额（使用动态汇率）
-    const result = extractAndFormatBalance(data, siteType, dynamicRate, rateSource)
+    const balanceResult = extractAndFormatBalance(data, siteType, dynamicRate, rateSource)
 
-    if (result.balanceUSD !== undefined) {
-      return { ok: true, data, ...result, detectedSiteType: siteType }
+    if (balanceResult.balanceUSD !== undefined) {
+      return { ok: true as const, data, ...balanceResult, detectedSiteType: siteType }
     }
 
     // 没有找到余额字段，但请求成功了
     return {
-      ok: true,
+      ok: true as const,
       data,
       formatted: '无法解析余额字段',
       detectedSiteType: siteType,
@@ -686,7 +845,7 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
   const base = normalizeBaseUrl(baseUrl)
   if (!base) return { ok: false, message: '请先配置 API 地址', errorCode: 'no_base_url' }
 
-  const headers: HeadersInit = {
+  const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
   }
@@ -697,16 +856,14 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
   let detectedSiteType: string = 'one-api'
 
   try {
-    const statusResp = await fetch(`${base}/api/status`, {
+    const statusResult = await proxyFetch(`${base}/api/status`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(8000),
+      timeout: 8000,
     })
 
-    if (statusResp.ok) {
-      const statusText = await statusResp.text()
-      try {
-        const statusData = JSON.parse(statusText)
+    if (statusResult.ok && statusResult.data && typeof statusResult.data !== 'string') {
+      const statusData = statusResult.data as Record<string, unknown>
         const rate = extractNewApiExchangeRate(statusData)
         if (rate !== null && rate > 0) {
           dynamicRate = rate
@@ -716,7 +873,7 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
         // 尝试从 status 数据推断站点类型
         const inner = (statusData.data && typeof statusData.data === 'object')
           ? statusData.data as Record<string, unknown>
-          : statusData as Record<string, unknown>
+          : statusData
 
         // Veloera 特征: 有 app 前缀路径
         if (typeof inner.system_name === 'string') {
@@ -726,9 +883,6 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
           else if (sysName.includes('done-hub') || sysName.includes('donehub')) detectedSiteType = 'done-hub'
           else if (sysName.includes('new-api') || sysName.includes('newapi')) detectedSiteType = 'new-api'
         }
-      } catch {
-        // status 不是 JSON，继续
-      }
     }
   } catch {
     // status 端点不可用，继续
@@ -743,39 +897,34 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
 
   for (const { path, siteType } of probePaths) {
     try {
-      const resp = await fetch(`${base}${path}`, {
+      const probeResult = await proxyFetch(`${base}${path}`, {
         method: 'GET',
-        headers,
-        signal: AbortSignal.timeout(10000),
+        headers: reqHeaders,
+        timeout: 10000,
       })
 
       // 401/403 说明端点存在但认证失败，返回明确的错误
-      if (resp.status === 401 || resp.status === 403) {
-        const errBody = await resp.text().catch(() => '')
-        const err = categorizeHttpError(resp.status, errBody, base)
+      if (probeResult.status === 401 || probeResult.status === 403) {
+        const errBody = typeof probeResult.data === 'string' ? probeResult.data : JSON.stringify(probeResult.data)
+        const err = categorizeHttpError(probeResult.status, errBody, base)
         return { ok: false, ...err }
       }
 
-      if (resp.status === 404) continue
-      if (!resp.ok) continue
+      if (probeResult.status === 404) continue
+      if (!probeResult.ok) continue
 
-      const text = await resp.text()
-      let data: unknown
-      try {
-        data = JSON.parse(text)
-      } catch {
-        continue
-      }
+      const data = probeResult.data
+      if (!data || typeof data === 'string') continue
 
       // 检查 API 是否返回成功
       const apiObj = data as Record<string, unknown>
       if (apiObj.success === false) continue
 
       // 提取余额（使用动态汇率）
-      const result = extractAndFormatBalance(data, siteType, dynamicRate, rateSource)
+      const probeBalance = extractAndFormatBalance(data, siteType, dynamicRate, rateSource)
 
-      if (result.balanceUSD !== undefined) {
-        return { ok: true, data, ...result, detectedSiteType: siteType }
+      if (probeBalance.balanceUSD !== undefined) {
+        return { ok: true as const, data, ...probeBalance, detectedSiteType: siteType }
       }
     } catch {
       continue

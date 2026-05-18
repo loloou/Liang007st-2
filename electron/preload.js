@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximize: () => ipcRenderer.send('window-toggle-maximize'),
   close: () => ipcRenderer.send('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  fetchRequest: (params) => ipcRenderer.invoke('fetch-request', params),
 });

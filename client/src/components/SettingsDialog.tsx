@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useRef } from "react";
 import { getApiConfig, saveApiConfig, addApiVendor, switchApiVendor, getBalanceTemplates, saveBalanceTemplate, deleteBalanceTemplate, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec, type BalanceTemplate, type BalanceConfig } from "../api/settings";
-import { getSitePresets } from "../api/balance";
+import { buildBalanceTestRequest, getSitePresets, proxyFetch } from "../api/balance";
 import VendorManager from "./VendorManager";
 
 // ── 内联 API 函数 ──────────────────────────────────────────────────────────
@@ -149,91 +149,35 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
       setBalanceTestResultVisible(prev => ({ ...prev, [configId]: false }));
 
       try {
-        const headers: HeadersInit = {
-          "Content-Type": "application/json",
-          ...(config.headers || {})
-        };
+        const { endpoint, method, headers, body } = buildBalanceTestRequest(config);
 
-        let body: string | undefined;
-        if (config.method === "POST" && config.bodyTemplate) {
-          body = config.bodyTemplate
-            .replace(/\{\{userId\}\}/g, config.userId || "")
-            .replace(/\{\{token\}\}/g, config.token || "");
-        }
+        // 使用 proxyFetch（Electron 主进程或 Vite 开发代理绕过 CORS）
+        const result = await proxyFetch(endpoint, {
+          method,
+          headers,
+          body,
+          timeout: 15000,
+        });
 
-        const endpoint = (config.baseUrl || '').replace(/\/+$/, '') + (config.path || '/api/user/self');
-        let responseData: unknown = null;
-        let responseText = "";
-        let resp: Response | null = null;
-
-        // 如果启用 CORS 代理，尝试多个代理
-        if (config.useCorsProxy) {
-          const proxies = [
-            "https://api.allorigins.win/raw?url=",
-            "https://cors-anywhere.herokuapp.com/",
-          ];
-
-          for (const proxy of proxies) {
-            try {
-              const proxyEndpoint = proxy + encodeURIComponent(endpoint);
-              resp = await fetch(proxyEndpoint, {
-                method: config.method,
-                headers,
-                body,
-                signal: AbortSignal.timeout(10000)
-              });
-
-              if (resp.ok) {
-                responseText = await resp.text();
-                try {
-                  responseData = JSON.parse(responseText);
-                } catch {
-                  responseData = responseText;
-                }
-                break;
-              }
-            } catch {
-              continue;
-            }
-          }
-
-          if (!resp) {
-            setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
-            setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ CORS 代理失败\n\n所有代理都无法访问该端点，请检查：\n1. 端点 URL 是否正确\n2. 尝试禁用 CORS 代理\n3. 检查服务商是否支持跨域请求` }));
-            setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
-            return;
-          }
-        } else {
-          resp = await fetch(endpoint, {
-            method: config.method,
-            headers,
-            body,
-            signal: AbortSignal.timeout(15000)
-          });
-
-          responseText = await resp.text();
-          try {
-            responseData = JSON.parse(responseText);
-          } catch {
-            responseData = responseText;
-          }
-        }
-
-        if (resp && resp.ok) {
-          setBalanceTestStatus(prev => ({ ...prev, [configId]: "ok" }));
-          const preview = typeof responseData === "string" 
-            ? responseData.slice(0, 150)
-            : JSON.stringify(responseData).slice(0, 150);
-          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✓ HTTP ${resp.status} 成功\n\n响应预览:\n${preview}` }));
+        if (result.error) {
+          setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
+          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ 请求失败\n\n${result.error}` }));
           setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
+          return;
+        }
+
+        const preview = typeof result.data === "string"
+          ? (result.data as string).slice(0, 150)
+          : JSON.stringify(result.data).slice(0, 150);
+
+        if (result.ok) {
+          setBalanceTestStatus(prev => ({ ...prev, [configId]: "ok" }));
+          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✓ HTTP ${result.status} 成功\n\n响应预览:\n${preview}` }));
         } else {
           setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
-          const preview = typeof responseData === "string" 
-            ? responseData.slice(0, 150)
-            : JSON.stringify(responseData).slice(0, 150);
-          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ HTTP ${resp?.status || "未知"}\n\n响应预览:\n${preview}` }));
-          setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
+          setBalanceTestMsg(prev => ({ ...prev, [configId]: `✗ HTTP ${result.status} ${result.statusText}\n\n响应预览:\n${preview}` }));
         }
+        setBalanceTestResultVisible(prev => ({ ...prev, [configId]: true }));
       } catch (err) {
         setBalanceTestStatus(prev => ({ ...prev, [configId]: "fail" }));
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -749,7 +693,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                         const newConfig = {
                           id: Math.random().toString(36).slice(2) + Date.now().toString(36),
                           name: "新配置",
-                          siteType: "one-api" as const,
+                          siteType: "new-api" as const,
                           baseUrl: "",
                           path: "/api/user/self",
                           method: "GET" as const,
@@ -914,7 +858,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                           <label className="block text-[10px] text-slate-500 mb-1">站点类型</label>
                           <select
                             className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
-                            value={config.siteType || "one-api"}
+                            value={config.siteType || "new-api"}
                             onChange={(e) => {
                               setCfgDraft(prev => ({
                                 ...prev,
@@ -1069,9 +1013,15 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                       </div>
 
                       {balanceTestResultVisible[config.id] && balanceTestMsg[config.id] && (
-                        <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
-                          balanceTestStatus[config.id] === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
-                        }`}>{balanceTestMsg[config.id]}</div>
+                        <div
+                          className={`mt-2 w-full max-w-full overflow-x-auto rounded-lg border px-2.5 py-1.5 text-[10px] leading-relaxed whitespace-pre-wrap break-words break-all ${
+                            balanceTestStatus[config.id] === "ok"
+                              ? "bg-emerald-500/10 border-emerald-500/15 text-emerald-400"
+                              : "bg-red-500/10 border-red-500/15 text-red-400"
+                          }`}
+                        >
+                          <pre className="m-0 whitespace-pre-wrap break-words break-all font-inherit">{balanceTestMsg[config.id]}</pre>
+                        </div>
                       )}
                     </div>
                   );
@@ -1132,7 +1082,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                   const newConfig: BalanceConfig = {
                     id: Math.random().toString(36).slice(2) + Date.now().toString(36),
                     name: "新配置",
-                    siteType: "one-api" as const,
+                    siteType: "new-api" as const,
                     baseUrl: "",
                     path: "/api/user/self",
                     method: "GET" as const,
