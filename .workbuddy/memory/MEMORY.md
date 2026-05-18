@@ -118,6 +118,24 @@ auroraGreen（极光绿）和 forest（森林绿）色相重复，用户要求�
 ### 待处理（P0 重构）
 - **状态统一**：App.tsx 仍有大量未使用状态变量（Legacy 遗留），需评估是否可安全删除
 
+## 余额查询优化（2026-05-18）
+
+### 参考
+- [all-api-hub](https://github.com/qixing-jk/all-api-hub) 的核心设计：站点类型预设 + `/api/status` 动态汇率 + 三层降级探测
+
+### 改动
+- `api/balance.ts`：从 3 种站点预设扩展到 10 种，新增 `fetchSiteStatus()` 动态汇率获取，`BalanceErrorCode` 错误分类（10种），自动探测三层降级
+- `components/BalancePopup.tsx`：站点类型标签、汇率来源、错误图标+建议、刷新按钮
+- `api/settings.ts`：`BalanceConfig.siteType` 从 4→11 种类型
+- `components/SettingsDialog.tsx`：预设映射表同步
+- `App.tsx`：传入 `onRefresh` 回调
+
+### 关键 API
+- 余额：`/api/user/self` → `data.quota`（One API 系列通用）
+- 站点状态：`/api/status` → `price/stripe_unit_price/PaymentUSDRate`（动态汇率）
+- 汇率优先级：`price` → `stripe_unit_price` → `PaymentUSDRate` → 默认 7.2
+- quota→USD：`rawQuota / 500000`
+
 ## 用户偏好
 - 指令简短，期望直接执行
 - 有 UI 审美，在意细节

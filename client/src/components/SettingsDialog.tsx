@@ -4,8 +4,9 @@
  * 包含：Global Config（供应商名称/BaseURL/API Key）、供应商管理入口、
  * Image/Chat 模型列表、自动获取模型、模型选择弹窗、测试连接。
  */
-import React, { useState, useEffect } from "react";
-import { getApiConfig, saveApiConfig, addApiVendor, switchApiVendor, getBalanceTemplates, saveBalanceTemplate, deleteBalanceTemplate, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec, type BalanceTemplate } from "../api/settings";
+import React, { useState, useEffect, useRef } from "react";
+import { getApiConfig, saveApiConfig, addApiVendor, switchApiVendor, getBalanceTemplates, saveBalanceTemplate, deleteBalanceTemplate, type ApiConfig, type ImageModel, type ChatModel, type ApiSpec, type BalanceTemplate, type BalanceConfig } from "../api/settings";
+import { getSitePresets } from "../api/balance";
 import VendorManager from "./VendorManager";
 
 // ── 内联 API 函数 ──────────────────────────────────────────────────────────
@@ -61,6 +62,9 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
   const [balanceTemplates, setBalanceTemplates] = useState<BalanceTemplate[]>([]);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState<Record<string, boolean>>({});
+  const [balanceDropdownOpen, setBalanceDropdownOpen] = useState(false);
+  const [templatePanelOpen, setTemplatePanelOpen] = useState(false);
+  const balanceDropdownRef = useRef<HTMLDivElement>(null);
 
   // 供应商管理弹窗
   const [vendorManagerOpen, setVendorManagerOpen] = useState(false);
@@ -83,6 +87,18 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
       setBalanceTestResultVisible({});
     }
   }, [open]);
+
+  // 余额配置下拉面板：点击外部关闭
+  useEffect(() => {
+    if (!balanceDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (balanceDropdownRef.current && !balanceDropdownRef.current.contains(e.target as Node)) {
+        setBalanceDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [balanceDropdownOpen]);
 
   if (!open) return null;
 
@@ -145,7 +161,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
             .replace(/\{\{token\}\}/g, config.token || "");
         }
 
-        let endpoint = config.endpoint;
+        const endpoint = (config.baseUrl || '').replace(/\/+$/, '') + (config.path || '/api/user/self');
         let responseData: unknown = null;
         let responseText = "";
         let resp: Response | null = null;
@@ -159,7 +175,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
 
           for (const proxy of proxies) {
             try {
-              const proxyEndpoint = proxy + encodeURIComponent(config.endpoint);
+              const proxyEndpoint = proxy + encodeURIComponent(endpoint);
               resp = await fetch(proxyEndpoint, {
                 method: config.method,
                 headers,
@@ -390,13 +406,20 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                             e.preventDefault();
                             const updated = switchApiVendor(v.id);
                             setGlobalSaveVendorName(v.name);
-                            setCfgDraft((prev) => ({
-                              ...prev,
-                              globalBaseUrl: v.baseUrl,
-                              globalApiKey: v.apiKey || "",
-                              activeVendorId: v.id,
-                              apiVendors: updated.apiVendors,
-                            }));
+                            setCfgDraft((prev) => {
+                              // 自动匹配与当前供应商对应的余额配置
+                              const matchedBalance = prev.balanceConfigs?.find(b =>
+                                b.baseUrl === v.baseUrl || b.name === v.name || b.remark === v.name
+                              );
+                              return {
+                                ...prev,
+                                globalBaseUrl: v.baseUrl,
+                                globalApiKey: v.apiKey || "",
+                                activeVendorId: v.id,
+                                apiVendors: updated.apiVendors,
+                                activeBalanceConfigId: matchedBalance?.id || prev.activeBalanceConfigId,
+                              };
+                            });
                             setVendorDropdownOpen(false);
                           }}
                         >
@@ -715,47 +738,10 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
 
                         {settingsTab === "balance" && (
               <div className="flex-1 px-6 py-4 overflow-y-auto app-scrollbar space-y-4">
-                {/* 模板管理区 */}
-                <div className="bg-white/[0.04] rounded-lg p-3 border border-white/[0.06]">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xs font-semibold text-slate-300">配置模板库</h4>
-                    <span className="text-[10px] text-slate-500">{balanceTemplates.length} 个模板</span>
-                  </div>
-                  {balanceTemplates.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {balanceTemplates.map((template) => (
-                        <button
-                          key={template.name}
-                          type="button"
-                          className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 text-[10px] hover:bg-indigo-500/20 transition border border-indigo-500/20"
-                          onClick={() => {
-                            const newConfig = {
-                              id: Math.random().toString(36).slice(2) + Date.now().toString(36),
-                              ...template,
-                              userId: "",
-                              token: "",
-                              isDefault: false
-                            };
-                            setCfgDraft(prev => ({
-                              ...prev,
-                              balanceConfigs: [...(prev.balanceConfigs || []), newConfig]
-                            }));
-                          }}
-                          title={`从模板 "${template.name}" 创建新配置`}
-                        >
-                          + {template.name}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-slate-500">暂无模板，保存配置时可创建模板</p>
-                  )}
-                </div>
-
-                {/* 余额配置列表 */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-slate-100">余额查询配置</h3>
+                {/* 余额配置首行：标题 + 操作按钮 */}
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-100">余额查询配置</h3>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       className="px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-[11px] hover:bg-primary-500/20 transition"
@@ -763,294 +749,340 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                         const newConfig = {
                           id: Math.random().toString(36).slice(2) + Date.now().toString(36),
                           name: "新配置",
-                          endpoint: "",
-                          method: "POST" as const,
+                          siteType: "one-api" as const,
+                          baseUrl: "",
+                          path: "/api/user/self",
+                          method: "GET" as const,
                           headers: { "Content-Type": "application/json" },
-                          bodyTemplate: '{"user_id": "{{userId}}", "token": "{{token}}"}',
+                          bodyTemplate: '',
                           userId: "",
                           token: "",
-                          remark: ""
+                          remark: "",
                         };
                         setCfgDraft(prev => ({
                           ...prev,
-                          balanceConfigs: [...(prev.balanceConfigs || []), newConfig]
+                          balanceConfigs: [...(prev.balanceConfigs || []), newConfig],
+                          activeBalanceConfigId: newConfig.id
                         }));
+                        setBalanceDropdownOpen(false);
                       }}
-                    >+ 新增配置</button>
+                    >+ 新增</button>
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 text-[11px] hover:bg-indigo-500/20 transition"
+                      onClick={() => setTemplatePanelOpen(true)}
+                    >配置管理</button>
                   </div>
-
-                  {cfgDraft.balanceConfigs && cfgDraft.balanceConfigs.length > 0 ? (
-                    <div className="space-y-3">
-                      {cfgDraft.balanceConfigs.map((config) => (
-                        <div key={config.id} className="glass-card rounded-lg p-3 space-y-2">
-                          {/* 配置头部：选择 + 名称 + 删除 */}
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={cfgDraft.activeBalanceConfigId === config.id}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setCfgDraft(prev => ({ ...prev, activeBalanceConfigId: config.id }));
-                                }
-                              }}
-                              className="w-4 h-4 rounded"
-                            />
-                            <input
-                              type="text"
-                              className="flex-1 min-w-0 border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-xs"
-                              placeholder="配置名称"
-                              value={config.name}
-                              onChange={(e) => {
-                                setCfgDraft(prev => ({
-                                  ...prev,
-                                  balanceConfigs: prev.balanceConfigs?.map(c => 
-                                    c.id === config.id ? { ...c, name: e.target.value } : c
-                                  ) || []
-                                }));
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="text-slate-500 hover:text-red-400 text-sm p-1 rounded hover:bg-red-500/10 transition flex-shrink-0"
-                              onClick={() => {
-                                setCfgDraft(prev => ({
-                                  ...prev,
-                                  balanceConfigs: prev.balanceConfigs?.filter(c => c.id !== config.id) || [],
-                                  activeBalanceConfigId: prev.activeBalanceConfigId === config.id ? "" : prev.activeBalanceConfigId
-                                }));
-                              }}
-                            >×</button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-[10px] text-slate-500 mb-1">查询端点</label>
-                              <input
-                                type="text"
-                                className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
-                                placeholder="https://api.example.com/balance"
-                                value={config.endpoint}
-                                onChange={(e) => {
-                                  setCfgDraft(prev => ({
-                                    ...prev,
-                                    balanceConfigs: prev.balanceConfigs?.map(c => 
-                                      c.id === config.id ? { ...c, endpoint: e.target.value } : c
-                                    ) || []
-                                  }));
-                                }}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-500 mb-1">请求方法</label>
-                              <select
-                                className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
-                                value={config.method}
-                                onChange={(e) => {
-                                  setCfgDraft(prev => ({
-                                    ...prev,
-                                    balanceConfigs: prev.balanceConfigs?.map(c => 
-                                      c.id === config.id ? { ...c, method: e.target.value as "GET" | "POST" } : c
-                                    ) || []
-                                  }));
-                                }}
-                              >
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-1">用户 ID</label>
-                            <input
-                              type="text"
-                              className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
-                              placeholder="输入用户 ID"
-                              value={config.userId || ""}
-                              onChange={(e) => {
-                                setCfgDraft(prev => ({
-                                  ...prev,
-                                  balanceConfigs: prev.balanceConfigs?.map(c => 
-                                    c.id === config.id ? { ...c, userId: e.target.value } : c
-                                  ) || []
-                                }));
-                              }}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-1">访问令牌</label>
-                            <input
-                              type="password"
-                              className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
-                              placeholder="输入访问令牌"
-                              value={config.token || ""}
-                              onChange={(e) => {
-                                setCfgDraft(prev => ({
-                                  ...prev,
-                                  balanceConfigs: prev.balanceConfigs?.map(c => 
-                                    c.id === config.id ? { ...c, token: e.target.value } : c
-                                  ) || []
-                                }));
-                              }}
-                              autoComplete="off"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] text-slate-500 mb-1">备注</label>
-                            <textarea
-                              className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px] resize-none"
-                              placeholder="例如：服务商名称、API 文档链接等"
-                              rows={2}
-                              value={config.remark || ""}
-                              onChange={(e) => {
-                                setCfgDraft(prev => ({
-                                  ...prev,
-                                  balanceConfigs: prev.balanceConfigs?.map(c => 
-                                    c.id === config.id ? { ...c, remark: e.target.value } : c
-                                  ) || []
-                                }));
-                              }}
-                            />
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id={`cors-${config.id}`}
-                              checked={config.useCorsProxy || false}
-                              onChange={(e) => {
-                                setCfgDraft(prev => ({
-                                  ...prev,
-                                  balanceConfigs: prev.balanceConfigs?.map(c => 
-                                    c.id === config.id ? { ...c, useCorsProxy: e.target.checked } : c
-                                  ) || []
-                                }));
-                              }}
-                              className="w-4 h-4 rounded"
-                            />
-                            <label htmlFor={`cors-${config.id}`} className="text-[11px] text-slate-400 cursor-pointer">
-                              使用 CORS 代理（解决跨域问题）
-                            </label>
-                          </div>
-
-                          {config.method === "POST" && (
-                            <div>
-                              <label className="block text-[10px] text-slate-500 mb-1">请求体模板</label>
-                              <textarea
-                                className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px] font-mono resize-none"
-                                placeholder='{"user_id": "{{userId}}", "token": "{{token}}"}'
-                                rows={2}
-                                value={config.bodyTemplate || ""}
-                                onChange={(e) => {
-                                  setCfgDraft(prev => ({
-                                    ...prev,
-                                    balanceConfigs: prev.balanceConfigs?.map(c => 
-                                      c.id === config.id ? { ...c, bodyTemplate: e.target.value } : c
-                                    ) || []
-                                  }));
-                                }}
-                              />
-                              <p className="text-[9px] text-slate-500 mt-1">支持占位符：{'{'}userId{'}'} {'{'}token{'}'}</p>
-                            </div>
-                          )}
-
-                          {/* 操作栏：测试连接 + 保存模板 + 应用模板 */}
-                          <div className="flex items-center gap-2 pt-2">
-                            <button
-                              type="button"
-                              className="px-2.5 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition flex items-center gap-1 flex-shrink-0"
-                              disabled={balanceTestStatus[config.id] === "testing"}
-                              onClick={() => testBalanceConfig(config.id)}
-                            >
-                              {balanceTestStatus[config.id] === "testing" ? (
-                                <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
-                              ) : (
-                                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[11px] hover:bg-emerald-500/15 transition flex items-center gap-1 flex-shrink-0"
-                              onClick={() => {
-                                const template: BalanceTemplate = {
-                                  name: config.name,
-                                  endpoint: config.endpoint,
-                                  method: config.method,
-                                  headers: config.headers,
-                                  bodyTemplate: config.bodyTemplate,
-                                  remark: config.remark,
-                                  useCorsProxy: config.useCorsProxy
-                                };
-                                saveBalanceTemplate(template);
-                                setSyncToast(true);
-                                setTimeout(() => setSyncToast(false), 2000);
-                                setBalanceTemplates(getBalanceTemplates());
-                              }}
-                              title="将此配置保存为模板，可在其他配置中快速应用"
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V3"/></svg>
-                              保存模板
-                            </button>
-
-                            <div className="ml-auto relative">
-                              <button
-                                type="button"
-                                className="px-2.5 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition flex items-center gap-1"
-                                onClick={() => setTemplateDropdownOpen(prev => ({ ...prev, [config.id]: !prev[config.id] }))}
-                              >
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                应用模板
-                              </button>
-                              {templateDropdownOpen[config.id] && balanceTemplates.length > 0 && (
-                                <div className="absolute top-full right-0 mt-1 z-20 rounded-lg border border-white/[0.08] glass-popup shadow-xl min-w-[150px]">
-                                  {balanceTemplates.map((template) => (
-                                    <button
-                                      key={template.name}
-                                      type="button"
-                                      className="w-full px-3 py-1.5 text-left text-xs text-slate-300 hover:bg-white/[0.06] transition first:rounded-t-lg last:rounded-b-lg"
-                                      onClick={() => {
-                                        setCfgDraft(prev => ({
-                                          ...prev,
-                                          balanceConfigs: prev.balanceConfigs?.map(c => 
-                                            c.id === config.id ? { ...c, ...template } : c
-                                          ) || []
-                                        }));
-                                        setTemplateDropdownOpen(prev => ({ ...prev, [config.id]: false }));
-                                      }}
-                                    >
-                                      {template.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 测试结果显示区 */}
-                          {balanceTestResultVisible[config.id] && balanceTestMsg[config.id] && (
-                            <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
-                              balanceTestStatus[config.id] === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
-                            }`}>{balanceTestMsg[config.id]}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500 py-4 text-center">暂无配置，点击「新增配置」添加</p>
-                  )}
                 </div>
+
+                {/* 当前激活配置的编辑区 */}
+                {(() => {
+                  const config = cfgDraft.balanceConfigs?.find(c => c.id === cfgDraft.activeBalanceConfigId);
+                  if (!config) {
+                    return (
+                      <p className="text-sm text-slate-500 py-4 text-center">
+                        {cfgDraft.balanceConfigs && cfgDraft.balanceConfigs.length > 0
+                          ? "请在配置名称旁的下拉菜单中选择一个配置"
+                          : "暂无配置，点击「+ 新增」添加"}
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="glass-card rounded-lg p-3 space-y-2" key={config.id}>
+                      {/* 配置选择下拉 - 点击切换配置 */}
+                      <div className="relative" ref={balanceDropdownRef}>
+                        <label className="block text-[10px] text-slate-500 mb-1">配置名称</label>
+                        <div
+                          className="flex items-center justify-between border border-white/[0.08] rounded-lg bg-white/[0.06] hover:bg-white/[0.08] transition cursor-pointer px-2.5 py-1.5"
+                          onClick={() => setBalanceDropdownOpen(prev => !prev)}
+                        >
+                          <span className="text-xs truncate">{config.name || "未命名配置"}</span>
+                          <svg className={`w-4 h-4 flex-shrink-0 ml-2 text-slate-400 transition-transform ${balanceDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+
+                        {/* 配置切换下拉面板 */}
+                        {balanceDropdownOpen && (
+                          <div className="absolute z-30 left-0 right-0 top-full mt-1 border border-white/[0.1] rounded-xl bg-[#1a1b2e]/95 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden">
+                            {/* 配置列表区 */}
+                            <div className="py-1.5">
+                              <div className="px-3 py-1 text-[9px] font-semibold text-slate-500 uppercase tracking-wider">我的配置</div>
+                              {cfgDraft.balanceConfigs && [...new Map(cfgDraft.balanceConfigs.map(c => [c.id, c])).values()].map((c) => {
+                                const isActive = c.id === cfgDraft.activeBalanceConfigId;
+                                return (
+                                  <div
+                                    key={c.id}
+                                    className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer transition text-xs ${
+                                      isActive ? 'bg-amber-500/15 text-amber-300' : 'text-slate-300 hover:bg-white/[0.06]'
+                                    }`}
+                                    onClick={() => {
+                                      setCfgDraft(prev => ({ ...prev, activeBalanceConfigId: c.id }));
+                                      setBalanceDropdownOpen(false);
+                                    }}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-amber-400' : 'bg-transparent'}`} />
+                                    <span className="flex-1 truncate">{c.name || "未命名配置"}</span>
+                                    {c.siteType && (
+                                      <span className="text-[9px] text-slate-500 bg-white/[0.06] px-1.5 py-0.5 rounded flex-shrink-0">
+                                        {getSitePresets().find(p => p.value === c.siteType)?.label || c.siteType}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">配置名称</label>
+                          <input
+                            type="text"
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            placeholder="配置名称"
+                            value={config.name || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c =>
+                                  c.id === config.id ? { ...c, name: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">查询地址</label>
+                          <input
+                            type="text"
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            placeholder="https://api.example.com"
+                            value={config.baseUrl || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, baseUrl: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">端点路径</label>
+                          <input
+                            type="text"
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            placeholder="/api/user/self"
+                            value={config.path || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, path: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">请求方法</label>
+                          <select
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            value={config.method}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, method: e.target.value as "GET" | "POST" } : c
+                                ) || []
+                              }));
+                            }}
+                          >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">站点类型</label>
+                          <select
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            value={config.siteType || "one-api"}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, siteType: e.target.value as BalanceConfig['siteType'] } : c
+                                ) || []
+                              }));
+                            }}
+                          >
+                            {getSitePresets().map(p => (
+                              <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">备注</label>
+                          <input
+                            type="text"
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            placeholder="服务商名称或说明"
+                            value={config.remark || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, remark: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`cors-${config.id}`}
+                          checked={config.useCorsProxy || false}
+                          onChange={(e) => {
+                            setCfgDraft(prev => ({
+                              ...prev,
+                              balanceConfigs: prev.balanceConfigs?.map(c => 
+                                c.id === config.id ? { ...c, useCorsProxy: e.target.checked } : c
+                              ) || []
+                            }));
+                          }}
+                          className="w-4 h-4 rounded"
+                        />
+                        <label htmlFor={`cors-${config.id}`} className="text-[11px] text-slate-400 cursor-pointer">
+                          使用 CORS 代理（解决跨域问题）
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">用户 ID</label>
+                          <input
+                            type="text"
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            placeholder="输入用户 ID"
+                            value={config.userId || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, userId: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">访问令牌</label>
+                          <input
+                            type="password"
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px]"
+                            placeholder="输入访问令牌"
+                            value={config.token || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, token: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                            autoComplete="off"
+                          />
+                        </div>
+                      </div>
+
+                      {config.method === "POST" && (
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">请求体模板</label>
+                          <textarea
+                            className="w-full border border-white/[0.08] rounded-lg px-2.5 py-1.5 bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-[11px] font-mono resize-none"
+                            placeholder='{"user_id": "{{userId}}", "token": "{{token}}"}'
+                            rows={2}
+                            value={config.bodyTemplate || ""}
+                            onChange={(e) => {
+                              setCfgDraft(prev => ({
+                                ...prev,
+                                balanceConfigs: prev.balanceConfigs?.map(c => 
+                                  c.id === config.id ? { ...c, bodyTemplate: e.target.value } : c
+                                ) || []
+                              }));
+                            }}
+                          />
+                          <p className="text-[9px] text-slate-500 mt-1">支持占位符：{'{'}userId{'}'} {'{'}token{'}'}</p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 rounded-lg bg-white/[0.04] text-slate-400 text-[11px] hover:bg-white/[0.08] transition flex items-center gap-1 flex-shrink-0"
+                          disabled={balanceTestStatus[config.id] === "testing"}
+                          onClick={() => testBalanceConfig(config.id)}
+                        >
+                          {balanceTestStatus[config.id] === "testing" ? (
+                            <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>测试中…</>
+                          ) : (
+                            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>测试连接</>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[11px] hover:bg-emerald-500/15 transition flex items-center gap-1 flex-shrink-0"
+                          onClick={() => {
+                            const template: BalanceTemplate = {
+                              name: config.name,
+                              siteType: config.siteType,
+                              baseUrl: config.baseUrl,
+                              path: config.path,
+                              method: config.method,
+                              headers: config.headers,
+                              bodyTemplate: config.bodyTemplate,
+                              remark: config.remark,
+                              useCorsProxy: config.useCorsProxy
+                            };
+                            saveBalanceTemplate(template);
+                            setSyncToast(true);
+                            setTimeout(() => setSyncToast(false), 2000);
+                            setBalanceTemplates(getBalanceTemplates());
+                          }}
+                          title="将此配置保存为模板"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V3"/></svg>
+                          保存模板
+                        </button>
+                      </div>
+
+                      {balanceTestResultVisible[config.id] && balanceTestMsg[config.id] && (
+                        <div className={`mt-2 px-2.5 py-1.5 rounded-lg text-[10px] whitespace-pre-wrap leading-relaxed ${
+                          balanceTestStatus[config.id] === "ok" ? "bg-emerald-500/10 border border-emerald-500/15 text-emerald-400" : "bg-red-500/10 border border-red-500/15 text-red-400"
+                        }`}>{balanceTestMsg[config.id]}</div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <p className="text-xs text-slate-500 leading-relaxed bg-white/[0.04] rounded-lg p-3">
                   💡 <strong>使用说明：</strong>
-                  <br />1. 添加多个服务商的余额查询配置
-                  <br />2. 勾选要使用的配置，填入用户 ID 和令牌
-                  <br />3. 点击「测试连接」验证配置是否正确
-                  <br />4. 点击「保存模板」将配置保存为模板供后续使用
-                  <br />5. 点击底部「保存」保存配置
-                  <br />6. 点击主界面「余额」按钮查询余额
+                  <br />1. 点击配置名称旁的下拉按钮切换配置
+                  <br />2. 点击「测试连接」验证配置是否正确
+                  <br />3. 点击「配置管理」进行配置的增删
+                  <br />4. 点击底部「保存」保存所有配置
                 </p>
               </div>
             )}
@@ -1070,6 +1102,97 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
           </div>
         </div>
       </div>
+
+      {/* ── 配置管理弹窗 ── */}
+      {templatePanelOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setTemplatePanelOpen(false)}>
+          <div className="w-[400px] max-h-[80vh] border border-white/[0.1] rounded-2xl bg-[#1a1b2e]/95 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* 头部 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+              <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                配置管理
+              </h4>
+              <button
+                type="button"
+                className="p-1.5 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 transition"
+                onClick={() => setTemplatePanelOpen(false)}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* 内容区 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 app-scrollbar">
+              {/* 新建配置 */}
+              <button
+                type="button"
+                className="w-full px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs hover:bg-indigo-500/15 transition flex items-center gap-2"
+                onClick={() => {
+                  const newConfig: BalanceConfig = {
+                    id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+                    name: "新配置",
+                    siteType: "one-api" as const,
+                    baseUrl: "",
+                    path: "/api/user/self",
+                    method: "GET" as const,
+                    headers: { "Content-Type": "application/json" },
+                    bodyTemplate: '',
+                    userId: "",
+                    token: "",
+                    remark: "",
+                  };
+                  setCfgDraft(prev => ({
+                    ...prev,
+                    balanceConfigs: [...(prev.balanceConfigs || []), newConfig],
+                    activeBalanceConfigId: newConfig.id
+                  }));
+                }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                新建配置
+              </button>
+
+              {/* 配置列表 */}
+              {!cfgDraft.balanceConfigs || cfgDraft.balanceConfigs.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-4">暂无配置，点击上方按钮新建</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {cfgDraft.balanceConfigs.map((config) => (
+                    <div
+                      key={config.id}
+                      className="group flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] transition"
+                    >
+                      <svg className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-slate-200 truncate">{config.name || "未命名配置"}</div>
+                        <div className="text-[9px] text-slate-500 truncate">{config.baseUrl || '未设置地址'} · {getSitePresets().find(p => p.value === config.siteType)?.label || config.siteType}</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-red-500/15 text-slate-500 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                        title="删除配置"
+                        onClick={() => {
+                          const remaining = cfgDraft.balanceConfigs?.filter(c => c.id !== config.id) || [];
+                          setCfgDraft(prev => ({
+                            ...prev,
+                            balanceConfigs: remaining,
+                            activeBalanceConfigId: prev.activeBalanceConfigId === config.id
+                              ? (remaining[0]?.id || '')
+                              : prev.activeBalanceConfigId,
+                          }));
+                        }}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 供应商管理弹窗（叠加在设置弹窗之上） ── */}
       <VendorManager
