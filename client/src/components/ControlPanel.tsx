@@ -119,11 +119,11 @@ const ControlPanel: React.FC<Props> = ({
 
   return (
     <aside
-      className="app-scrollbar flex flex-shrink-0 flex-col gap-2 overflow-y-auto"
+      className="app-scrollbar flex flex-shrink-0 flex-col gap-3 overflow-y-auto"
       style={{ width: rightPanelWidth, height: '100%', maxHeight: '100%' }}
     >
       {/* ── 提示词模块 ── */}
-      <div className="glass-card flex flex-shrink-0 flex-col gap-1.5 rounded-xl px-3 pb-2 pt-2.5">
+      <div className="glass-card workspace-panel panel-frame hud-panel future-glow flex flex-shrink-0 flex-col gap-2 px-3 pb-3 pt-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-300">提示词</span>
           <div className="flex items-center gap-1">
@@ -292,7 +292,7 @@ const ControlPanel: React.FC<Props> = ({
       </div>
 
       {/* ── 参考图 - 可折叠 ── */}
-      <div className="glass-card flex-shrink-0 overflow-hidden rounded-xl">
+      <div className="glass-card workspace-panel panel-frame hud-panel future-glow flex-shrink-0 overflow-hidden rounded-xl">
         <button
           type="button"
           className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold text-slate-300 transition-colors hover:bg-white/[0.04]"
@@ -403,7 +403,7 @@ const ControlPanel: React.FC<Props> = ({
       </div>
 
       {/* ── 生图参数 ── */}
-      <div className="glass-card flex flex-shrink-0 flex-col gap-2 rounded-xl px-3 py-2.5">
+      <div className="glass-card workspace-panel panel-frame hud-panel future-glow flex flex-shrink-0 flex-col gap-2 rounded-xl px-3 py-2.5">
         <div className="text-xs font-semibold text-slate-300">生图参数</div>
         <div className="flex items-center gap-2">
           <div className="flex flex-1 flex-col gap-0.5">
@@ -497,7 +497,7 @@ const ControlPanel: React.FC<Props> = ({
       </div>
 
       {/* ── 生图按钮 ── */}
-      <div className="glass-card flex flex-shrink-0 flex-col gap-1.5 rounded-xl px-3 py-2">
+      <div className="glass-card workspace-panel panel-frame hud-panel future-glow flex flex-shrink-0 flex-col gap-1.5 rounded-xl px-3 py-2">
         <button
           onClick={handleGenerate}
           disabled={status === 'running'}
@@ -545,7 +545,7 @@ const ControlPanel: React.FC<Props> = ({
       </div>
 
       {/* ── 日志面板（生图按钮下方，填满剩余空间） ── */}
-      <div className="glass-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
+      <div className="glass-card workspace-panel panel-frame hud-panel future-glow flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
           <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
             <span

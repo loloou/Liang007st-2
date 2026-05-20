@@ -332,18 +332,37 @@ function extractImagesGemini(data: unknown): GeneratedImage[] | null {
         }
       }
 
-      // 兜底：text 字段里含 markdown 图片语法 `![](url)`
+      // 兜底：text 字段里含 markdown 图片语法 `![](url)` 或 data:image base64
       const text = partObj.text as string | undefined
       if (text) {
+        const dataUrlPattern = /data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\r\n]+/gi
         const mdMatches = [
-          ...text.matchAll(/!\[.*?\]\((https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|gif|webp)[^\s)]*)\)/gi),
+          ...text.matchAll(
+            /!\[.*?\]\(((?:https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|gif|webp)[^\s)]*)|(?:data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\r\n]+))\)/gi,
+          ),
         ]
+
+        const seen = new Set<string>()
         for (const m of mdMatches) {
-          images.push({ id: String(idx++), url: m[1] })
+          const url = m[1].replace(/[\r\n\s]+/g, '')
+          if (!seen.has(url)) {
+            seen.add(url)
+            images.push({ id: String(idx++), url })
+          }
         }
+
+        // 直接包含 data:image URL（部分 Gemini 兼容接口会把图片放在 text 里）
+        for (const m of text.matchAll(dataUrlPattern)) {
+          const url = m[0].replace(/[\r\n\s]+/g, '')
+          if (!seen.has(url)) {
+            seen.add(url)
+            images.push({ id: String(idx++), url })
+          }
+        }
+
         // 直接是图片 URL（非 markdown 语法）
         if (mdMatches.length === 0) {
-          const urlMatch = text.match(/^(https?:\/\/[^\s]+)$/i)
+          const urlMatch = text.trim().match(/^(https?:\/\/[^\s]+)$/i)
           if (urlMatch) {
             const u = urlMatch[1]
             if (/\.(?:jpg|jpeg|png|gif|webp)(?:\?|$)/i.test(u)) {
@@ -809,7 +828,7 @@ async function doFetchAndParse(
     }
     const hint =
       spec === 'gemini'
-        ? '期望 candidates[].content.parts[].inlineData.data'
+        ? '期望 candidates[].content.parts[].inlineData.data，或 parts[].text 中的 Markdown/data:image 图片'
         : '期望 data[].url 或 images[]'
     const fallback = spec === 'gemini' ? extractImagesOpenAI(data) : extractImagesGemini(data)
     if (fallback && fallback.length > 0) {

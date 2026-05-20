@@ -27,6 +27,8 @@ import {
   type ResolutionPresetId,
   type SizeTierId,
 } from './utils/resolutionPresets'
+import { resolveGenerationSize } from './utils/generationSize'
+import { checkImageRatio } from './utils/ratioCheck'
 import {
   groupModelsByCategory,
   filterGroupsBySearch,
@@ -37,7 +39,14 @@ import {
   MODEL_VENDOR_TAGS,
 } from './utils/modelCategories'
 import { fetchBalance, fetchAllBalances, type MultiBalanceResult } from './api/balance'
-import { THEMES, getTheme, setTheme, getThemeConfig, type ThemeMode, injectThemeVars } from './utils/theme'
+import {
+  THEMES,
+  getTheme,
+  setTheme,
+  getThemeConfig,
+  type ThemeMode,
+  injectThemeVars,
+} from './utils/theme'
 import { createThumbnail } from './utils/imageUtils'
 import SettingsDialog from './components/SettingsDialog'
 import VendorManager from './components/VendorManager'
@@ -473,11 +482,11 @@ function App() {
       ratioMismatchRetried.current = false
 
       // ── 校验并修正尺寸参数 ──────────────────────────────────────────
-      const { width: finalWidth, height: finalHeight } = getResolution(
+      const { width: finalWidth, height: finalHeight } = resolveGenerationSize({
         resolutionPreset,
         sizeTier,
         referenceSize,
-      )
+      })
 
       const reqInfo = {
         prompt: prompt,
@@ -564,18 +573,18 @@ function App() {
               '⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
             setError(warnMsg)
             setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 10000)
-           } else {
-             // 重试也失败，说明模型本身可能不支持图片生成
-             const detailedMsg =
-               result.error &&
-               (result.error.toLowerCase().includes('cannot read') ||
-                 result.error.toLowerCase().includes('不支持图片') ||
-                 result.error.toLowerCase().includes('inform the user') ||
-                 result.error.toLowerCase().includes('does not support image'))
-                 ? '❌ 当前模型不支持图片输入。\n\n解决方案：\n1. 在设置中选择支持图片的模型\n2. 或去掉参考图后重试\n3. 查看模型文档确认是否支持多模态输入'
-                 : result.error
-             result.error = detailedMsg
-           }
+          } else {
+            // 重试也失败，说明模型本身可能不支持图片生成
+            const detailedMsg =
+              result.error &&
+              (result.error.toLowerCase().includes('cannot read') ||
+                result.error.toLowerCase().includes('不支持图片') ||
+                result.error.toLowerCase().includes('inform the user') ||
+                result.error.toLowerCase().includes('does not support image'))
+                ? '❌ 当前模型不支持图片输入。\n\n解决方案：\n1. 在设置中选择支持图片的模型\n2. 或去掉参考图后重试\n3. 查看模型文档确认是否支持多模态输入'
+                : result.error
+            result.error = detailedMsg
+          }
         }
       }
 
@@ -640,16 +649,11 @@ function App() {
             const actualH = img.naturalHeight
             if (actualW > 0 && actualH > 0) {
               // 比例校验
-              const actualRatioVal = actualW / actualH
-              const expectedRatioVal = finalWidth / finalHeight
-              const diff = Math.abs(actualRatioVal - expectedRatioVal) / expectedRatioVal
-              if (diff > 0.05 && !isRatioRetry) {
-                const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
-                const g1 = gcd(actualW, actualH)
-                const g2 = gcd(finalWidth, finalHeight)
+              const ratioCheck = checkImageRatio(actualW, actualH, finalWidth, finalHeight)
+              if (ratioCheck.mismatch && !isRatioRetry) {
                 setRatioMismatchDialog({
-                  actualRatio: `${actualW / g1}:${actualH / g1}`,
-                  expectedRatio: `${finalWidth / g2}:${finalHeight / g2}`,
+                  actualRatio: ratioCheck.actualRatio,
+                  expectedRatio: ratioCheck.expectedRatio,
                   onConfirm: () => {
                     setRatioMismatchDialog(null)
                     ratioMismatchRetried.current = true
@@ -985,22 +989,36 @@ function App() {
 
   return (
     <div
-      className={`flex min-h-screen flex-col ${themeConfig.textColor}`}
+      className={`app-shell-bg flex min-h-screen flex-col ${themeConfig.textColor}`}
       data-theme={themeConfig.id}
     >
+      <div className="shell-orb shell-orb-left" />
+      <div className="shell-orb shell-orb-right" />
+      <div className="shell-orb shell-orb-bottom" />
       {/* 顶部工具栏（Electron 无边框模式下兼作标题栏，支持拖拽） */}
       <header
-        className="glass-header fixed left-0 right-0 top-0 z-30 flex h-11 items-center justify-between px-5"
+        className="glass-header panel-frame hud-panel scanlines fixed left-4 right-4 top-4 z-30 flex h-14 items-center justify-between rounded-[22px] px-5"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div
-          className="flex items-center gap-4 text-sm"
+          className="flex items-center gap-3 text-sm"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <span className="text-gradient select-none text-base font-bold tracking-tight">
-            Liang007
-          </span>
-          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2.5">
+            <span className="future-glow hud-panel flex h-9 w-9 items-center justify-center rounded-[14px] bg-primary-500/15 text-[11px] font-black text-primary-200 ring-1 ring-primary-300/25">
+              L7
+            </span>
+            <div className="flex flex-col leading-none">
+              <span className="text-gradient select-none text-[17px] font-black tracking-tight">
+                Liang007
+              </span>
+              <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-slate-400/80">
+                Deep Space Creative Console
+              </span>
+            </div>
+          </div>
+
+          <div className="h-5 w-px bg-white/10" />
           <button
             onClick={() => setSettingsOpen(true)}
             className="glass-button btn-hover-lift rounded-lg px-3 py-1.5 text-xs"
@@ -1012,23 +1030,29 @@ function App() {
             ref={balanceBtnRef}
             className="glass-button btn-hover-lift rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
             disabled={balanceStatus === 'loading'}
-             onClick={async () => {
-               setBalanceStatus('loading')
-               setBalanceMessage('')
-               setMultiBalanceResult(null)
-               setBalancePopupOpen(false)
-               try {
-                 const multi = await fetchAllBalances()
-                 setMultiBalanceResult(multi)
-                 const hasSome = multi.stations.some(s => s.ok)
-                 setBalanceStatus(hasSome ? 'ok' : 'fail')
-                 setBalanceMessage(hasSome ? '' : multi.stations[0]?.ok === false ? (multi.stations[0] as { message: string }).message : '查询失败')
-               } catch (err) {
-                 setBalanceStatus('fail')
-                 setBalanceMessage(`查询失败: ${err instanceof Error ? err.message : String(err)}`)
-               }
-               setBalancePopupOpen(true)
-             }}
+            onClick={async () => {
+              setBalanceStatus('loading')
+              setBalanceMessage('')
+              setMultiBalanceResult(null)
+              setBalancePopupOpen(false)
+              try {
+                const multi = await fetchAllBalances()
+                setMultiBalanceResult(multi)
+                const hasSome = multi.stations.some(s => s.ok)
+                setBalanceStatus(hasSome ? 'ok' : 'fail')
+                setBalanceMessage(
+                  hasSome
+                    ? ''
+                    : multi.stations[0]?.ok === false
+                      ? (multi.stations[0] as { message: string }).message
+                      : '查询失败',
+                )
+              } catch (err) {
+                setBalanceStatus('fail')
+                setBalanceMessage(`查询失败: ${err instanceof Error ? err.message : String(err)}`)
+              }
+              setBalancePopupOpen(true)
+            }}
           >
             {balanceStatus === 'loading' ? (
               <span className="flex items-center gap-1.5">
@@ -1156,7 +1180,7 @@ function App() {
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setThemeMenuOpen(false)} />
           <div
-            className="glass-popup popup-enter fixed z-[9999] w-56 rounded-xl py-1.5"
+            className="glass-popup popup-enter fixed z-[9999] w-60 rounded-xl py-1.5"
             style={{
               left: themeBtnRef.current.getBoundingClientRect().left,
               top: themeBtnRef.current.getBoundingClientRect().bottom + 8,
@@ -1164,54 +1188,99 @@ function App() {
             onClick={e => e.stopPropagation()}
           >
             <div className="mb-1 border-b border-white/[0.06] px-3 pb-2">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                Theme
-              </span>
-            </div>
-            {THEMES.map(t => {
-              const isActive = theme === t.id
-              return (
-                <button
-                  key={t.id}
-                  className={`mx-0 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
-                    isActive ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'
-                  }`}
-                  style={{ width: 'calc(100% - 8px)', marginLeft: 4 }}
-                  onClick={() => {
-                    handleThemeChange(t.id)
-                    setThemeMenuOpen(false)
-                  }}
-                >
-                  <span
-                    className="h-3.5 w-3.5 flex-shrink-0 rounded-full ring-1 ring-white/10"
-                    style={{ background: t.accentColor }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span
-                      className={`${isActive ? 'font-semibold text-primary-400' : 'text-slate-300'}`}
-                    >
-                      {t.name}
-                    </span>
-                    <p className="mt-0.5 text-[10px] text-slate-400">{t.description}</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                    Theme
                   </div>
-                  {isActive && (
-                    <svg
-                      className="h-3.5 w-3.5 flex-shrink-0 text-primary-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2.5}
-                        d="M5 13l4 4L19 7"
+                  <div className="mt-0.5 text-[11px] font-medium text-slate-200">
+                    星域系列 / Starfield Series
+                  </div>
+                </div>
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] text-slate-400">
+                  HUD
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 px-3 pb-2.5">
+              {THEMES.map((t, index) => {
+                const isActive = theme === t.id
+                const code = String(index + 1).padStart(2, '0')
+                const shortCode = t.name.replace(/^星域-\d+\s*/, '')
+                return (
+                  <button
+                    key={t.id}
+                    className={`flex min-h-[84px] w-full items-stretch gap-2.5 overflow-hidden rounded-xl text-left text-xs transition-all ${
+                      isActive
+                        ? 'bg-white/[0.09] ring-1 ring-primary-400/20'
+                        : 'hover:bg-white/[0.04] hover:ring-1 hover:ring-white/[0.04]'
+                    }`}
+                    onClick={() => {
+                      handleThemeChange(t.id)
+                      setThemeMenuOpen(false)
+                    }}
+                  >
+                    <div
+                      className="w-1.5 flex-shrink-0"
+                      style={{
+                        background: t.accentColor,
+                        boxShadow: `0 0 18px ${t.accentColor}66`,
+                      }}
+                    />
+                    <div className="flex flex-shrink-0 flex-col items-center justify-center gap-1 py-0.5 pl-0.5">
+                      <span
+                        className="h-3 w-3 rounded-full ring-1 ring-white/10"
+                        style={{
+                          background: t.accentColor,
+                          boxShadow: `0 0 12px ${t.accentColor}55`,
+                        }}
                       />
-                    </svg>
-                  )}
-                </button>
-              )
-            })}
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.18em] text-slate-400">
+                        {code}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1 py-2.5 pr-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`${isActive ? 'font-semibold text-primary-400' : 'text-slate-300'}`}
+                        >
+                          {shortCode}
+                        </span>
+                        <span className="rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[8px] uppercase tracking-[0.18em] text-slate-500">
+                          {t.id}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          {t.tag}
+                        </span>
+                        <span className="text-[8px] uppercase tracking-[0.22em] text-slate-500">
+                          NODE ONLINE
+                        </span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-slate-400">
+                        {t.description}
+                      </p>
+                    </div>
+                    {isActive && (
+                      <svg
+                        className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2.5}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </>
       )}
@@ -1232,7 +1301,13 @@ function App() {
             setMultiBalanceResult(multi)
             const hasSome = multi.stations.some(s => s.ok)
             setBalanceStatus(hasSome ? 'ok' : 'fail')
-            setBalanceMessage(hasSome ? '' : multi.stations[0]?.ok === false ? (multi.stations[0] as { message: string }).message : '查询失败')
+            setBalanceMessage(
+              hasSome
+                ? ''
+                : multi.stations[0]?.ok === false
+                  ? (multi.stations[0] as { message: string }).message
+                  : '查询失败',
+            )
           } catch (err) {
             setBalanceStatus('fail')
             setBalanceMessage(`查询失败: ${err instanceof Error ? err.message : String(err)}`)
@@ -1687,6 +1762,7 @@ function App() {
                     type="button"
                     className="text-[10px] text-slate-400 transition hover:text-red-500"
                     onClick={() => {
+                      // eslint-disable-next-line no-alert
                       if (confirm('确定清空所有已选模型吗？'))
                         setSettingsForm(f => ({ ...f, selectedModelIds: [] }))
                     }}
@@ -1936,19 +2012,19 @@ function App() {
 
       {/* 主体区域 - 适配固定header */}
       <main
-        className="flex gap-3 overflow-hidden p-4 pt-[52px]"
+        className="grid-veil relative z-10 flex gap-5 overflow-hidden px-5 pb-5 pt-[88px]"
         style={{ height: '100vh', minHeight: 0 }}
       >
         {/* 左侧历史栏 - 靠左停靠，展开时与生成结果并排 */}
         <div
-          className={`glass-card flex flex-shrink-0 flex-col overflow-hidden transition-all duration-300 ${
+          className={`glass-card panel-frame hud-panel workspace-panel future-glow flex flex-shrink-0 flex-col overflow-hidden transition-all duration-300 ${
             historyPanelOpen ? 'w-[300px] opacity-100' : 'pointer-events-none w-0 opacity-0'
           }`}
           style={{ borderRadius: '1rem' }}
         >
           {/* 头部 */}
           <div
-            className="flex flex-shrink-0 items-center justify-between bg-gradient-to-r from-primary-500 to-purple-500 px-3 py-2.5"
+            className="panel-titlebar relative flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-2.5"
             style={historyPanelOpen ? {} : { display: 'none' }}
           >
             <div className="flex items-center gap-2">
@@ -1965,7 +2041,7 @@ function App() {
                   d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <h2 className="text-sm font-bold text-white">生图历史</h2>
+              <h2 className="text-sm font-bold text-slate-100">生图历史</h2>
               {generationHistory.length > 0 && (
                 <span className="rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
                   {generationHistory.length}
@@ -2030,6 +2106,7 @@ function App() {
               {generationHistory.length > 0 && !historyBatchMode && (
                 <button
                   onClick={() => {
+                    // eslint-disable-next-line no-alert
                     if (confirm('确定要清空所有历史记录吗？')) {
                       setGenerationHistory([])
                       saveHistory([])
@@ -2427,24 +2504,26 @@ function App() {
         </div>
 
         {/* 生成结果区 */}
-        <ResultPanel
-          results={results}
-          setResults={setResults}
-          resultActiveIdx={resultActiveIdx}
-          setResultActiveIdx={setResultActiveIdx}
-          selectedImageIds={selectedImageIds}
-          setSelectedImageIds={setSelectedImageIds}
-          status={status}
-          storeStatus={storeStatus}
-          elapsedSeconds={elapsedSeconds}
-          progressPct={progressPct}
-          lastDuration={lastDuration}
-          batchSize={batchSize}
-          downloadStatus={downloadStatus}
-          toggleSelectAll={toggleSelectAll}
-          handleBatchDownload={handleBatchDownload}
-          setPreviewImage={setPreviewImage}
-        />
+        <div className="panel-frame hud-panel future-glow flex-1 overflow-hidden rounded-[32px] p-3">
+          <ResultPanel
+            results={results}
+            setResults={setResults}
+            resultActiveIdx={resultActiveIdx}
+            setResultActiveIdx={setResultActiveIdx}
+            selectedImageIds={selectedImageIds}
+            setSelectedImageIds={setSelectedImageIds}
+            status={status}
+            storeStatus={storeStatus}
+            elapsedSeconds={elapsedSeconds}
+            progressPct={progressPct}
+            lastDuration={lastDuration}
+            batchSize={batchSize}
+            downloadStatus={downloadStatus}
+            toggleSelectAll={toggleSelectAll}
+            handleBatchDownload={handleBatchDownload}
+            setPreviewImage={setPreviewImage}
+          />
+        </div>
 
         {/* 图片预览模态框 */}
         <ImagePreviewModal
