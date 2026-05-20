@@ -4,9 +4,10 @@
  * 从 App.tsx 提取的独立组件。
  * 展示生成结果、进度、缩略图、批量操作等。
  */
-import React from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import type { GeneratedImage } from '../api/imageClient'
 import { safeUrl } from '../utils/safeUrl'
+import { downloadImage } from '../utils/download'
 
 interface Props {
   results: GeneratedImage[]
@@ -48,12 +49,100 @@ const ResultPanel: React.FC<Props> = ({
   const safeIdx =
     results.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), results.length - 1) : 0
 
+  // ── 右键菜单 ──
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; img: GeneratedImage } | null>(null)
+  const ctxRef = useRef<HTMLDivElement>(null)
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, img: GeneratedImage) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtxMenu({ x: e.clientX, y: e.clientY, img })
+  }, [])
+
+  // 点击外部关闭
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = (e: MouseEvent) => {
+      if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtxMenu(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [ctxMenu])
+
+  const handleCopyImage = async (url: string) => {
+    setCtxMenu(null)
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+    } catch {
+      // 回退：尝试 png
+      try {
+        const res = await fetch(url)
+        const blob = await res.blob()
+        const pngBlob =
+          blob.type === 'image/png'
+            ? blob
+            : new Blob([await blob.arrayBuffer()], { type: 'image/png' })
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
+      } catch (err) {
+        console.error('复制图片失败:', err)
+      }
+    }
+  }
+
+  const handleSaveAs = async (url: string) => {
+    setCtxMenu(null)
+    await downloadImage(url)
+  }
+
+  const handleSendToEagle = async (url: string) => {
+    setCtxMenu(null)
+    try {
+      // Eagle API: POST http://localhost:41595/api/item/addFromURL
+      const body = {
+        url,
+        name: `Liang007_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+        website: 'Liang007 Studio',
+      }
+      const res = await fetch('http://localhost:41595/api/item/addFromURL', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(`Eagle API: ${res.status}`)
+    } catch (err) {
+      console.error('发送到 Eagle 失败:', err)
+      // 如果 Eagle 未运行，尝试用 base64
+      try {
+        const imgRes = await fetch(url)
+        const blob = await imgRes.blob()
+        const reader = new FileReader()
+        const base64 = await new Promise<string>(resolve => {
+          reader.onloadend = () => resolve((reader.result as string).split(',')[1])
+          reader.readAsDataURL(blob)
+        })
+        await fetch('http://localhost:41595/api/item/addFromBase64', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base64,
+            name: `Liang007_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+            ext: 'png',
+          }),
+        })
+      } catch (e2) {
+        console.error('Eagle base64 回退也失败:', e2)
+      }
+    }
+  }
+
   return (
     <section
       className={`glass-card workspace-panel panel-frame hud-panel future-glow flex min-w-[200px] flex-1 flex-col overflow-hidden ${status === 'running' ? 'generating-pulse' : ''}`}
     >
       {/* 标题栏 */}
-      <div className="panel-titlebar hud-line relative flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] px-4 py-3">
+      <div className="panel-titlebar hud-line relative flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
         <div className="flex items-center gap-2 text-sm text-slate-200">
           <span className="font-semibold">生成结果</span>
           {results.length > 0 && <span className="badge-primary">{results.length} 张</span>}
@@ -149,6 +238,7 @@ const ResultPanel: React.FC<Props> = ({
                   onClick={() => {
                     if (status !== 'running') setPreviewImage(activeImg)
                   }}
+                  onContextMenu={e => handleContextMenu(e, activeImg)}
                 >
                   <img
                     key={`main-${safeIdx}`}
@@ -296,6 +386,74 @@ const ResultPanel: React.FC<Props> = ({
           })()
         )}
       </div>
+
+      {/* ── 自定义右键菜单 ── */}
+      {ctxMenu && (
+        <div
+          ref={ctxRef}
+          className="glass-popup fixed z-[10000] w-44 rounded-xl py-1.5 shadow-2xl"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={() => handleCopyImage(ctxMenu.img.url)}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+            复制图片
+          </button>
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={() => handleSaveAs(ctxMenu.img.url)}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+            另存为...
+          </button>
+          <div className="mx-2 my-1 h-px bg-white/[0.06]" />
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={() => handleSendToEagle(ctxMenu.img.url)}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-emerald-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
+            </svg>
+            发送到 Eagle
+          </button>
+        </div>
+      )}
     </section>
   )
 }

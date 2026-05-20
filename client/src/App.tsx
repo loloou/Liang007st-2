@@ -786,7 +786,7 @@ function App() {
   const _handleDownloadSingle = async (img: GeneratedImage) => {
     try {
       setDownloadStatus('downloading')
-      await downloadImage(img.url, `generated_${img.id}.png`)
+      await downloadImage(img.url)
     } catch (e) {
       setError(`下载失败: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -989,7 +989,7 @@ function App() {
 
   return (
     <div
-      className={`app-shell-bg flex min-h-screen flex-col ${themeConfig.textColor}`}
+      className={`app-shell-bg flex h-screen flex-col overflow-hidden ${themeConfig.textColor}`}
       data-theme={themeConfig.id}
     >
       <div className="shell-orb shell-orb-left" />
@@ -997,7 +997,7 @@ function App() {
       <div className="shell-orb shell-orb-bottom" />
       {/* 顶部工具栏（Electron 无边框模式下兼作标题栏，支持拖拽） */}
       <header
-        className="glass-header panel-frame hud-panel scanlines fixed left-4 right-4 top-4 z-30 flex h-14 items-center justify-between rounded-[22px] px-5"
+        className="glass-header panel-frame hud-panel scanlines z-30 mx-2 mt-2 flex h-9 flex-shrink-0 items-center justify-between rounded-xl px-3"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div
@@ -1005,14 +1005,14 @@ function App() {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <div className="flex items-center gap-2.5">
-            <span className="future-glow hud-panel flex h-9 w-9 items-center justify-center rounded-[14px] bg-primary-500/15 text-[11px] font-black text-primary-200 ring-1 ring-primary-300/25">
+            <span className="future-glow hud-panel flex h-7 w-7 items-center justify-center rounded-xl bg-primary-500/15 text-[10px] font-black text-primary-200 ring-1 ring-primary-300/25">
               L7
             </span>
             <div className="flex flex-col leading-none">
-              <span className="text-gradient select-none text-[17px] font-black tracking-tight">
+              <span className="text-gradient select-none text-sm font-black tracking-tight">
                 Liang007
               </span>
-              <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-slate-400/80">
+              <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.28em] text-slate-400/80">
                 Deep Space Creative Console
               </span>
             </div>
@@ -1202,7 +1202,7 @@ function App() {
                 </span>
               </div>
             </div>
-            <div className="flex flex-col gap-2 px-3 pb-2.5">
+            <div className="flex flex-col gap-1.5 px-2.5 pb-2">
               {THEMES.map((t, index) => {
                 const isActive = theme === t.id
                 const code = String(index + 1).padStart(2, '0')
@@ -1210,7 +1210,7 @@ function App() {
                 return (
                   <button
                     key={t.id}
-                    className={`flex min-h-[84px] w-full items-stretch gap-2.5 overflow-hidden rounded-xl text-left text-xs transition-all ${
+                    className={`flex min-h-[56px] w-full items-stretch gap-2 overflow-hidden rounded-lg text-left text-xs transition-all ${
                       isActive
                         ? 'bg-white/[0.09] ring-1 ring-primary-400/20'
                         : 'hover:bg-white/[0.04] hover:ring-1 hover:ring-white/[0.04]'
@@ -1221,46 +1221,40 @@ function App() {
                     }}
                   >
                     <div
-                      className="w-1.5 flex-shrink-0"
+                      className="w-1 flex-shrink-0"
                       style={{
                         background: t.accentColor,
-                        boxShadow: `0 0 18px ${t.accentColor}66`,
+                        boxShadow: `0 0 14px ${t.accentColor}55`,
                       }}
                     />
-                    <div className="flex flex-shrink-0 flex-col items-center justify-center gap-1 py-0.5 pl-0.5">
+                    <div className="flex flex-shrink-0 flex-col items-center justify-center gap-0.5 py-0.5 pl-0.5">
                       <span
-                        className="h-3 w-3 rounded-full ring-1 ring-white/10"
+                        className="h-2.5 w-2.5 rounded-full ring-1 ring-white/10"
                         style={{
                           background: t.accentColor,
-                          boxShadow: `0 0 12px ${t.accentColor}55`,
+                          boxShadow: `0 0 10px ${t.accentColor}44`,
                         }}
                       />
-                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[8px] font-semibold tracking-[0.18em] text-slate-400">
+                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-1 py-0.5 text-[7px] font-semibold tracking-[0.16em] text-slate-400">
                         {code}
                       </span>
                     </div>
-                    <div className="min-w-0 flex-1 py-2.5 pr-2.5">
-                      <div className="flex items-center gap-1.5">
+                    <div className="min-w-0 flex-1 py-1.5 pr-2">
+                      <div className="flex items-center gap-1">
                         <span
-                          className={`${isActive ? 'font-semibold text-primary-400' : 'text-slate-300'}`}
+                          className={`text-[11px] ${isActive ? 'font-semibold text-primary-400' : 'text-slate-300'}`}
                         >
                           {shortCode}
                         </span>
-                        <span className="rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[8px] uppercase tracking-[0.18em] text-slate-500">
+                        <span className="rounded-full bg-white/[0.04] px-1 py-0.5 text-[7px] uppercase tracking-[0.16em] text-slate-500">
                           {t.id}
                         </span>
                       </div>
-                      <div className="mt-1 flex items-center gap-1.5">
-                        <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      <div className="mt-0.5 flex items-center gap-1">
+                        <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-1 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                           {t.tag}
                         </span>
-                        <span className="text-[8px] uppercase tracking-[0.22em] text-slate-500">
-                          NODE ONLINE
-                        </span>
                       </div>
-                      <p className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-slate-400">
-                        {t.description}
-                      </p>
                     </div>
                     {isActive && (
                       <svg
@@ -2012,8 +2006,8 @@ function App() {
 
       {/* 主体区域 - 适配固定header */}
       <main
-        className="grid-veil relative z-10 flex gap-5 overflow-hidden px-5 pb-5 pt-[88px]"
-        style={{ height: '100vh', minHeight: 0 }}
+        className="grid-veil relative z-10 flex flex-1 gap-2 overflow-hidden px-2 pb-2 pt-2"
+        style={{ minHeight: 0 }}
       >
         {/* 左侧历史栏 - 靠左停靠，展开时与生成结果并排 */}
         <div
@@ -2504,7 +2498,7 @@ function App() {
         </div>
 
         {/* 生成结果区 */}
-        <div className="panel-frame hud-panel future-glow flex-1 overflow-hidden rounded-[32px] p-3">
+        <div className="panel-frame hud-panel future-glow flex-1 overflow-hidden rounded-xl p-1">
           <ResultPanel
             results={results}
             setResults={setResults}
