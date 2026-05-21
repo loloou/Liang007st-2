@@ -1,6 +1,6 @@
 {
   "name": "liang007-studio",
-  "version": "5.7.1",
+  "version": "5.8.0",
   "private": true,
   "main": "electron/main.js",
   "author": "liang007",

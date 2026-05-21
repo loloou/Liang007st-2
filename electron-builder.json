@@ -1,6 +1,7 @@
 {
   "appId": "com.liang007.studio",
   "productName": "liang007生图",
+  "asar": true,
   "directories": {
     "output": "dist-electron"
   },

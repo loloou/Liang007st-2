@@ -315,8 +315,11 @@ function App() {
     images: GeneratedImage[]
     index: number
   } | null>(null)
-  const openHistoryPreview = (images: GeneratedImage[], index = 0) => {
+  const openHistoryPreview = (images: GeneratedImage[], index = 0, entryId?: string) => {
     if (images.length === 0) return
+    if (entryId) {
+      setViewedHistoryIds(prev => new Set(prev).add(entryId))
+    }
     setHistoryFullPreview({
       images,
       index: Math.min(Math.max(index, 0), images.length - 1),
@@ -325,6 +328,7 @@ function App() {
   const [historyBatchMode, setHistoryBatchMode] = useState(false)
   const [historySelected, setHistorySelected] = useState<Set<string>>(new Set())
   const [historyLayout, setHistoryLayout] = useState<'list' | 'grid'>('list')
+  const [viewedHistoryIds, setViewedHistoryIds] = useState<Set<string>>(new Set())
 
   // ── 优化3：尺寸比例不一致弹窗 ─────────────────────────────────────────────
   const [ratioMismatchDialog, setRatioMismatchDialog] = useState<{
@@ -2216,7 +2220,7 @@ function App() {
                           key={entry.id}
                           className={`group relative cursor-pointer overflow-hidden rounded-xl transition hover:ring-2 hover:ring-primary-400/50 ${
                             historySelected.has(entry.id) ? 'ring-2 ring-primary-500' : ''
-                          }`}
+                          } ${viewedHistoryIds.has(entry.id) ? 'ring-1 ring-emerald-400/40' : ''}`}
                           onClick={() => {
                             if (historyBatchMode) {
                               setHistorySelected(prev => {
@@ -2233,6 +2237,7 @@ function App() {
                                 setResults(entry.results)
                                 setResultActiveIdx(0)
                               }
+                              setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                             }
                           }}
                           onDoubleClick={e => {
@@ -2258,7 +2263,7 @@ function App() {
                                 useUiStore.getState().setSelectedLogEntry(errorLog)
                                 useUiStore.getState().setShowDetailedLog(true)
                               } else if (firstImg) {
-                                openHistoryPreview(entry.results, 0)
+                                openHistoryPreview(entry.results, 0, entry.id)
                               }
                             }
                           }}
@@ -2268,7 +2273,7 @@ function App() {
                               src={firstImg.url}
                               alt=""
                               className="aspect-square w-full cursor-zoom-in bg-white/[0.06] object-cover transition hover:opacity-90"
-                              onDoubleClick={() => openHistoryPreview(entry.results, 0)}
+                              onDoubleClick={() => openHistoryPreview(entry.results, 0, entry.id)}
                               title="双击查看大图"
                             />
                           ) : (
@@ -2361,6 +2366,11 @@ function App() {
                               </div>
                             </div>
                           )}
+                          {viewedHistoryIds.has(entry.id) && !historyBatchMode && (
+                            <div className="absolute right-1 top-1 rounded bg-emerald-500/80 px-1 py-0.5 text-[7px] font-bold text-white shadow">
+                              已查看
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -2377,7 +2387,9 @@ function App() {
                         className={`group cursor-pointer border-b border-white/20 p-2.5 transition hover:bg-white/10 ${
                           historySelected.has(entry.id)
                             ? 'bg-primary-500/20 ring-1 ring-primary-400/40'
-                            : ''
+                            : viewedHistoryIds.has(entry.id)
+                              ? 'border-l-2 border-l-emerald-400/60'
+                              : ''
                         } ${historyBatchMode ? 'pl-3' : ''}`}
                         onClick={() => {
                           if (historyBatchMode) {
@@ -2395,6 +2407,7 @@ function App() {
                               setResults(entry.results)
                               setResultActiveIdx(0)
                             }
+                            setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                           }
                         }}
                         onDoubleClick={() => {
@@ -2416,47 +2429,18 @@ function App() {
                               useUiStore.getState().setSelectedLogEntry(errorLog)
                               useUiStore.getState().setShowDetailedLog(true)
                             } else if (firstImg) {
-                              openHistoryPreview(entry.results, 0)
+                              openHistoryPreview(entry.results, 0, entry.id)
                             }
                           }
                         }}
                       >
-                        {/* 批量选择checkbox */}
-                        {historyBatchMode && (
-                          <div className="mb-1.5 flex items-center">
-                            <div
-                              className={`flex h-4 w-4 items-center justify-center rounded border transition ${
-                                historySelected.has(entry.id)
-                                  ? 'border-primary-500 bg-primary-500'
-                                  : 'border-white/50'
-                              }`}
-                            >
-                              {historySelected.has(entry.id) && (
-                                <svg
-                                  className="h-3 w-3 text-white"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={3}
-                                    d="M5 13l4 4L19 7"
-                                  />
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        {/* 图片预览 */}
                         <div className="flex items-start gap-2">
                           {firstImg ? (
                             <img
                               src={firstImg.url}
                               alt=""
                               className="h-14 w-14 flex-shrink-0 cursor-zoom-in rounded-lg bg-white/[0.06] object-cover transition hover:ring-2 hover:ring-primary-400"
-                              onDoubleClick={() => openHistoryPreview(entry.results, 0)}
+                              onDoubleClick={() => openHistoryPreview(entry.results, 0, entry.id)}
                               title="双击查看大图"
                             />
                           ) : (

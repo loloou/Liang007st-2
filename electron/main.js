@@ -2,6 +2,15 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// ── 性能优化：命令行参数（必须在 app.ready 之前设置）────────────────────────
+app.commandLine.appendSwitch('disable-gpu-sandbox');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
+// V8 代码缓存：加速后续启动的 JS 解析
+app.commandLine.appendSwitch('js-flags', '--optimize-for-size');
+
 let mainWindow = null;
 
 // ── 便携模式：把用户数据放在 exe 同目录的 .liang007-data 文件夹里 ──────────────
@@ -17,16 +26,15 @@ function initPortableUserData() {
   if (!exeDir) return;
 
   const portableDataDir = path.join(exeDir, '.liang007-data');
-  if (!fs.existsSync(portableDataDir)) {
-    try {
-      fs.mkdirSync(portableDataDir, { recursive: true });
-    } catch (e) {
+  try {
+    fs.mkdirSync(portableDataDir, { recursive: true });
+  } catch (e) {
+    if (e.code !== 'EEXIST') {
       console.warn('[liang007] 无法创建便携数据目录，使用默认路径:', e.message);
       return;
     }
   }
   app.setPath('userData', portableDataDir);
-  console.log('[liang007] 便携模式：数据路径 →', portableDataDir);
 }
 
 function createWindow() {
@@ -43,6 +51,7 @@ function createWindow() {
       spellcheck: false,
       enableWebSQL: false,
       backgroundThrottling: false,
+      v8CacheOptions: 'bypassHeatCheck',
     },
     frame: false,
     titleBarStyle: 'hidden',
@@ -51,21 +60,34 @@ function createWindow() {
   });
 
   const htmlPath = path.join(__dirname, '../client/dist/index.html');
-  console.log('[liang007] 加载页面:', htmlPath);
-  console.log('[liang007] 文件存在:', fs.existsSync(htmlPath));
-
   mainWindow.loadFile(htmlPath).catch((err) => {
     console.error('[liang007] 页面加载失败:', err.message);
   });
 
+  // 限时显示：如果 ready-to-show 超过 3 秒还没触发，先显示窗口防止用户以为卡死
+  let shown = false;
+  const forceShowTimer = setTimeout(() => {
+    if (!shown && mainWindow && !mainWindow.isDestroyed()) {
+      shown = true;
+      mainWindow.show();
+    }
+  }, 3000);
+
   mainWindow.once('ready-to-show', () => {
-    console.log('[liang007] 窗口就绪，显示窗口');
-    mainWindow?.show();
+    if (!shown) {
+      shown = true;
+      clearTimeout(forceShowTimer);
+      mainWindow?.show();
+    }
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('[liang007] 页面加载错误:', errorCode, errorDescription);
-    mainWindow?.show();
+    if (!shown) {
+      shown = true;
+      clearTimeout(forceShowTimer);
+      mainWindow?.show();
+    }
   });
 
   mainWindow.on('closed', () => {
