@@ -9,18 +9,27 @@ interface ExtendedImage extends GeneratedImage {
 
 interface HistoryFullPreviewProps {
   image: GeneratedImage | null
+  images?: GeneratedImage[]
+  index?: number
+  onIndexChange?: (next: number) => void
   onClose: () => void
 }
 
-export default function HistoryFullPreview({ image, onClose }: HistoryFullPreviewProps) {
+export default function HistoryFullPreview({
+  image,
+  images = [],
+  index = 0,
+  onIndexChange,
+  onClose,
+}: HistoryFullPreviewProps) {
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading'>('idle')
+  const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'error'>('idle')
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const [isHdLoading, setIsHdLoading] = useState(false) // 原图加载中
   // 拖拽时强制重渲染的计数器（必须在 useState 第3位，不能乱动）
   const [, forceUpdate] = useState(0)
-  // 图片 URL：用 ref 缓存初始值，state 管理当前显示（支持降级）
-  const imgInitUrl = useRef<string>('')
+  // 图片 URL：state 管理当前显示（支持降级）
   const [imageUrl, setImageUrl] = useState<string>('')
   // 拖拽全程用 ref，结束时才写 state
   const dragRef = useRef<{
@@ -40,28 +49,58 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
   } | null>(null)
   const midDragged = useRef(false)
 
-  // ESC 关闭
+  const gallery = images.length > 0 ? images : image ? [image] : []
+  const safeIndex = gallery.length > 0 ? Math.min(Math.max(index, 0), gallery.length - 1) : 0
+  const currentImage = gallery[safeIndex] || image
+  const hasMultiple = gallery.length > 1
+
+  const resetViewState = () => {
+    setZoom(1)
+    setOffset({ x: 0, y: 0 })
+    visualTranslate.current = { x: 0, y: 0 }
+    dragRef.current = null
+    midDragRef.current = null
+    hasDragged.current = false
+    midDragged.current = false
+    setDownloadStatus('idle')
+    setDownloadError(null)
+  }
+
+  const switchImage = React.useCallback(
+    (next: number) => {
+      if (!hasMultiple) return
+      const normalized = (next + gallery.length) % gallery.length
+      onIndexChange?.(normalized)
+    },
+    [gallery.length, hasMultiple, onIndexChange],
+  )
+
+  // ESC 关闭，方向键切换历史多图
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (e.key === 'ArrowLeft' && hasMultiple) {
+        e.preventDefault()
+        switchImage(safeIndex - 1)
+      } else if (e.key === 'ArrowRight' && hasMultiple) {
+        e.preventDefault()
+        switchImage(safeIndex + 1)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [hasMultiple, onClose, safeIndex, switchImage])
 
-  // early return 必须在所有 hooks 之后
-  if (!image) return null
+  // 初始化/切换图片 URL（避免 render 阶段 setState）
+  useEffect(() => {
+    if (!currentImage) return
+    const extendedImage = currentImage as ExtendedImage
+    const originalUrl = extendedImage.originalUrl
+    const primaryUrl = originalUrl || currentImage.url
+    resetViewState()
+    setImageUrl(primaryUrl)
 
-  // 初始化图片 URL（只在 image 切换时更新）
-  const extendedImage = image as ExtendedImage
-  const originalUrl = extendedImage.originalUrl
-  // 优先用缩略图（快速显示），背景懒加载原图
-  const primaryUrl = originalUrl || image.url
-  const hasFallback = !!image.url
-  if (imgInitUrl.current !== primaryUrl) {
-    imgInitUrl.current = primaryUrl
-    if (imageUrl !== primaryUrl) setImageUrl(primaryUrl)
-    // 如果有原图且不是 data URI，背景懒加载
     if (originalUrl && !originalUrl.startsWith('data:')) {
       setIsHdLoading(true)
       const hdImg = new Image()
@@ -70,25 +109,37 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
         setIsHdLoading(false)
       }
       hdImg.onerror = () => {
-        // 原图加载失败，保持缩略图
         setIsHdLoading(false)
       }
       hdImg.src = originalUrl
+      return () => {
+        hdImg.onload = null
+        hdImg.onerror = null
+      }
     }
-  }
 
+    setIsHdLoading(false)
+  }, [currentImage])
+
+  // early return 必须在所有 hooks 之后
+  if (!currentImage) return null
+
+  const extendedImage = currentImage as ExtendedImage
+  const hasFallback = !!currentImage.url
   const isEnlarged = zoom > 1
 
   const handleDownload = async () => {
     try {
       setDownloadStatus('downloading')
-      // 下载优先用原图 URL，备用当前显示的图
-      const downloadUrl = extendedImage.originalUrl || image.url
-      await downloadImage(downloadUrl, `history_${image.id || Date.now()}.png`)
+      setDownloadError(null)
+      // 下载优先用原图 URL，其次当前显示图，最后缩略图
+      const downloadUrl = extendedImage.originalUrl || imageUrl || currentImage.url
+      await downloadImage(downloadUrl, `history_${currentImage.id || Date.now()}.png`)
+      setDownloadStatus('idle')
     } catch (e) {
       console.error('下载失败:', e)
-    } finally {
-      setDownloadStatus('idle')
+      setDownloadError(e instanceof Error ? e.message : String(e))
+      setDownloadStatus('error')
     }
   }
 
@@ -221,16 +272,41 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
             borderRadius: zoom <= 1 ? 0 : 6,
           }}
           onError={() => {
-            if (hasFallback && !isHdLoading) {
-              setImageUrl(image.url)
+            if (hasFallback && !isHdLoading && imageUrl !== currentImage.url) {
+              setImageUrl(currentImage.url)
             } else if (!isHdLoading) {
-              alert('图片加载失败，可能 URL 已过期')
+              console.error('图片加载失败，可能 URL 已过期')
               onClose()
             }
           }}
           onClick={handleImageClick}
         />
       </div>
+
+      {hasMultiple && (
+        <>
+          <button
+            className="absolute left-4 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white transition hover:bg-white/20"
+            onClick={e => {
+              e.stopPropagation()
+              switchImage(safeIndex - 1)
+            }}
+            title="上一张 (←)"
+          >
+            ‹
+          </button>
+          <button
+            className="absolute right-4 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white transition hover:bg-white/20"
+            onClick={e => {
+              e.stopPropagation()
+              switchImage(safeIndex + 1)
+            }}
+            title="下一张 (→)"
+          >
+            ›
+          </button>
+        </>
+      )}
 
       {/* 顶部控制栏 */}
       <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-4 py-3">
@@ -268,6 +344,7 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
               e.stopPropagation()
               setZoom(1)
               setOffset({ x: 0, y: 0 })
+              visualTranslate.current = { x: 0, y: 0 }
             }}
             title="重置 (1:1)"
           >
@@ -287,6 +364,11 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
           >
             {document.fullscreenElement ? '退出全屏' : '全屏'}
           </button>
+          {hasMultiple && (
+            <span className="ml-1 rounded-full bg-white/15 px-2 py-0.5 font-mono text-[10px] text-white">
+              {safeIndex + 1} / {gallery.length}
+            </span>
+          )}
           {isEnlarged || !!midDragRef.current ? (
             <span className="ml-1 text-[10px] font-medium text-blue-300">· 可拖动 / 中键平移</span>
           ) : (
@@ -299,8 +381,16 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
           )}
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
+          {downloadError && (
+            <span
+              className="max-w-[220px] truncate rounded-xl bg-red-500/20 px-2 py-1 text-[11px] text-red-200"
+              title={downloadError}
+            >
+              保存失败
+            </span>
+          )}
           <button
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/20"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
             onClick={e => {
               e.stopPropagation()
@@ -321,7 +411,10 @@ export default function HistoryFullPreview({ image, onClose }: HistoryFullPrevie
           <button
             className="flex h-9 w-9 items-center justify-center rounded-xl text-2xl leading-none text-white/70 transition hover:text-white"
             style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
-            onClick={onClose}
+            onClick={e => {
+              e.stopPropagation()
+              onClose()
+            }}
             title="关闭 (Esc)"
           >
             ×

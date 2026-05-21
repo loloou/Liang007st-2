@@ -1,6 +1,13 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
+
+// 从根 package.json 读取版本号
+const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8')) as {
+  version: string
+}
+const APP_VERSION = rootPkg.version
 
 function devFetchProxy(): Plugin {
   return {
@@ -91,6 +98,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), devFetchProxy()],
+    define: {
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
     server: {
       port: 5173,
       host: '0.0.0.0',

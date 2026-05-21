@@ -201,12 +201,18 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
       {/* 图片可操作区域 */}
       <div
         className="absolute inset-0 flex items-center justify-center"
-        onClick={e => e.stopPropagation()}
+        onClick={e => {
+          // 点击的是图片本身 → 不关闭（交给 img 的 handleImageClick）
+          // 点击的是图片周围空白区域 → 关闭预览
+          if (e.target === e.currentTarget) {
+            onClose()
+          }
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ cursor: isDragging ? 'grabbing' : isEnlarged ? 'grab' : 'zoom-in' }}
+        style={{ cursor: isDragging ? 'grabbing' : isEnlarged ? 'grab' : 'default' }}
       >
         <img
           src={imageUrl}
@@ -220,16 +226,21 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
             transformOrigin: 'center center',
             transition: isDragging ? 'none' : 'transform 0.15s ease',
             borderRadius: zoom <= 1 ? 0 : 6,
+            cursor: isEnlarged ? 'grab' : 'zoom-in',
           }}
           onError={() => {
             if (hasFallback && !isHdLoading) {
               setImageUrl(image.url)
             } else if (!isHdLoading) {
+              // eslint-disable-next-line no-alert
               alert('图片加载失败，可能 URL 已过期')
               onClose()
             }
           }}
-          onClick={handleImageClick}
+          onClick={e => {
+            e.stopPropagation()
+            handleImageClick()
+          }}
         />
       </div>
 

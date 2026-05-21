@@ -56,6 +56,30 @@ import { getRealPerformanceData, FPSCalculator } from './utils/performanceMonito
 
 type GenerationStatus = 'idle' | 'running'
 
+type GenerationRequestSnapshot = {
+  prompt: string
+  negativePrompt: string
+  batchSize: number
+  width: number
+  height: number
+  model: string
+  resolutionPreset: ResolutionPresetId
+  sizeTier: SizeTierId
+  referenceImages: File[]
+}
+
+type GenerationSlot = {
+  id: string
+  request: GenerationRequestSnapshot
+  status: 'running' | 'success' | 'error'
+  elapsedSeconds: number
+  progressPct: number
+  lastDuration: string | null
+  results: GeneratedImage[]
+  error?: string
+  createdAt: number
+}
+
 const RIGHT_PANEL_MIN = 280
 const RIGHT_PANEL_MAX = 640
 const RIGHT_PANEL_DEFAULT = 340
@@ -96,6 +120,10 @@ function App() {
   const [results, setResults] = useState<GeneratedImage[]>([])
   const [status, setStatus] = useState<GenerationStatus>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [parallelCount, setParallelCount] = useState(1)
+  const [generationSlots, setGenerationSlots] = useState<GenerationSlot[]>([])
+  const [slotViewMode, setSlotViewMode] = useState<'grid' | 'focus'>('focus')
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null)
   const elapsedSeconds = useGenerationStore(s => s.elapsedSeconds)
   const storeStatus = useGenerationStore(s => s.status)
   const lastDuration = useGenerationStore(s => s.lastDuration)
@@ -188,6 +216,7 @@ function App() {
   const [generationHistory, setGenerationHistory] = useState<
     {
       id: string
+      slotId?: string
       time: string
       prompt: string
       negativePrompt?: string
@@ -264,10 +293,9 @@ function App() {
   const historySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 比例不匹配弹窗防重入标记：用户点"重新生成"后，下一次结果不再触发弹窗
   const ratioMismatchRetried = useRef(false)
-  // 并发生成守卫（ref 比 state 更可靠，同步生效）
-  const isGeneratingRef = useRef(false)
-  // 生成计时器 ref
-  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 多槽位计时器
+  const slotTimersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+  const slotSeqRef = useRef(0)
   // 存储最新的 handleGenerate 函数引用，避免闭包陷阱
   const handleGenerateRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const saveHistory = (history: typeof generationHistory) => {
@@ -282,7 +310,17 @@ function App() {
   }
 
   // ── 优化2：历史全屏预览 & 批量删除 ────────────────────────────────────────
-  const [historyFullPreview, setHistoryFullPreview] = useState<GeneratedImage | null>(null)
+  const [historyFullPreview, setHistoryFullPreview] = useState<{
+    images: GeneratedImage[]
+    index: number
+  } | null>(null)
+  const openHistoryPreview = (images: GeneratedImage[], index = 0) => {
+    if (images.length === 0) return
+    setHistoryFullPreview({
+      images,
+      index: Math.min(Math.max(index, 0), images.length - 1),
+    })
+  }
   const [historyBatchMode, setHistoryBatchMode] = useState(false)
   const [historySelected, setHistorySelected] = useState<Set<string>>(new Set())
   const [historyLayout, setHistoryLayout] = useState<'list' | 'grid'>('list')
@@ -303,6 +341,30 @@ function App() {
 
   // ── 优化1：生成结果区当前预览图索引 ──────────────────────────────────────
   const [resultActiveIdx, setResultActiveIdx] = useState(0)
+
+  // results 更新时，自动指向最新（第一张）
+  useEffect(() => {
+    if (results.length > 0 && resultActiveIdx >= results.length) {
+      setResultActiveIdx(0)
+    }
+  }, [results, resultActiveIdx])
+
+  // 槽位关闭或新增后，保持聚焦槽位有效
+  useEffect(() => {
+    if (generationSlots.length === 0) {
+      if (activeSlotId) setActiveSlotId(null)
+      return
+    }
+    if (!activeSlotId || !generationSlots.some(slot => slot.id === activeSlotId)) {
+      const nextSlot = generationSlots[0]
+      setActiveSlotId(nextSlot.id)
+      if (nextSlot.results.length > 0) {
+        setResults(nextSlot.results)
+        setResultActiveIdx(0)
+        setSelectedImageIds(new Set())
+      }
+    }
+  }, [generationSlots, activeSlotId])
 
   const referenceImages = referenceSlots.filter((f): f is File => f != null)
 
@@ -341,6 +403,18 @@ function App() {
     setWidth(w)
     setHeight(h)
   }, [resolutionPreset, sizeTier, referenceSize])
+
+  useEffect(() => {
+    const runningCount = generationSlots.filter(slot => slot.status === 'running').length
+    setStatus(runningCount > 0 ? 'running' : 'idle')
+  }, [generationSlots])
+
+  useEffect(() => {
+    return () => {
+      slotTimersRef.current.forEach(timer => clearInterval(timer))
+      slotTimersRef.current.clear()
+    }
+  }, [])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PROMPT_HISTORY, JSON.stringify(promptHistory.slice(0, 50)))
@@ -434,15 +508,12 @@ function App() {
   }, [isDragging])
 
   const handleGenerate = async () => {
-    if (isGeneratingRef.current) return
-    isGeneratingRef.current = true
     try {
       if (!prompt.trim()) {
         const time = new Date().toLocaleTimeString('zh-CN')
         setLogEntries(prev => [...prev.slice(-99), { time, error: '请输入提示词再开始生成。' }])
         return
       }
-      // 检查是否已选模型
       if (!model.trim()) {
         const time = new Date().toLocaleTimeString('zh-CN')
         setLogEntries(prev => [
@@ -455,7 +526,6 @@ function App() {
         setError('未选择模型：请点击右侧「点击选择模型」，在设置中添加并勾选 Image 模型。')
         return
       }
-      // 检查是否已配置 Base URL
       const cfg = getApiConfig()
       if (!cfg.globalBaseUrl.trim() && cfg.imageModels.every(m => !m.baseUrl?.trim())) {
         const time = new Date().toLocaleTimeString('zh-CN')
@@ -465,293 +535,277 @@ function App() {
         ])
         return
       }
-      setError(null)
-      setStatus('running')
-      // 启动生成计时器
-      useGenerationStore.setState({ elapsedSeconds: 0 })
-      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current)
-      elapsedTimerRef.current = setInterval(() => {
-        const current = useGenerationStore.getState()
-        if (current.elapsedSeconds < 720) {
-          // 12分钟超时
-          useGenerationStore.setState({ elapsedSeconds: current.elapsedSeconds + 1 })
-        }
-      }, 1000)
-      // 每次新的生成开始，重置比例重试标记
-      const isRatioRetry = ratioMismatchRetried.current
-      ratioMismatchRetried.current = false
 
-      // ── 校验并修正尺寸参数 ──────────────────────────────────────────
-      const { width: finalWidth, height: finalHeight } = resolveGenerationSize({
+      setError(null)
+      setPreviewImage(null)
+      const parallel = Math.max(1, Math.min(4, parallelCount))
+      const requestBase = {
+        prompt,
+        negativePrompt: negativePrompt || undefined,
+        batchSize,
+        width,
+        height,
+        model,
         resolutionPreset,
         sizeTier,
-        referenceSize,
-      })
-
-      const reqInfo = {
-        prompt: prompt,
-        negativePrompt: negativePrompt || '',
-        model,
-        batchSize,
-        width: finalWidth,
-        height: finalHeight,
       }
+      const snapshot: GenerationRequestSnapshot = {
+        prompt,
+        negativePrompt: negativePrompt || '',
+        batchSize,
+        width,
+        height,
+        model,
+        resolutionPreset,
+        sizeTier,
+        referenceImages,
+      }
+
+      const slotIds = Array.from(
+        { length: parallel },
+        () => `${Date.now()}-${++slotSeqRef.current}`,
+      )
+      setActiveSlotId(prev => prev || slotIds[0] || null)
+      const slotCreatedAt = new Map<string, number>()
+      slotIds.forEach(id => slotCreatedAt.set(id, Date.now()))
+      setGenerationSlots(prev => [
+        ...slotIds.map(id => ({
+          id,
+          request: snapshot,
+          status: 'running' as const,
+          elapsedSeconds: 0,
+          progressPct: 0,
+          lastDuration: null,
+          results: [],
+          createdAt: Date.now(),
+        })),
+        ...prev,
+      ])
+      setResults([])
+      setResultActiveIdx(0)
+      setSelectedImageIds(new Set())
+
+      const reqInfo = { ...requestBase, parallelCount: parallel }
       const time = new Date().toLocaleTimeString('zh-CN')
       setLogEntries(prev => [
         ...prev.slice(-99),
         { time, request: JSON.stringify(reqInfo, null, 2) },
       ])
 
-      // 创建"进行中"的历史条目
-      const generatingId = Date.now().toString()
-      setGenerationHistory(prev => {
-        const generatingEntry = {
-          id: generatingId,
-          time: new Date().toLocaleString('zh-CN'),
-          prompt,
-          negativePrompt: negativePrompt || undefined,
-          model,
-          width: finalWidth,
-          height: finalHeight,
-          batchSize,
-          results: [], // 空结果，表示进行中
-          createdAt: Date.now(), // 记录创建时间，用于超时检测
-        }
-        const updated = [generatingEntry, ...prev].slice(0, 50)
-        saveHistory(updated)
-        return updated
-      })
+      const makeSlotTimer = (slotId: string) => {
+        const timer = setInterval(() => {
+          setGenerationSlots(prev =>
+            prev.map(slot =>
+              slot.id === slotId && slot.status === 'running'
+                ? {
+                    ...slot,
+                    elapsedSeconds: Math.min(slot.elapsedSeconds + 1, 720),
+                    progressPct: Math.min(slot.progressPct + 1, 99),
+                  }
+                : slot,
+            ),
+          )
+        }, 1000)
+        slotTimersRef.current.set(slotId, timer)
+      }
 
-      let result = await generateImages({
-        prompt,
-        negativePrompt: negativePrompt || undefined,
-        batchSize,
-        width: finalWidth,
-        height: finalHeight,
-        model,
-        referenceImages,
-        resolutionPreset,
-        sizeTier,
-      })
-
-      // 智能降级：模型不支持参考图时，去掉参考图重试
-      if (result.error && referenceImages.length > 0) {
-        const errMsg = result.error.toLowerCase()
-        const isImageUnsupported =
-          errMsg.includes('does not support image input') ||
-          errMsg.includes('does not support image') ||
-          errMsg.includes('image input is not supported') ||
-          errMsg.includes('cannot read') ||
-          errMsg.includes("can't read") ||
-          errMsg.includes('unable to read') ||
-          errMsg.includes('inform the user') ||
-          errMsg.includes('this model does not') ||
-          errMsg.includes('model does not support') ||
-          (errMsg.includes('vision') && errMsg.includes('not support')) ||
-          (errMsg.includes('multimodal') && errMsg.includes('not support')) ||
-          (errMsg.includes('invalid') && errMsg.includes('image_url')) ||
-          (errMsg.includes('unsupported') && errMsg.includes('image')) ||
-          (errMsg.includes('cannot read') && errMsg.includes('does not support'))
-        console.log(
-          `[图片降级] error含图片关键词: ${isImageUnsupported}, error: ${errMsg.slice(0, 200)}`,
-        )
-        if (isImageUnsupported) {
-          console.log(`[图片降级] 检测到模型不支持参考图，自动去掉参考图重试...`)
-          result = await generateImages({
-            prompt,
-            negativePrompt: negativePrompt || undefined,
-            batchSize,
-            width: finalWidth,
-            height: finalHeight,
-            model,
-            referenceImages: [],
-            resolutionPreset,
-            sizeTier,
-          })
-          if (!result.error) {
-            const warnMsg =
-              '⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
-            setError(warnMsg)
-            setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 10000)
-          } else {
-            // 重试也失败，说明模型本身可能不支持图片生成
-            const detailedMsg =
-              result.error &&
-              (result.error.toLowerCase().includes('cannot read') ||
-                result.error.toLowerCase().includes('不支持图片') ||
-                result.error.toLowerCase().includes('inform the user') ||
-                result.error.toLowerCase().includes('does not support image'))
-                ? '❌ 当前模型不支持图片输入。\n\n解决方案：\n1. 在设置中选择支持图片的模型\n2. 或去掉参考图后重试\n3. 查看模型文档确认是否支持多模态输入'
-                : result.error
-            result.error = detailedMsg
-          }
+      const clearSlotTimer = (slotId: string) => {
+        const timer = slotTimersRef.current.get(slotId)
+        if (timer) {
+          clearInterval(timer)
+          slotTimersRef.current.delete(slotId)
         }
       }
 
-      // 失败时：把完整上下文写入 logEntries（endpoint + requestBody 都能拿到）
-      if (result.error) {
-        const message = result.error
-        setLogEntries(prev => {
-          const last = prev[prev.length - 1]
-          return prev.slice(0, -1).concat([
-            {
-              ...last,
-              error: message,
-              endpoint: result.endpoint,
-              requestBody: result.requestBodyJson,
-              httpStatus: result.httpStatus,
-              httpErrorBody: result.httpErrorBody,
-            },
-          ])
-        })
-        setGenerationHistory(prev => {
-          try {
-            const updated = prev.map(entry => {
-              if (entry.id === generatingId) {
-                return { ...entry, results: [], error: message }
+      const updateSlot = (slotId: string, patch: Partial<GenerationSlot>) => {
+        setGenerationSlots(prev =>
+          prev.map(slot => (slot.id === slotId ? { ...slot, ...patch } : slot)),
+        )
+      }
+
+      const runSlot = async (slotId: string) => {
+        makeSlotTimer(slotId)
+        const isRatioRetry = ratioMismatchRetried.current
+        ratioMismatchRetried.current = false
+        const createdAt = slotCreatedAt.get(slotId) ?? Date.now()
+        try {
+          let result = await generateImages({ ...requestBase, referenceImages })
+          if (result.error && referenceImages.length > 0) {
+            const errMsg = result.error.toLowerCase()
+            const isImageUnsupported =
+              errMsg.includes('does not support image input') ||
+              errMsg.includes('does not support image') ||
+              errMsg.includes('image input is not supported') ||
+              errMsg.includes('cannot read') ||
+              errMsg.includes("can't read") ||
+              errMsg.includes('unable to read') ||
+              errMsg.includes('inform the user') ||
+              errMsg.includes('this model does not') ||
+              errMsg.includes('model does not support') ||
+              (errMsg.includes('vision') && errMsg.includes('not support')) ||
+              (errMsg.includes('multimodal') && errMsg.includes('not support')) ||
+              (errMsg.includes('invalid') && errMsg.includes('image_url')) ||
+              (errMsg.includes('unsupported') && errMsg.includes('image')) ||
+              (errMsg.includes('cannot read') && errMsg.includes('does not support'))
+            if (isImageUnsupported) {
+              result = await generateImages({ ...requestBase, referenceImages: [] })
+              if (!result.error) {
+                const warnMsg =
+                  '⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
+                setError(warnMsg)
+                setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 10000)
               }
-              return entry
+            }
+          }
+
+          if (result.error) {
+            const message = result.error
+            const duration = `${Math.floor((Date.now() - createdAt) / 60000)}分${Math.floor(((Date.now() - createdAt) % 60000) / 1000)}秒`
+            updateSlot(slotId, {
+              status: 'error',
+              error: message,
+              progressPct: 100,
+              lastDuration: duration,
             })
+            setLogEntries(prev => {
+              const last = prev[prev.length - 1]
+              return prev.slice(0, -1).concat([
+                {
+                  ...last,
+                  error: message,
+                  endpoint: result.endpoint,
+                  requestBody: result.requestBodyJson,
+                  httpStatus: result.httpStatus,
+                  httpErrorBody: result.httpErrorBody,
+                },
+              ])
+            })
+            setGenerationHistory(prev => {
+              const updated = [
+                {
+                  id: `${slotId}-${Date.now()}`,
+                  slotId,
+                  time: new Date().toLocaleString('zh-CN'),
+                  prompt,
+                  negativePrompt: negativePrompt || undefined,
+                  model,
+                  width,
+                  height,
+                  batchSize,
+                  results: [],
+                  error: message,
+                  createdAt: Date.now(),
+                },
+                ...prev,
+              ].slice(0, 50)
+              saveHistory(updated)
+              return updated
+            })
+            return
+          }
+
+          const images = result.images
+          const imagesWithThumbnails = await Promise.all(
+            images.map(async img => {
+              if (!img || !img.url) return img
+              if (img.url.startsWith('data:image/jpeg;base64,') && img.url.length < 2000) return img
+              try {
+                const thumbnail = await createThumbnail(img.url, 150)
+                return { ...img, url: thumbnail, originalUrl: img.url }
+              } catch (error) {
+                console.error('生成缩略图失败:', error)
+                return { ...img, url: img.url, originalUrl: img.url }
+              }
+            }),
+          )
+          const validImages = imagesWithThumbnails.filter(img => img && img.url)
+          setResults(prev => {
+            if (activeSlotId === slotId || (!activeSlotId && prev.length === 0)) return validImages
+            return prev.length > 0 ? prev : validImages
+          })
+          setResultActiveIdx(0)
+
+          if (validImages.length > 0) {
+            const firstUrl = validImages[0].url
+            if (firstUrl) {
+              const img = new Image()
+              img.crossOrigin = 'anonymous'
+              img.onload = () => {
+                const actualW = img.naturalWidth
+                const actualH = img.naturalHeight
+                if (actualW > 0 && actualH > 0) {
+                  const ratioCheck = checkImageRatio(actualW, actualH, width, height)
+                  if (ratioCheck.mismatch && !isRatioRetry) {
+                    setRatioMismatchDialog({
+                      actualRatio: ratioCheck.actualRatio,
+                      expectedRatio: ratioCheck.expectedRatio,
+                      onConfirm: () => {
+                        setRatioMismatchDialog(null)
+                        ratioMismatchRetried.current = true
+                        setTimeout(() => handleGenerateRef.current(), 100)
+                      },
+                    })
+                  }
+                }
+              }
+              img.onerror = () => {}
+              img.src = firstUrl
+            }
+          }
+          updateSlot(slotId, {
+            status: 'success',
+            results: validImages,
+            progressPct: 100,
+            lastDuration: `${Math.floor((Date.now() - createdAt) / 60000)}分${Math.floor(((Date.now() - createdAt) % 60000) / 1000)}秒`,
+          })
+          setLogEntries(prev => {
+            const last = prev[prev.length - 1]
+            return prev.slice(0, -1).concat([
+              {
+                ...last,
+                response: `成功，返回 ${images.length} 张图`,
+                endpoint: result.endpoint,
+                spec: result.spec,
+                requestBody: result.requestBodyJson,
+                responseBody: result.responseSummary,
+                httpStatus: result.httpStatus,
+                jsonValid: result.jsonValid,
+              },
+            ])
+          })
+          setGenerationHistory(prev => {
+            const updated = [
+              {
+                id: `${slotId}-${Date.now()}`,
+                slotId,
+                time: new Date().toLocaleString('zh-CN'),
+                prompt,
+                negativePrompt: negativePrompt || undefined,
+                model,
+                width,
+                height,
+                batchSize,
+                results: validImages,
+                createdAt: Date.now(),
+              },
+              ...prev,
+            ].slice(0, 50)
             saveHistory(updated)
             return updated
-          } catch {
-            return prev
-          }
-        })
-        setError(message)
-        setTimeout(() => setError(prev => (prev === message ? null : prev)), 15000)
-        if (elapsedTimerRef.current) {
-          clearInterval(elapsedTimerRef.current)
-          elapsedTimerRef.current = null
-        }
-        setStatus('idle')
-        if (prompt.trim()) {
-          setPromptHistory(prev =>
-            [prompt.trim(), ...prev.filter(p => p !== prompt.trim())].slice(0, 50),
-          )
-        }
-        return
-      }
-
-      const images = result.images
-      setResults(images)
-      setResultActiveIdx(0)
-      setPreviewImage(null)
-
-      // ── 分辨率校验 ─────────────────────────────────────────
-      if (images.length > 0) {
-        const firstUrl = images[0].url
-        if (firstUrl) {
-          const img = new Image()
-          img.crossOrigin = 'anonymous'
-          img.onload = () => {
-            const actualW = img.naturalWidth
-            const actualH = img.naturalHeight
-            if (actualW > 0 && actualH > 0) {
-              // 比例校验
-              const ratioCheck = checkImageRatio(actualW, actualH, finalWidth, finalHeight)
-              if (ratioCheck.mismatch && !isRatioRetry) {
-                setRatioMismatchDialog({
-                  actualRatio: ratioCheck.actualRatio,
-                  expectedRatio: ratioCheck.expectedRatio,
-                  onConfirm: () => {
-                    setRatioMismatchDialog(null)
-                    ratioMismatchRetried.current = true
-                    setTimeout(() => handleGenerateRef.current(), 100)
-                  },
-                })
-              }
-
-              // 分辨率降级警告
-              if (actualW < finalWidth * 0.6 || actualH < finalHeight * 0.6) {
-                const warnMsg = `⚠️ 分辨率降级：请求 ${finalWidth}×${finalHeight}，API 实际返回 ${actualW}×${actualH}。\n当前 API 可能不支持所选分辨率，请检查 API 的 imageSize 参数支持情况。`
-                setError(warnMsg)
-                setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 15000)
-              }
-            }
-          }
-          img.onerror = () => {}
-          img.src = firstUrl
-        }
-      }
-
-      // 保存到历史记录
-      // 为每张图片创建缩略图（限制尺寸以避免 localStorage 配额超出、避免大图卡顿）
-      // base64 / blob / 外部 URL 统一处理，全部生成 150px JPEG 缩略图
-      const imagesWithThumbnails = await Promise.all(
-        images.map(async img => {
-          if (!img || !img.url) return img
-
-          // 已经是 base64 小图无需再处理
-          if (img.url.startsWith('data:image/jpeg;base64,') && img.url.length < 2000) {
-            return img
-          }
-
-          try {
-            const thumbnail = await createThumbnail(img.url, 150)
-            return { ...img, url: thumbnail, originalUrl: img.url }
-          } catch (error) {
-            console.error('生成缩略图失败:', error)
-            return { ...img, url: img.url, originalUrl: img.url } // 失败时降级用原图
-          }
-        }),
-      )
-
-      // 过滤掉完全无效的图片
-      const validImages = imagesWithThumbnails.filter(img => img && img.url)
-
-      // 更新"进行中"的历史条目，而不是创建新条目
-      setGenerationHistory(prev => {
-        try {
-          const updated = prev.map(entry => {
-            if (entry.id === generatingId) {
-              // 更新正在生成的条目
-              return {
-                ...entry,
-                results: validImages,
-              }
-            }
-            return entry
           })
-          saveHistory(updated)
-          return updated
-        } catch (error) {
-          console.error('保存历史记录失败（可能超出配额）:', error)
-          return prev // 返回原状态，不影响应用使用
+        } finally {
+          clearSlotTimer(slotId)
         }
-      })
-      setLogEntries(prev => {
-        const last = prev[prev.length - 1]
-        return prev.slice(0, -1).concat([
-          {
-            ...last,
-            response: `成功，返回 ${images.length} 张图`,
-            endpoint: result.endpoint,
-            spec: result.spec,
-            requestBody: result.requestBodyJson,
-            responseBody: result.responseSummary,
-            httpStatus: result.httpStatus,
-            jsonValid: result.jsonValid,
-          },
-        ])
-      })
-      if (elapsedTimerRef.current) {
-        clearInterval(elapsedTimerRef.current)
-        elapsedTimerRef.current = null
       }
-      setStatus('idle')
+
+      await Promise.all(slotIds.map(id => runSlot(id)))
       if (prompt.trim()) {
         setPromptHistory(prev =>
           [prompt.trim(), ...prev.filter(p => p !== prompt.trim())].slice(0, 50),
         )
       }
     } finally {
-      isGeneratingRef.current = false
-      if (elapsedTimerRef.current) {
-        clearInterval(elapsedTimerRef.current)
-        elapsedTimerRef.current = null
-      }
-      setStatus('idle')
+      // 独立槽位并发运行，不再使用全局生成锁
     }
   }
 
@@ -1013,7 +1067,7 @@ function App() {
                 Liang007
               </span>
               <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.28em] text-slate-400/80">
-                Deep Space Creative Console
+                Deep Space Creative Console · v{__APP_VERSION__}
               </span>
             </div>
           </div>
@@ -2192,7 +2246,7 @@ function App() {
                                 useUiStore.getState().setSelectedLogEntry(errorLog)
                                 useUiStore.getState().setShowDetailedLog(true)
                               } else if (firstImg) {
-                                setHistoryFullPreview(firstImg)
+                                openHistoryPreview(entry.results, 0)
                               }
                             }
                           }}
@@ -2202,7 +2256,7 @@ function App() {
                               src={firstImg.url}
                               alt=""
                               className="aspect-square w-full cursor-zoom-in bg-white/[0.06] object-cover transition hover:opacity-90"
-                              onDoubleClick={() => setHistoryFullPreview(firstImg)}
+                              onDoubleClick={() => openHistoryPreview(entry.results, 0)}
                               title="双击查看大图"
                             />
                           ) : (
@@ -2350,7 +2404,7 @@ function App() {
                               useUiStore.getState().setSelectedLogEntry(errorLog)
                               useUiStore.getState().setShowDetailedLog(true)
                             } else if (firstImg) {
-                              setHistoryFullPreview(firstImg)
+                              openHistoryPreview(entry.results, 0)
                             }
                           }
                         }}
@@ -2390,7 +2444,7 @@ function App() {
                               src={firstImg.url}
                               alt=""
                               className="h-14 w-14 flex-shrink-0 cursor-zoom-in rounded-lg bg-white/[0.06] object-cover transition hover:ring-2 hover:ring-primary-400"
-                              onDoubleClick={() => setHistoryFullPreview(firstImg)}
+                              onDoubleClick={() => openHistoryPreview(entry.results, 0)}
                               title="双击查看大图"
                             />
                           ) : (
@@ -2516,6 +2570,45 @@ function App() {
             toggleSelectAll={toggleSelectAll}
             handleBatchDownload={handleBatchDownload}
             setPreviewImage={setPreviewImage}
+            generationSlots={generationSlots}
+            parallelCount={parallelCount}
+            slotViewMode={slotViewMode}
+            setSlotViewMode={setSlotViewMode}
+            activeSlotId={activeSlotId}
+            setActiveSlotId={setActiveSlotId}
+            onSelectSlot={slot => {
+              setActiveSlotId(slot.id)
+              setResults(slot.results)
+              setResultActiveIdx(0)
+              setSelectedImageIds(new Set())
+            }}
+            onCloseSlot={slotId => {
+              const timer = slotTimersRef.current.get(slotId)
+              if (timer) {
+                clearInterval(timer)
+                slotTimersRef.current.delete(slotId)
+              }
+              setGenerationSlots(prev => {
+                const next = prev.filter(slot => slot.id !== slotId)
+                if (activeSlotId === slotId) {
+                  const nextSlot = next[0]
+                  setActiveSlotId(nextSlot?.id ?? null)
+                  setResults(nextSlot?.results ?? [])
+                  setResultActiveIdx(0)
+                  setSelectedImageIds(new Set())
+                }
+                return next
+              })
+            }}
+            onRetrySlot={slot => {
+              setPrompt(slot.request.prompt)
+              setNegativePrompt(slot.request.negativePrompt)
+              setModel(slot.request.model)
+              setBatchSize(slot.request.batchSize)
+              setResolutionPreset(slot.request.resolutionPreset)
+              setSizeTier(slot.request.sizeTier)
+              setTimeout(() => handleGenerateRef.current(), 0)
+            }}
           />
         </div>
 
@@ -2946,7 +3039,12 @@ function App() {
 
         {/* ── 历史记录全屏预览弹窗（完整缩放/拖动/保存） ─────────────────────── */}
         <HistoryFullPreview
-          image={historyFullPreview}
+          image={historyFullPreview?.images[historyFullPreview.index] ?? null}
+          images={historyFullPreview?.images ?? []}
+          index={historyFullPreview?.index ?? 0}
+          onIndexChange={next =>
+            setHistoryFullPreview(prev => (prev ? { ...prev, index: next } : prev))
+          }
           onClose={() => setHistoryFullPreview(null)}
         />
 
@@ -3421,6 +3519,8 @@ function App() {
           setSizeTier={setSizeTier}
           batchSize={batchSize}
           setBatchSize={setBatchSize}
+          parallelCount={parallelCount}
+          setParallelCount={setParallelCount}
           width={width}
           height={height}
           status={status}

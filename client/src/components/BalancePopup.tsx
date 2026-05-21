@@ -8,27 +8,27 @@ const SITE_TYPE_LABELS: Record<string, string> = {
   'new-api': 'New API',
   'one-hub': 'One Hub',
   'done-hub': 'Done Hub',
-  'veloera': 'Veloera',
+  veloera: 'Veloera',
   'v-api': 'V-API',
   'vo-api': 'VoAPI',
   'super-api': 'Super-API',
-  'sub2api': 'Sub2API',
-  'aihubmix': 'AIHubMix',
-  'custom': '自定义',
+  sub2api: 'Sub2API',
+  aihubmix: 'AIHubMix',
+  custom: '自定义',
 }
 
 /** 错误码对应图标和建议 */
 const ERROR_HINTS: Record<BalanceErrorCode, { icon: string; hint: string }> = {
-  'no_base_url': { icon: '🔗', hint: '请先在设置中配置 API 地址' },
-  'auth_failed': { icon: '🔑', hint: 'API Key 无效或已过期，请检查令牌配置' },
-  'not_found': { icon: '🔍', hint: '端点不存在，请检查站点类型是否正确' },
-  'html_response': { icon: '📄', hint: '服务器返回了网页，可能是地址配置错误' },
-  'invalid_json': { icon: '📋', hint: '响应格式异常，请检查站点类型配置' },
-  'api_error': { icon: '⚠️', hint: '接口返回错误，请检查配置或稍后重试' },
-  'no_balance_field': { icon: '❓', hint: '无法解析余额字段，请检查站点类型' },
-  'network_error': { icon: '🌐', hint: '网络连接失败，请检查网络或代理设置' },
-  'timeout': { icon: '⏱️', hint: '请求超时，请检查网络连接' },
-  'http_error': { icon: '🚫', hint: '服务器错误，请稍后重试' },
+  no_base_url: { icon: '🔗', hint: '请先在设置中配置 API 地址' },
+  auth_failed: { icon: '🔑', hint: 'API Key 无效或已过期，请检查令牌配置' },
+  not_found: { icon: '🔍', hint: '端点不存在，请检查站点类型是否正确' },
+  html_response: { icon: '📄', hint: '服务器返回了网页，可能是地址配置错误' },
+  invalid_json: { icon: '📋', hint: '响应格式异常，请检查站点类型配置' },
+  api_error: { icon: '⚠️', hint: '接口返回错误，请检查配置或稍后重试' },
+  no_balance_field: { icon: '❓', hint: '无法解析余额字段，请检查站点类型' },
+  network_error: { icon: '🌐', hint: '网络连接失败，请检查网络或代理设置' },
+  timeout: { icon: '⏱️', hint: '请求超时，请检查网络连接' },
+  http_error: { icon: '🚫', hint: '服务器错误，请稍后重试' },
 }
 
 interface BalancePopupProps {
@@ -87,11 +87,21 @@ const BalancePopup: React.FC<BalancePopupProps> = ({
             <span className="flex items-center gap-1.5 text-xs font-bold text-white">
               {hasSome ? (
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               ) : (
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               )}
               令牌余额
@@ -108,8 +118,18 @@ const BalancePopup: React.FC<BalancePopupProps> = ({
                   onClick={onRefresh}
                   title="刷新"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
                   </svg>
                 </button>
               )}
@@ -123,9 +143,12 @@ const BalancePopup: React.FC<BalancePopupProps> = ({
           </div>
 
           {/* 内容区 */}
-          <div className="app-scrollbar overflow-y-auto p-3" style={{ maxHeight: 'calc(100vh - 150px)' }}>
+          <div
+            className="app-scrollbar overflow-y-auto p-3"
+            style={{ maxHeight: 'calc(100vh - 150px)' }}
+          >
             {/* 汇总行（多站点才显示） */}
-            {stations.length > 1 && (totalUSD !== undefined) && (
+            {stations.length > 1 && totalUSD !== undefined && (
               <div className="mb-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-2">
                 <div className="text-[10px] text-slate-400">合计余额</div>
                 <div className="mt-0.5 text-lg font-bold text-emerald-400">
@@ -140,9 +163,12 @@ const BalancePopup: React.FC<BalancePopupProps> = ({
             {/* 各站点卡片 */}
             <div className="space-y-2">
               {stations.map(station => {
-                const errorCode = 'errorCode' in station ? station.errorCode as BalanceErrorCode : undefined
+                const errorCode =
+                  'errorCode' in station ? (station.errorCode as BalanceErrorCode) : undefined
                 const errorHint = errorCode ? ERROR_HINTS[errorCode] : undefined
-                const siteTypeLabel = station.siteType ? SITE_TYPE_LABELS[station.siteType] || station.siteType : undefined
+                const siteTypeLabel = station.siteType
+                  ? SITE_TYPE_LABELS[station.siteType] || station.siteType
+                  : undefined
 
                 return (
                   <div
@@ -207,6 +233,84 @@ const BalancePopup: React.FC<BalancePopupProps> = ({
                                     ({station.exchangeRateSource})
                                   </span>
                                 )}
+                              </div>
+                            )}
+
+                            {/* 今日用量 */}
+                            {station.todayUsageUSD !== undefined && station.todayUsageUSD > 0 && (
+                              <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-amber-500/15 bg-amber-500/[0.06] px-2 py-1">
+                                <svg
+                                  className="h-3 w-3 flex-shrink-0 text-amber-400"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                                  />
+                                </svg>
+                                <span className="text-[10px] text-amber-400">
+                                  今日用量: ${station.todayUsageUSD.toFixed(4)}
+                                  {station.todayUsageCNY !== undefined && (
+                                    <span className="ml-1 text-slate-500">
+                                      ≈ ¥{station.todayUsageCNY.toFixed(2)}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 签到状态 */}
+                            {station.checkinStatus && station.checkinStatus !== 'unavailable' && (
+                              <div
+                                className={`mt-1.5 flex items-center gap-1.5 rounded-md border px-2 py-1 ${
+                                  station.checkinStatus === 'signed'
+                                    ? 'border-emerald-500/15 bg-emerald-500/[0.06]'
+                                    : 'border-blue-500/15 bg-blue-500/[0.06]'
+                                }`}
+                              >
+                                {station.checkinStatus === 'signed' ? (
+                                  <svg
+                                    className="h-3 w-3 flex-shrink-0 text-emerald-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                ) : (
+                                  <svg
+                                    className="h-3 w-3 flex-shrink-0 text-blue-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                )}
+                                <span
+                                  className={`text-[10px] ${station.checkinStatus === 'signed' ? 'text-emerald-400' : 'text-blue-400'}`}
+                                >
+                                  {station.checkinStatus === 'signed' ? '今日已签到' : '今日未签到'}
+                                  {station.checkinReward && (
+                                    <span className="ml-1 text-slate-500">
+                                      (奖励: {station.checkinReward})
+                                    </span>
+                                  )}
+                                </span>
                               </div>
                             )}
                           </div>

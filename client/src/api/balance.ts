@@ -66,7 +66,7 @@ export async function proxyFetch(
     headers?: Record<string, string>
     body?: string
     timeout?: number
-  } = {}
+  } = {},
 ): Promise<{
   ok: boolean
   status: number
@@ -156,33 +156,36 @@ export async function proxyFetch(
  * 借鉴 all-api-hub 的 SITE_TYPES，按中转站架构分类
  */
 export type SiteType =
-  | 'one-api'      // One API (songquanpeng/one-api)
-  | 'new-api'      // New API (QuantumNous/new-api)
-  | 'one-hub'      // One Hub (MartialBE/one-hub)
-  | 'done-hub'     // Done Hub (deanxv/done-hub)
-  | 'veloera'      // Veloera
-  | 'v-api'        // V-API
-  | 'vo-api'       // VoAPI
-  | 'super-api'    // Super-API
-  | 'sub2api'      // Sub2API (Wei-Shaw/sub2api)
-  | 'aihubmix'     // AIHubMix
-  | 'custom'       // 自定义（用户手动配置端点和解析）
+  | 'one-api' // One API (songquanpeng/one-api)
+  | 'new-api' // New API (QuantumNous/new-api)
+  | 'one-hub' // One Hub (MartialBE/one-hub)
+  | 'done-hub' // Done Hub (deanxv/done-hub)
+  | 'veloera' // Veloera
+  | 'v-api' // V-API
+  | 'vo-api' // VoAPI
+  | 'super-api' // Super-API
+  | 'sub2api' // Sub2API (Wei-Shaw/sub2api)
+  | 'aihubmix' // AIHubMix
+  | 'custom' // 自定义（用户手动配置端点和解析）
 
 /** 站点类型配置表 */
-const SITE_PRESETS: Record<string, {
-  label: string
-  /** 余额查询端点 */
-  path: string
-  method: 'GET' | 'POST'
-  /** 从 JSON 响应中提取 quota 的函数 */
-  extractQuota: (data: unknown) => number | null
-  /** quota 是否需要除以 QUOTA_CONVERSION_FACTOR 得到 USD */
-  quotaIsRaw: boolean
-  /** 站点状态端点（公开，无需认证） */
-  statusPath?: string
-  /** 从 /api/status 响应中提取汇率 */
-  extractExchangeRate?: (data: unknown) => number | null
-}> = {
+const SITE_PRESETS: Record<
+  string,
+  {
+    label: string
+    /** 余额查询端点 */
+    path: string
+    method: 'GET' | 'POST'
+    /** 从 JSON 响应中提取 quota 的函数 */
+    extractQuota: (data: unknown) => number | null
+    /** quota 是否需要除以 QUOTA_CONVERSION_FACTOR 得到 USD */
+    quotaIsRaw: boolean
+    /** 站点状态端点（公开，无需认证） */
+    statusPath?: string
+    /** 从 /api/status 响应中提取汇率 */
+    extractExchangeRate?: (data: unknown) => number | null
+  }
+> = {
   // ── One API 系列（兼容接口）────────────────────────────────────────────
   'one-api': {
     label: 'One API',
@@ -220,7 +223,7 @@ const SITE_PRESETS: Record<string, {
     statusPath: '/api/status',
     extractExchangeRate: extractNewApiExchangeRate,
   },
-  'veloera': {
+  veloera: {
     label: 'Veloera',
     path: '/api/user/self',
     method: 'GET',
@@ -257,11 +260,11 @@ const SITE_PRESETS: Record<string, {
     extractExchangeRate: extractNewApiExchangeRate,
   },
   // ── 独立架构 ─────────────────────────────────────────────────────────────
-  'sub2api': {
+  sub2api: {
     label: 'Sub2API',
     path: '/api/v1/auth/me',
     method: 'GET',
-    extractQuota: (data) => {
+    extractQuota: data => {
       // 响应: { code: 0, data: { balance: USD浮点数 } }
       const obj = data as Record<string, unknown>
       if (obj.data && typeof obj.data === 'object') {
@@ -269,12 +272,13 @@ const SITE_PRESETS: Record<string, {
         if (typeof inner.balance === 'number') return inner.balance
         if (typeof inner.balanceUsd === 'number') return inner.balanceUsd
       }
-      if (typeof (data as Record<string, unknown>).balance === 'number') return (data as Record<string, unknown>).balance as number
+      if (typeof (data as Record<string, unknown>).balance === 'number')
+        return (data as Record<string, unknown>).balance as number
       return null
     },
     quotaIsRaw: false, // 已经是 USD
   },
-  'aihubmix': {
+  aihubmix: {
     label: 'AIHubMix',
     path: '/api/user/self',
     method: 'GET',
@@ -312,13 +316,14 @@ function extractNewApiExchangeRate(data: unknown): number | null {
   const obj = data as Record<string, unknown>
 
   // 可能嵌套在 data 字段里
-  const inner = (obj.data && typeof obj.data === 'object')
-    ? obj.data as Record<string, unknown>
-    : obj
+  const inner =
+    obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : obj
 
   if (typeof inner.price === 'number' && inner.price > 0) return inner.price
-  if (typeof inner.stripe_unit_price === 'number' && inner.stripe_unit_price > 0) return inner.stripe_unit_price
-  if (typeof inner.PaymentUSDRate === 'number' && inner.PaymentUSDRate > 0) return inner.PaymentUSDRate
+  if (typeof inner.stripe_unit_price === 'number' && inner.stripe_unit_price > 0)
+    return inner.stripe_unit_price
+  if (typeof inner.PaymentUSDRate === 'number' && inner.PaymentUSDRate > 0)
+    return inner.PaymentUSDRate
 
   return null
 }
@@ -401,16 +406,16 @@ export type BalanceResult =
 
 /** 错误码分类（借鉴 all-api-hub 的错误分类） */
 export type BalanceErrorCode =
-  | 'no_base_url'         // 未配置地址
-  | 'http_error'          // HTTP 错误（含状态码）
-  | 'auth_failed'         // 认证失败 (401/403)
-  | 'not_found'           // 端点不存在 (404)
-  | 'html_response'       // 返回了 HTML
-  | 'invalid_json'        // JSON 解析失败
-  | 'api_error'           // API 层面返回失败
-  | 'no_balance_field'    // 找不到余额字段
-  | 'network_error'       // 网络连接失败
-  | 'timeout'             // 请求超时
+  | 'no_base_url' // 未配置地址
+  | 'http_error' // HTTP 错误（含状态码）
+  | 'auth_failed' // 认证失败 (401/403)
+  | 'not_found' // 端点不存在 (404)
+  | 'html_response' // 返回了 HTML
+  | 'invalid_json' // JSON 解析失败
+  | 'api_error' // API 层面返回失败
+  | 'no_balance_field' // 找不到余额字段
+  | 'network_error' // 网络连接失败
+  | 'timeout' // 请求超时
 
 /** 单个中转站的查询结果 */
 export type StationBalanceResult = {
@@ -424,6 +429,14 @@ export type StationBalanceResult = {
   isActive: boolean
   /** 检测到的站点类型 */
   siteType?: string
+  /** 今日已用额度 (USD) */
+  todayUsageUSD?: number
+  /** 今日已用额度 (CNY) */
+  todayUsageCNY?: number
+  /** 签到状态: 'signed' 已签 | 'unsigned' 未签 | 'unavailable' 不支持 */
+  checkinStatus?: 'signed' | 'unsigned' | 'unavailable'
+  /** 签到奖励描述 */
+  checkinReward?: string
 } & BalanceResult
 
 /** 多站点并发查询结果 */
@@ -468,9 +481,10 @@ export async function fetchSiteStatus(
     // 提取信息
     const result: SiteStatusInfo = { raw: data }
     const apiObj = data as Record<string, unknown>
-    const inner = (apiObj.data && typeof apiObj.data === 'object')
-      ? apiObj.data as Record<string, unknown>
-      : apiObj
+    const inner =
+      apiObj.data && typeof apiObj.data === 'object'
+        ? (apiObj.data as Record<string, unknown>)
+        : apiObj
 
     // 系统名称
     if (typeof inner.system_name === 'string') result.systemName = inner.system_name
@@ -546,7 +560,8 @@ function extractAndFormatBalance(
     balanceCNY,
     formatted,
     exchangeRate: rate,
-    exchangeRateSource: exchangeRateSource || (rate !== DEFAULT_EXCHANGE_RATE ? '站点配置' : '默认'),
+    exchangeRateSource:
+      exchangeRateSource || (rate !== DEFAULT_EXCHANGE_RATE ? '站点配置' : '默认'),
   }
 }
 
@@ -559,13 +574,29 @@ function extractQuotaGeneric(data: unknown): number | null {
   // 先检查 data 包装层
   if (obj.data && typeof obj.data === 'object') {
     const inner = obj.data as Record<string, unknown>
-    for (const key of ['quota', 'balance', 'credit', 'amount', 'remaining', 'total_balance', 'available_balance']) {
+    for (const key of [
+      'quota',
+      'balance',
+      'credit',
+      'amount',
+      'remaining',
+      'total_balance',
+      'available_balance',
+    ]) {
       if (typeof inner[key] === 'number') return inner[key]
     }
   }
 
   // 顶层字段
-  for (const key of ['quota', 'balance', 'credit', 'amount', 'remaining', 'total_balance', 'available_balance']) {
+  for (const key of [
+    'quota',
+    'balance',
+    'credit',
+    'amount',
+    'remaining',
+    'total_balance',
+    'available_balance',
+  ]) {
     if (typeof obj[key] === 'number') return obj[key]
   }
 
@@ -647,7 +678,11 @@ export async function fetchBalance(): Promise<BalanceResult> {
   const apiKey = active.apiKey || cfg.globalApiKey
 
   if (!baseUrl?.trim()) {
-    return { ok: false, message: '未配置 API 地址，请在设置中配置 Base URL 或添加余额查询配置', errorCode: 'no_base_url' }
+    return {
+      ok: false,
+      message: '未配置 API 地址，请在设置中配置 Base URL 或添加余额查询配置',
+      errorCode: 'no_base_url',
+    }
   }
 
   return fetchAutoDetect(baseUrl, apiKey)
@@ -668,6 +703,12 @@ export async function fetchAllBalances(): Promise<MultiBalanceResult> {
 
     if (activeConfig) {
       const res = await fetchWithConfig(activeConfig)
+      // 补充今日用量和签到状态
+      const extra = await fetchUsageAndCheckin(
+        activeConfig.baseUrl,
+        activeConfig.token || cfg.globalApiKey,
+        res,
+      )
       const result: StationBalanceResult = {
         configId: activeConfig.id,
         name: activeConfig.name,
@@ -675,6 +716,7 @@ export async function fetchAllBalances(): Promise<MultiBalanceResult> {
         isActive: true,
         siteType: activeConfig.siteType || 'one-api',
         ...res,
+        ...extra,
       }
       return {
         stations: [result],
@@ -707,6 +749,10 @@ export async function fetchAllBalances(): Promise<MultiBalanceResult> {
   }
 
   const res = await fetchAutoDetect(baseUrl, apiKey)
+
+  // 补充今日用量和签到状态
+  const extra = await fetchUsageAndCheckin(baseUrl, apiKey, res)
+
   return {
     stations: [
       {
@@ -716,6 +762,7 @@ export async function fetchAllBalances(): Promise<MultiBalanceResult> {
         isActive: true,
         siteType: res.ok && 'detectedSiteType' in res ? res.detectedSiteType : 'one-api',
         ...res,
+        ...extra,
       },
     ],
     ...(res.ok && res.balanceUSD !== undefined
@@ -792,7 +839,11 @@ async function fetchWithConfig(config: BalanceConfig): Promise<BalanceResult> {
 
     const data = result.data
     if (!data || typeof data === 'string') {
-      return { ok: false, message: `${config.name}: 响应不是有效的 JSON`, errorCode: 'invalid_json' }
+      return {
+        ok: false,
+        message: `${config.name}: 响应不是有效的 JSON`,
+        errorCode: 'invalid_json',
+      }
     }
 
     // 检查 API 层面是否返回错误
@@ -822,7 +873,10 @@ async function fetchWithConfig(config: BalanceConfig): Promise<BalanceResult> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     const isTimeout = msg.includes('timeout') || msg.includes('Timeout')
-    const isNetwork = msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch failed')
+    const isNetwork =
+      msg.includes('Failed to fetch') ||
+      msg.includes('NetworkError') ||
+      msg.includes('fetch failed')
 
     return {
       ok: false,
@@ -864,25 +918,29 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
 
     if (statusResult.ok && statusResult.data && typeof statusResult.data !== 'string') {
       const statusData = statusResult.data as Record<string, unknown>
-        const rate = extractNewApiExchangeRate(statusData)
-        if (rate !== null && rate > 0) {
-          dynamicRate = rate
-          rateSource = '站点配置'
-        }
+      const rate = extractNewApiExchangeRate(statusData)
+      if (rate !== null && rate > 0) {
+        dynamicRate = rate
+        rateSource = '站点配置'
+      }
 
-        // 尝试从 status 数据推断站点类型
-        const inner = (statusData.data && typeof statusData.data === 'object')
-          ? statusData.data as Record<string, unknown>
+      // 尝试从 status 数据推断站点类型
+      const inner =
+        statusData.data && typeof statusData.data === 'object'
+          ? (statusData.data as Record<string, unknown>)
           : statusData
 
-        // Veloera 特征: 有 app 前缀路径
-        if (typeof inner.system_name === 'string') {
-          const sysName = inner.system_name.toLowerCase()
-          if (sysName.includes('veloera')) detectedSiteType = 'veloera'
-          else if (sysName.includes('one-hub') || sysName.includes('onehub')) detectedSiteType = 'one-hub'
-          else if (sysName.includes('done-hub') || sysName.includes('donehub')) detectedSiteType = 'done-hub'
-          else if (sysName.includes('new-api') || sysName.includes('newapi')) detectedSiteType = 'new-api'
-        }
+      // Veloera 特征: 有 app 前缀路径
+      if (typeof inner.system_name === 'string') {
+        const sysName = inner.system_name.toLowerCase()
+        if (sysName.includes('veloera')) detectedSiteType = 'veloera'
+        else if (sysName.includes('one-hub') || sysName.includes('onehub'))
+          detectedSiteType = 'one-hub'
+        else if (sysName.includes('done-hub') || sysName.includes('donehub'))
+          detectedSiteType = 'done-hub'
+        else if (sysName.includes('new-api') || sysName.includes('newapi'))
+          detectedSiteType = 'new-api'
+      }
     }
   } catch {
     // status 端点不可用，继续
@@ -890,8 +948,8 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
 
   // ── Phase 2: 按优先级尝试余额查询端点 ───────────────────────────────────
   const probePaths = [
-    { path: '/api/user/self', siteType: detectedSiteType as SiteType },    // One API / New API / One Hub 等
-    { path: '/api/v1/auth/me', siteType: 'sub2api' as SiteType },          // Sub2API
+    { path: '/api/user/self', siteType: detectedSiteType as SiteType }, // One API / New API / One Hub 等
+    { path: '/api/v1/auth/me', siteType: 'sub2api' as SiteType }, // Sub2API
     { path: '/v1/dashboard/billing/credit_grants', siteType: 'one-api' as SiteType }, // OpenAI 官方（走通用提取）
   ]
 
@@ -905,7 +963,8 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
 
       // 401/403 说明端点存在但认证失败，返回明确的错误
       if (probeResult.status === 401 || probeResult.status === 403) {
-        const errBody = typeof probeResult.data === 'string' ? probeResult.data : JSON.stringify(probeResult.data)
+        const errBody =
+          typeof probeResult.data === 'string' ? probeResult.data : JSON.stringify(probeResult.data)
         const err = categorizeHttpError(probeResult.status, errBody, base)
         return { ok: false, ...err }
       }
@@ -936,4 +995,123 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
     message: '未找到余额查询接口，请在设置中手动添加余额查询配置',
     errorCode: 'not_found',
   }
+}
+
+// ── 今日用量 & 签到状态（从 Global Config 的 baseUrl+apiKey 自动查询）──────────
+
+type UsageCheckinResult = {
+  todayUsageUSD?: number
+  todayUsageCNY?: number
+  checkinStatus?: 'signed' | 'unsigned' | 'unavailable'
+  checkinReward?: string
+}
+
+/**
+ * 从 /api/user/self 返回的 data 里提取 used_quota（今日用量），
+ * 并尝试调用签到接口获取签到状态
+ */
+async function fetchUsageAndCheckin(
+  baseUrl: string,
+  apiKey: string,
+  balanceRes: BalanceResult,
+): Promise<UsageCheckinResult> {
+  const result: UsageCheckinResult = {}
+  const base = normalizeBaseUrl(baseUrl)
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
+  }
+
+  // ── 1. 今日用量：从余额查询的 data 里提取 used_quota ──────────────────────
+  if (balanceRes.ok && balanceRes.data) {
+    const obj = balanceRes.data as Record<string, unknown>
+    const inner =
+      obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : obj
+
+    // used_quota: 和 quota 一样是原始值（需要除以 QUOTA_CONVERSION_FACTOR）
+    const usedQuota =
+      typeof inner.used_quota === 'number'
+        ? inner.used_quota
+        : typeof inner.usedQuota === 'number'
+          ? inner.usedQuota
+          : typeof inner.used_amount === 'number'
+            ? inner.used_amount
+            : null
+
+    if (usedQuota !== null && usedQuota >= 0) {
+      result.todayUsageUSD = usedQuota / QUOTA_CONVERSION_FACTOR
+      // 使用余额结果中的汇率
+      const rate =
+        balanceRes.ok && 'exchangeRate' in balanceRes && balanceRes.exchangeRate
+          ? balanceRes.exchangeRate
+          : DEFAULT_EXCHANGE_RATE
+      result.todayUsageCNY = result.todayUsageUSD * rate
+    }
+  }
+
+  // ── 2. 签到状态：尝试多个常见签到端点 ──────────────────────────────────────
+  if (!base) return result
+
+  // 常见签到查询端点（GET 获取签到状态）
+  const checkinPaths = [
+    '/api/user/aff', // New API / One API 签到状态
+    '/api/user/checkin', // 通用签到接口
+    '/api/user/sign', // 部分中转站
+  ]
+
+  for (const path of checkinPaths) {
+    try {
+      const res = await proxyFetch(`${base}${path}`, {
+        method: 'GET',
+        headers,
+        timeout: 6000,
+      })
+
+      if (res.status === 404 || res.status === 405) continue
+      if (!res.ok) continue
+
+      const data = res.data as Record<string, unknown> | null
+      if (!data) continue
+
+      // 从 /api/user/aff 提取签到信息
+      const innerData =
+        data.data && typeof data.data === 'object' ? (data.data as Record<string, unknown>) : data
+
+      // 判断签到状态
+      // 部分站点返回 is_signed / signed / checked_in / has_sign_today
+      if (typeof innerData.is_signed === 'boolean') {
+        result.checkinStatus = innerData.is_signed ? 'signed' : 'unsigned'
+      } else if (typeof innerData.signed === 'boolean') {
+        result.checkinStatus = innerData.signed ? 'signed' : 'unsigned'
+      } else if (typeof innerData.checked_in === 'boolean') {
+        result.checkinStatus = innerData.checked_in ? 'signed' : 'unsigned'
+      } else if (typeof innerData.has_sign_today === 'boolean') {
+        result.checkinStatus = innerData.has_sign_today ? 'signed' : 'unsigned'
+      } else if (data.success === true || data.message === 'success') {
+        // 接口存在且返回成功，说明支持签到，但无法确定状态
+        result.checkinStatus = 'unsigned'
+      }
+
+      // 签到奖励（如果有）
+      const reward = innerData.reward || innerData.quota || innerData.sign_reward
+      if (typeof reward === 'number' && reward > 0) {
+        const rewardUSD = reward / QUOTA_CONVERSION_FACTOR
+        result.checkinReward = `$${rewardUSD.toFixed(4)}`
+      } else if (typeof reward === 'string') {
+        result.checkinReward = reward
+      }
+
+      // 找到有效端点就停止
+      if (result.checkinStatus) break
+    } catch {
+      continue
+    }
+  }
+
+  // 如果所有端点都 404，说明不支持签到
+  if (!result.checkinStatus) {
+    result.checkinStatus = 'unavailable'
+  }
+
+  return result
 }

@@ -20,6 +20,6 @@
     "signAndEditExecutable": false
   },
   "portable": {
-    "artifactName": "liang007生图.exe"
+    "artifactName": "liang007生图_v${version}.exe"
   }
 }

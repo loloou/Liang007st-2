@@ -28,6 +28,8 @@ interface Props {
   setSizeTier: (v: SizeTierId) => void
   batchSize: number
   setBatchSize: (v: number) => void
+  parallelCount: number
+  setParallelCount: (v: number) => void
   width: number
   height: number
   status: 'idle' | 'running'
@@ -76,6 +78,8 @@ const ControlPanel: React.FC<Props> = ({
   setSizeTier,
   batchSize,
   setBatchSize,
+  parallelCount,
+  setParallelCount,
   width,
   height,
   status,
@@ -463,6 +467,28 @@ const ControlPanel: React.FC<Props> = ({
           </div>
         </div>
 
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-2">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-medium text-slate-500">自定义并行生图</span>
+            <select
+              value={parallelCount}
+              onChange={e =>
+                setParallelCount(Math.max(1, Math.min(4, Number(e.target.value) || 1)))
+              }
+              className="w-28 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
+              title="并发数量，当前上限 4"
+            >
+              <option value={1}>1 路（默认）</option>
+              <option value={2}>2 路</option>
+              <option value={3}>3 路</option>
+              <option value={4}>4 路</option>
+            </select>
+          </div>
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            每次点击创建 {parallelCount} 个独立槽位。
+          </p>
+        </div>
+
         <div className="flex items-center justify-between text-[10px]">
           <span className="tabular-nums text-slate-500">
             {width} × {height} px
@@ -500,11 +526,10 @@ const ControlPanel: React.FC<Props> = ({
       <div className="glass-card workspace-panel panel-frame hud-panel future-glow flex flex-shrink-0 flex-col gap-1.5 rounded-xl px-3 py-2">
         <button
           onClick={handleGenerate}
-          disabled={status === 'running'}
-          aria-label={status === 'running' ? '正在生成中' : '开始生图'}
+          aria-label={status === 'running' ? '新增并行生图' : '开始生图'}
           className={`relative h-10 w-full overflow-hidden rounded-xl text-sm font-semibold text-white transition-all ${
             status === 'running'
-              ? 'generating-pulse cursor-not-allowed bg-primary-500/40 opacity-70'
+              ? 'generating-pulse bg-primary-500/70 hover:bg-primary-500/85'
               : 'gradient-button'
           }`}
         >
@@ -526,7 +551,7 @@ const ControlPanel: React.FC<Props> = ({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              <span>生图中...</span>
+              <span>新增并行生图</span>
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2">
