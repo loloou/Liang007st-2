@@ -78,6 +78,7 @@ type GenerationSlot = {
   results: GeneratedImage[]
   error?: string
   createdAt: number
+  hidden?: boolean
 }
 
 const RIGHT_PANEL_MIN = 280
@@ -351,12 +352,13 @@ function App() {
 
   // 槽位关闭或新增后，保持聚焦槽位有效
   useEffect(() => {
-    if (generationSlots.length === 0) {
+    const visibleSlots = generationSlots.filter(slot => !('hidden' in slot && slot.hidden))
+    if (visibleSlots.length === 0) {
       if (activeSlotId) setActiveSlotId(null)
       return
     }
-    if (!activeSlotId || !generationSlots.some(slot => slot.id === activeSlotId)) {
-      const nextSlot = generationSlots[0]
+    if (!activeSlotId || !visibleSlots.some(slot => slot.id === activeSlotId)) {
+      const nextSlot = visibleSlots[0]
       setActiveSlotId(nextSlot.id)
       if (nextSlot.results.length > 0) {
         setResults(nextSlot.results)
@@ -509,6 +511,14 @@ function App() {
 
   const handleGenerate = async () => {
     try {
+      if (parallelCount <= 1 && status === 'running') {
+        const time = new Date().toLocaleTimeString('zh-CN')
+        setLogEntries(prev => [
+          ...prev.slice(-99),
+          { time, error: '正在生图中，请等待当前任务完成。' },
+        ])
+        return
+      }
       if (!prompt.trim()) {
         const time = new Date().toLocaleTimeString('zh-CN')
         setLogEntries(prev => [...prev.slice(-99), { time, error: '请输入提示词再开始生成。' }])
@@ -565,22 +575,23 @@ function App() {
         { length: parallel },
         () => `${Date.now()}-${++slotSeqRef.current}`,
       )
-      setActiveSlotId(prev => prev || slotIds[0] || null)
+      if (parallel > 1) {
+        setActiveSlotId(prev => prev || slotIds[0] || null)
+      }
       const slotCreatedAt = new Map<string, number>()
       slotIds.forEach(id => slotCreatedAt.set(id, Date.now()))
-      setGenerationSlots(prev => [
-        ...slotIds.map(id => ({
-          id,
-          request: snapshot,
-          status: 'running' as const,
-          elapsedSeconds: 0,
-          progressPct: 0,
-          lastDuration: null,
-          results: [],
-          createdAt: Date.now(),
-        })),
-        ...prev,
-      ])
+      const newSlots = slotIds.map(id => ({
+        id,
+        request: snapshot,
+        status: 'running' as const,
+        elapsedSeconds: 0,
+        progressPct: 0,
+        lastDuration: null,
+        results: [],
+        createdAt: Date.now(),
+        hidden: parallel <= 1,
+      }))
+      setGenerationSlots(prev => (parallel > 1 ? [...newSlots, ...prev] : newSlots))
       setResults([])
       setResultActiveIdx(0)
       setSelectedImageIds(new Set())
@@ -720,6 +731,7 @@ function App() {
           )
           const validImages = imagesWithThumbnails.filter(img => img && img.url)
           setResults(prev => {
+            if (parallelCount <= 1) return validImages
             if (activeSlotId === slotId || (!activeSlotId && prev.length === 0)) return validImages
             return prev.length > 0 ? prev : validImages
           })
@@ -1043,15 +1055,15 @@ function App() {
 
   return (
     <div
-      className={`app-shell-bg flex h-screen flex-col overflow-hidden ${themeConfig.textColor}`}
+      className={`app-shell-bg dragon-shell flex h-screen flex-col overflow-hidden ${themeConfig.textColor}`}
       data-theme={themeConfig.id}
     >
-      <div className="shell-orb shell-orb-left" />
-      <div className="shell-orb shell-orb-right" />
-      <div className="shell-orb shell-orb-bottom" />
+      <div className="dragon-orb dragon-orb-top" />
+      <div className="dragon-orb dragon-orb-left" />
+      <div className="dragon-orb dragon-orb-right" />
       {/* 顶部工具栏（Electron 无边框模式下兼作标题栏，支持拖拽） */}
       <header
-        className="glass-header panel-frame hud-panel scanlines z-30 mx-2 mt-2 flex h-9 flex-shrink-0 items-center justify-between rounded-xl px-3"
+        className="glass-header panel-frame hud-panel scanlines z-30 mx-2 mt-2 flex h-10 flex-shrink-0 items-center justify-between rounded-xl px-3"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div
@@ -1059,15 +1071,15 @@ function App() {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <div className="flex items-center gap-2.5">
-            <span className="future-glow hud-panel flex h-7 w-7 items-center justify-center rounded-xl bg-primary-500/15 text-[10px] font-black text-primary-200 ring-1 ring-primary-300/25">
+            <span className="future-glow hud-panel flex h-7 w-7 items-center justify-center rounded-xl bg-amber-500/15 text-[10px] font-black text-amber-100 ring-1 ring-amber-200/30">
               L7
             </span>
             <div className="flex flex-col leading-none">
-              <span className="text-gradient select-none text-sm font-black tracking-tight">
+              <span className="text-gradient-gold select-none text-sm font-black tracking-tight">
                 Liang007
               </span>
-              <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.28em] text-slate-400/80">
-                Deep Space Creative Console · v{__APP_VERSION__}
+              <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.28em] text-amber-100/70">
+                天地龙鳞 · v{__APP_VERSION__}
               </span>
             </div>
           </div>
@@ -1247,8 +1259,8 @@ function App() {
                   <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
                     Theme
                   </div>
-                  <div className="mt-0.5 text-[11px] font-medium text-slate-200">
-                    星域系列 / Starfield Series
+                  <div className="mt-0.5 text-[11px] font-medium text-amber-100">
+                    龙鳞帝铸 / Dragon Scale Console
                   </div>
                 </div>
                 <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] text-slate-400">
@@ -1260,7 +1272,7 @@ function App() {
               {THEMES.map((t, index) => {
                 const isActive = theme === t.id
                 const code = String(index + 1).padStart(2, '0')
-                const shortCode = t.name.replace(/^星域-\d+\s*/, '')
+                const shortCode = t.id === 'dragon' ? t.name : t.name.replace(/^星域-\d+\s*/, '')
                 return (
                   <button
                     key={t.id}
@@ -1296,7 +1308,7 @@ function App() {
                     <div className="min-w-0 flex-1 py-1.5 pr-2">
                       <div className="flex items-center gap-1">
                         <span
-                          className={`text-[11px] ${isActive ? 'font-semibold text-primary-400' : 'text-slate-300'}`}
+                          className={`text-[11px] ${isActive ? 'font-semibold text-amber-300' : 'text-slate-300'}`}
                         >
                           {shortCode}
                         </span>
@@ -1312,7 +1324,7 @@ function App() {
                     </div>
                     {isActive && (
                       <svg
-                        className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary-400"
+                        className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-300"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -2570,7 +2582,7 @@ function App() {
             toggleSelectAll={toggleSelectAll}
             handleBatchDownload={handleBatchDownload}
             setPreviewImage={setPreviewImage}
-            generationSlots={generationSlots}
+            generationSlots={generationSlots.filter(slot => !('hidden' in slot && slot.hidden))}
             parallelCount={parallelCount}
             slotViewMode={slotViewMode}
             setSlotViewMode={setSlotViewMode}
@@ -3524,6 +3536,7 @@ function App() {
           width={width}
           height={height}
           status={status}
+          isRegularGenerating={parallelCount <= 1 && status === 'running'}
           handleGenerate={handleGenerate}
           onOpenModelPicker={() => {
             const cfg = getApiConfig()

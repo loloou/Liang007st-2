@@ -224,7 +224,7 @@ const ResultPanel: React.FC<Props> = ({
           {results.length > 0 && lastDuration && (
             <span className="badge-primary/60 font-mono text-slate-500">用时 {lastDuration}</span>
           )}
-          {generationSlots.length > 0 && (
+          {generationSlots.length > 0 && parallelCount > 1 && (
             <span className="badge-primary/60 font-mono text-slate-400">
               并行 {parallelCount} · 运行{' '}
               {generationSlots.filter(slot => slot.status === 'running').length} · 槽位{' '}
@@ -247,7 +247,7 @@ const ResultPanel: React.FC<Props> = ({
           )}
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          {generationSlots.length > 0 && setSlotViewMode && (
+          {generationSlots.length > 0 && parallelCount > 1 && setSlotViewMode && (
             <div className="flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
               <button
                 className={`px-2 py-1 text-[11px] transition ${slotViewMode === 'focus' ? 'bg-primary-500/20 text-primary-300' : 'text-slate-400 hover:bg-white/[0.06]'}`}
@@ -424,7 +424,14 @@ const ResultPanel: React.FC<Props> = ({
             <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-black/10">
               {activeSlot?.status === 'running' ? (
                 <div className="flex w-full max-w-xs flex-col items-center gap-3 px-6">
-                  <div className="h-12 w-12 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                  <div className="flex h-20 w-20 flex-col items-center justify-center rounded-2xl border border-amber-400/25 bg-black/35 shadow-2xl backdrop-blur-md">
+                    <div className="h-7 w-7 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                    <span className="mt-2 font-mono text-xs font-semibold text-amber-200">
+                      {Math.floor(activeSlot.elapsedSeconds / 60) > 0
+                        ? `${Math.floor(activeSlot.elapsedSeconds / 60)}分${activeSlot.elapsedSeconds % 60}秒`
+                        : `${activeSlot.elapsedSeconds}秒`}
+                    </span>
+                  </div>
                   <div className="w-full">
                     <div className="h-2 overflow-hidden rounded-full bg-white/10">
                       <div
@@ -626,6 +633,15 @@ const ResultPanel: React.FC<Props> = ({
                   <div className="hidden h-full w-full items-center justify-center text-slate-400">
                     图片加载失败
                   </div>
+
+                  {status === 'running' && (
+                    <div className="absolute right-3 top-3 z-30 rounded-xl border border-amber-400/25 bg-black/55 px-3 py-1.5 font-mono text-xs font-semibold text-amber-200 shadow-xl backdrop-blur-md">
+                      生图时间{' '}
+                      {Math.floor(elapsedSeconds / 60) > 0
+                        ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
+                        : `${elapsedSeconds}秒`}
+                    </div>
+                  )}
 
                   {/* 生成中遮罩 */}
                   {status === 'running' && (
