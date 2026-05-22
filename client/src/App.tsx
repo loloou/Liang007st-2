@@ -1067,7 +1067,7 @@ function App() {
       <div className="dragon-orb dragon-orb-right" />
       {/* 顶部工具栏（Electron 无边框模式下兼作标题栏，支持拖拽） */}
       <header
-        className="glass-header panel-frame hud-panel scanlines z-30 mx-2 mt-2 flex h-10 flex-shrink-0 items-center justify-between rounded-xl px-3"
+        className="glass-header scanlines z-30 mx-2 mt-2 flex h-10 flex-shrink-0 items-center justify-between rounded-xl px-3"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div
@@ -1075,7 +1075,7 @@ function App() {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <div className="flex items-center gap-2.5">
-            <span className="future-glow hud-panel flex h-7 w-7 items-center justify-center rounded-xl bg-amber-500/15 text-[10px] font-black text-amber-100 ring-1 ring-amber-200/30">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-500/15 text-[10px] font-black text-amber-100 ring-1 ring-amber-200/30">
               L7
             </span>
             <div className="flex flex-col leading-none">
@@ -2081,7 +2081,7 @@ function App() {
       >
         {/* 左侧历史栏 - 靠左停靠，展开时与生成结果并排 */}
         <div
-          className={`glass-card panel-frame hud-panel workspace-panel future-glow flex flex-shrink-0 flex-col overflow-hidden transition-all duration-300 ${
+          className={`glass-card workspace-panel flex flex-shrink-0 flex-col overflow-hidden transition-all duration-300 ${
             historyPanelOpen ? 'w-[300px] opacity-100' : 'pointer-events-none w-0 opacity-0'
           }`}
           style={{ borderRadius: '1rem' }}
@@ -2548,7 +2548,7 @@ function App() {
         </div>
 
         {/* 生成结果区 */}
-        <div className="panel-frame hud-panel future-glow flex-1 overflow-hidden rounded-xl p-1">
+        <div className="flex-1 overflow-hidden">
           <ResultPanel
             results={results}
             setResults={setResults}

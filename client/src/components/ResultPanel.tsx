@@ -214,7 +214,7 @@ const ResultPanel: React.FC<Props> = ({
 
   return (
     <section
-      className={`glass-card workspace-panel panel-frame hud-panel future-glow flex min-w-[200px] flex-1 flex-col overflow-hidden ${status === 'running' ? 'generating-pulse' : ''}`}
+      className={`glass-card workspace-panel flex min-w-[200px] flex-1 flex-col overflow-hidden ${status === 'running' ? 'generating-pulse' : ''}`}
     >
       {/* 标题栏 */}
       <div className="panel-titlebar hud-line relative flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
