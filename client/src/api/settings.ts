@@ -36,6 +36,10 @@ export type ImageModel = {
   baseUrl?: string
   /** 接口规范，不填则继承全局，默认 openai */
   apiSpec?: ApiSpec
+  /** 是否显式启用 /v1/images/edits 局部重绘能力 */
+  supportsInpaint?: boolean
+  /** 自定义局部重绘 endpoint，留空时由 baseUrl 自动补全 /v1/images/edits */
+  inpaintEndpoint?: string
 }
 
 /** API 供应商 */
@@ -57,7 +61,18 @@ export type BalanceConfig = {
   /** 服务商名称 */
   name: string
   /** 站点类型（决定查询策略和余额解析方式） */
-  siteType: 'one-api' | 'new-api' | 'one-hub' | 'done-hub' | 'veloera' | 'v-api' | 'vo-api' | 'super-api' | 'sub2api' | 'aihubmix' | 'custom'
+  siteType:
+    | 'one-api'
+    | 'new-api'
+    | 'one-hub'
+    | 'done-hub'
+    | 'veloera'
+    | 'v-api'
+    | 'vo-api'
+    | 'super-api'
+    | 'sub2api'
+    | 'aihubmix'
+    | 'custom'
   /** 查询地址（Base URL，如 https://api.openai.com） */
   baseUrl: string
   /** 端点路径（如 /api/user/self） */
@@ -224,17 +239,17 @@ function migrateFromLegacy(): ApiConfig | null {
       apiValidateJson: typeof parsed.apiValidateJson === 'boolean' ? parsed.apiValidateJson : true,
       apiVendors: [],
       activeVendorId: '',
-       balanceConfigs: [
-         {
-           id: genId(),
-           name: '通用 API 中转站',
-           siteType: 'one-api' as const,
-           baseUrl: baseUrl,
-           path: '/api/user/self',
-           method: 'GET',
-           headers: { 'Content-Type': 'application/json' },
-           remark: '从旧版配置迁移',
-           isDefault: true,
+      balanceConfigs: [
+        {
+          id: genId(),
+          name: '通用 API 中转站',
+          siteType: 'one-api' as const,
+          baseUrl: baseUrl,
+          path: '/api/user/self',
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          remark: '从旧版配置迁移',
+          isDefault: true,
         },
       ],
       activeBalanceConfigId: '',
@@ -265,7 +280,9 @@ export function getApiConfig(): ApiConfig {
         apiVendors: Array.isArray(parsed.apiVendors) ? parsed.apiVendors : [],
         activeVendorId: (parsed.activeVendorId as string | undefined) ?? '',
         balanceConfigs: Array.isArray(parsed.balanceConfigs)
-          ? (parsed.balanceConfigs as (BalanceConfig & { endpoint?: string; authType?: string })[]).map(c => {
+          ? (
+              parsed.balanceConfigs as (BalanceConfig & { endpoint?: string; authType?: string })[]
+            ).map(c => {
               // 迁移旧版 endpoint 字段为 baseUrl + path
               if ((c as { endpoint?: string }).endpoint && !c.baseUrl) {
                 try {

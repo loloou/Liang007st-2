@@ -9,6 +9,55 @@ const rootPkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), '
 }
 const APP_VERSION = rootPkg.version
 
+const ALLOWED_PROXY_METHODS = new Set(['GET', 'POST'])
+const ALLOWED_PROXY_HEADERS = new Set(['accept', 'authorization', 'content-type'])
+const MAX_PROXY_TIMEOUT_MS = 30_000
+
+function isBlockedProxyHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
+    host.includes(':')
+  )
+}
+
+function normalizeProxyUrl(rawUrl: string): string {
+  const parsed = new URL(rawUrl)
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('仅支持 HTTP/HTTPS URL')
+  }
+  if (isBlockedProxyHostname(parsed.hostname)) {
+    throw new Error('代理请求不允许访问本机、局域网名称或裸 IP 地址')
+  }
+  return parsed.toString()
+}
+
+function sanitizeProxyHeaders(headers: Record<string, string> = {}): Record<string, string> {
+  const safeHeaders: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    if (ALLOWED_PROXY_HEADERS.has(key.toLowerCase()) && typeof value === 'string') {
+      safeHeaders[key] = value
+    }
+  }
+  return safeHeaders
+}
+
+function normalizeProxyMethod(method?: string): string {
+  const normalized = String(method || 'GET').toUpperCase()
+  return ALLOWED_PROXY_METHODS.has(normalized) ? normalized : 'GET'
+}
+
+function normalizeProxyTimeout(timeout?: number): number {
+  const value = Number(timeout || 15_000)
+  return Math.max(1_000, Math.min(Number.isFinite(value) ? value : 15_000, MAX_PROXY_TIMEOUT_MS))
+}
+
 function devFetchProxy(): Plugin {
   return {
     name: 'liang007-dev-fetch-proxy',
@@ -34,20 +83,17 @@ function devFetchProxy(): Plugin {
             timeout?: number
           }
 
-          if (!payload.url || !/^https?:\/\//i.test(payload.url)) {
-            res.statusCode = 400
-            res.end(JSON.stringify({ ok: false, error: '仅支持 HTTP/HTTPS URL' }))
-            return
-          }
+          const safeUrl = normalizeProxyUrl(payload.url || '')
+          const method = normalizeProxyMethod(payload.method)
+          const timeout = normalizeProxyTimeout(payload.timeout)
 
           const controller = new AbortController()
-          const timer = setTimeout(() => controller.abort(), payload.timeout || 15000)
-          const method = payload.method || 'GET'
+          const timer = setTimeout(() => controller.abort(), timeout)
 
           try {
-            const response = await fetch(payload.url, {
+            const response = await fetch(safeUrl, {
               method,
-              headers: payload.headers || {},
+              headers: sanitizeProxyHeaders(payload.headers),
               body: method !== 'GET' ? payload.body : undefined,
               signal: controller.signal,
             })
@@ -103,7 +149,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      host: '0.0.0.0',
+      host: '127.0.0.1',
+      strictPort: true,
     },
     base: './',
     build: {

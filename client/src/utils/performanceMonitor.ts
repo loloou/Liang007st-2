@@ -4,11 +4,11 @@
  */
 
 export interface RealPerformanceData {
-  fps: number;
-  renderTime: number;
-  memory: number | null;  // Chrome 特有 API，可能返回 null
-  networkLatency: number | null;
-  timestamp: number;
+  fps: number
+  renderTime: number
+  memory: number | null // Chrome 特有 API，可能返回 null
+  networkLatency: number | null
+  timestamp: number
 }
 
 /**
@@ -23,17 +23,17 @@ export function getRealPerformanceData(): RealPerformanceData {
     memory: null,
     networkLatency: null,
     timestamp: Date.now(),
-  };
+  }
 
   // 获取内存信息（Chrome 特有 API）
   // @ts-expect-error - performance.memory 是非标准 API
-  const memory = performance.memory;
+  const memory = performance.memory
   if (memory) {
     // 使用百分比表示内存使用率（used / total）
-    data.memory = Math.round((memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100);
+    data.memory = Math.round((memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100)
   }
 
-  return data;
+  return data
 }
 
 /**
@@ -41,44 +41,44 @@ export function getRealPerformanceData(): RealPerformanceData {
  * 使用滚动平均来平滑 FPS 显示
  */
 export class FPSCalculator {
-  private frameTimes: number[] = [];
-  private lastFrameTime: number = 0;
-  private animationFrameId: number | null = null;
-  private onUpdate: ((fps: number) => void) | null = null;
-  private readonly maxSamples = 60;  // 采样数量
+  private frameTimes: number[] = []
+  private lastFrameTime: number = 0
+  private animationFrameId: number | null = null
+  private onUpdate: ((fps: number) => void) | null = null
+  private readonly maxSamples = 60 // 采样数量
 
   start(onUpdate: (fps: number) => void) {
-    this.onUpdate = onUpdate;
-    this.lastFrameTime = performance.now();
-    this.tick();
+    this.onUpdate = onUpdate
+    this.lastFrameTime = performance.now()
+    this.tick()
   }
 
   stop() {
     if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
+      cancelAnimationFrame(this.animationFrameId)
+      this.animationFrameId = null
     }
-    this.onUpdate = null;
-    this.frameTimes = [];
+    this.onUpdate = null
+    this.frameTimes = []
   }
 
   private tick = () => {
-    const now = performance.now();
-    const delta = now - this.lastFrameTime;
-    this.lastFrameTime = now;
+    const now = performance.now()
+    const delta = now - this.lastFrameTime
+    this.lastFrameTime = now
 
-    this.frameTimes.push(delta);
+    this.frameTimes.push(delta)
     if (this.frameTimes.length > this.maxSamples) {
-      this.frameTimes.shift();
+      this.frameTimes.shift()
     }
 
     // 节流：每 3 帧更新一次，减少 re-render 频率
     if (this.frameTimes.length % 3 === 0 && this.frameTimes.length > 0) {
-      const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-      const fps = Math.round(1000 / avgFrameTime);
-      this.onUpdate?.(fps);
+      const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length
+      const fps = Math.round(1000 / avgFrameTime)
+      this.onUpdate?.(fps)
     }
 
-    this.animationFrameId = requestAnimationFrame(this.tick);
-  };
+    this.animationFrameId = requestAnimationFrame(this.tick)
+  }
 }

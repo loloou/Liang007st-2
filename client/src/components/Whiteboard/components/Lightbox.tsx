@@ -1,42 +1,59 @@
-import React, { useCallback, useEffect } from "react";
-import { useCanvasStore } from "../store/useCanvasStore";
-import { safeUrl } from "../../../utils/safeUrl";
+import React, { useCallback, useEffect } from 'react'
+import { useCanvasStore } from '../store/useCanvasStore'
+import { safeUrl } from '../../../utils/safeUrl'
 
 const Lightbox: React.FC = () => {
-  const url = useCanvasStore((s) => s.lightboxUrl);
-  const setUrl = useCanvasStore((s) => s.setLightboxUrl);
+  const url = useCanvasStore(s => s.lightboxUrl)
+  const setUrl = useCanvasStore(s => s.setLightboxUrl)
 
-  const close = useCallback(() => setUrl(null), [setUrl]);
+  const close = useCallback(() => setUrl(null), [setUrl])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && url) close(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [url, close]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && url) close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [url, close])
 
-  if (!url) return null;
+  if (!url) return null
 
   return (
     <div
-      className="fixed inset-0 z-[10001] bg-black/95 backdrop-blur-md flex items-center justify-center p-8 cursor-zoom-out"
+      className="fixed inset-0 z-[10001] flex cursor-zoom-out items-center justify-center bg-black/95 p-8 backdrop-blur-md"
       onClick={close}
     >
-      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-         <img src={safeUrl(url)} alt="" className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" draggable={false} />
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-          <a href={url} download={`canvas_${Date.now()}.png`} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition backdrop-blur-sm">
+      <div className="relative max-h-[90vh] max-w-[90vw]" onClick={e => e.stopPropagation()}>
+        <img
+          src={safeUrl(url)}
+          alt=""
+          className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
+          draggable={false}
+        />
+        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
+          <a
+            href={url}
+            download={`canvas_${Date.now()}.png`}
+            className="rounded-xl bg-white/10 px-4 py-2 text-xs text-white backdrop-blur-sm transition hover:bg-white/20"
+          >
             💾 下载
           </a>
-          <button onClick={() => navigator.clipboard.writeText(url).catch(() => {})} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition backdrop-blur-sm">
+          <button
+            onClick={() => navigator.clipboard.writeText(url).catch(() => {})}
+            className="rounded-xl bg-white/10 px-4 py-2 text-xs text-white backdrop-blur-sm transition hover:bg-white/20"
+          >
             📋 复制 URL
           </button>
-          <button onClick={close} className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition backdrop-blur-sm">
+          <button
+            onClick={close}
+            className="rounded-xl bg-white/10 px-4 py-2 text-xs text-white backdrop-blur-sm transition hover:bg-white/20"
+          >
             ✕ 关闭
           </button>
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default Lightbox;
+export default Lightbox

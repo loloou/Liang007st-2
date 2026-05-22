@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { GeneratedImage } from '../api/imageClient'
 import { downloadImage } from '../utils/download'
 
@@ -10,9 +10,14 @@ interface ExtendedImage extends GeneratedImage {
 interface ImagePreviewModalProps {
   image: GeneratedImage | null
   onClose: () => void
+  onOpenInpaint?: (img: GeneratedImage) => void
 }
 
-export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalProps) {
+export default function ImagePreviewModal({
+  image,
+  onClose,
+  onOpenInpaint,
+}: ImagePreviewModalProps) {
   // 所有 hooks 必须放在 early return 之前，顺序固定
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -20,6 +25,9 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
   const [isHdLoading, setIsHdLoading] = useState(false) // 原图加载中
   // 拖拽时强制重渲染的计数器（必须在 useState 第3位，不能乱动）
   const [, forceUpdate] = useState(0)
+  // 右键菜单
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
+  const ctxRef = useRef<HTMLDivElement>(null)
   // 图片 URL：用 ref 缓存初始值，state 管理当前显示（支持降级）
   const imgInitUrl = useRef<string>('')
   const [imageUrl, setImageUrl] = useState<string>('')
@@ -49,6 +57,24 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  // 右键菜单：点击外部关闭
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = (e: MouseEvent) => {
+      if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtxMenu(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [ctxMenu])
+
+  const clampMenuPosition = useCallback((x: number, y: number, width = 176, height = 200) => {
+    const margin = 8
+    return {
+      x: Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - width - margin)),
+      y: Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - height - margin)),
+    }
+  }, [])
 
   // early return 必须在所有 hooks 之后
   if (!image) return null
@@ -90,6 +116,86 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
       console.error('下载失败:', e)
     } finally {
       setDownloadStatus('idle')
+    }
+  }
+
+  const getOriginalUrl = () => extendedImage.originalUrl || image.url
+
+  const handleImageContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const pos = clampMenuPosition(e.clientX, e.clientY)
+    setCtxMenu(pos)
+  }
+
+  const handleCopyImage = async () => {
+    setCtxMenu(null)
+    const url = getOriginalUrl()
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+    } catch {
+      try {
+        const res = await fetch(url)
+        const blob = await res.blob()
+        const pngBlob =
+          blob.type === 'image/png'
+            ? blob
+            : new Blob([await blob.arrayBuffer()], { type: 'image/png' })
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
+      } catch (err) {
+        console.error('复制图片失败:', err)
+      }
+    }
+  }
+
+  const handleSaveAs = async () => {
+    setCtxMenu(null)
+    await downloadImage(getOriginalUrl())
+  }
+
+  const handleCtxInpaint = () => {
+    setCtxMenu(null)
+    onOpenInpaint?.(image)
+  }
+
+  const handleSendToEagle = async () => {
+    setCtxMenu(null)
+    const url = getOriginalUrl()
+    try {
+      const body = {
+        url,
+        name: `Liang007_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+        website: 'Liang007 Studio',
+      }
+      const res = await fetch('http://localhost:41595/api/item/addFromURL', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(`Eagle API: ${res.status}`)
+    } catch {
+      try {
+        const imgRes = await fetch(url)
+        const blob = await imgRes.blob()
+        const reader = new FileReader()
+        const base64 = await new Promise<string>(resolve => {
+          reader.onloadend = () => resolve((reader.result as string).split(',')[1])
+          reader.readAsDataURL(blob)
+        })
+        await fetch('http://localhost:41595/api/item/addFromBase64', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base64,
+            name: `Liang007_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+            ext: 'png',
+          }),
+        })
+      } catch (e2) {
+        console.error('Eagle base64 回退也失败:', e2)
+      }
     }
   }
 
@@ -241,6 +347,7 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
             e.stopPropagation()
             handleImageClick()
           }}
+          onContextMenu={handleImageContextMenu}
         />
       </div>
 
@@ -340,6 +447,100 @@ export default function ImagePreviewModal({ image, onClose }: ImagePreviewModalP
           </button>
         </div>
       </div>
+
+      {/* ── 右键菜单 ── */}
+      {ctxMenu && (
+        <div
+          ref={ctxRef}
+          className="fixed z-[10001] w-44 rounded-xl py-1.5 shadow-2xl"
+          style={{
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            background: 'rgba(10,10,20,0.95)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={handleCopyImage}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+            复制图片
+          </button>
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={handleSaveAs}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+            另存为...
+          </button>
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={handleCtxInpaint}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-primary-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15.232 5.232l3.536 3.536M4 20h4.586a1 1 0 00.707-.293l9.475-9.475a2.5 2.5 0 00-3.536-3.536L5.757 16.172a1 1 0 00-.293.707V20z"
+              />
+            </svg>
+            局部重绘
+          </button>
+          <div className="mx-2 my-1 h-px bg-white/[0.06]" />
+          <button
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+            onClick={handleSendToEagle}
+          >
+            <svg
+              className="h-3.5 w-3.5 text-emerald-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
+            </svg>
+            发送到 Eagle
+          </button>
+        </div>
+      )}
     </div>
   )
 }

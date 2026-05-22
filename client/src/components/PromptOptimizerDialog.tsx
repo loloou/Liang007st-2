@@ -741,6 +741,11 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
+function confirmAction(message: string): boolean {
+  // eslint-disable-next-line no-alert
+  return window.confirm(message)
+}
+
 function computeStats(details: ModificationDetail[]): DiffStats {
   let addedChars = 0,
     removedChars = 0
@@ -1688,7 +1693,7 @@ export default function PromptOptimizerDialog({
     (id: string) => {
       const tpl = templates.find(t => t.id === id)
       if (!tpl) return
-      if (!confirm(`确定要删除模板「${tpl.name}」吗？`)) return
+      if (!confirmAction(`确定要删除模板「${tpl.name}」吗？`)) return
       setTemplates(prev => {
         const next = prev.filter(t => t.id !== id)
         if (selectedTemplateId === id) {
@@ -1906,10 +1911,7 @@ export default function PromptOptimizerDialog({
             主体双栏对比区
         ═══════════════════════════════════════════════════════ */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <div
-            ref={splitContainerRef}
-            className="flex flex-1 overflow-hidden"
-          >
+          <div ref={splitContainerRef} className="flex flex-1 overflow-hidden">
             {/* ── 左栏：原始提示词 ── */}
             <div
               className="flex flex-col border-r border-white/[0.08]"
@@ -2728,7 +2730,7 @@ export default function PromptOptimizerDialog({
             <div
               className="relative flex-shrink-0 cursor-col-resize"
               style={{ width: 8, marginLeft: -4, zIndex: 10 }}
-              onMouseDown={(e) => {
+              onMouseDown={e => {
                 e.preventDefault()
                 setIsDraggingSplit(true)
               }}
@@ -3085,7 +3087,19 @@ export default function PromptOptimizerDialog({
               onClick={handleSaveOriginal}
               className="rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-slate-400 transition hover:bg-emerald-500/10 hover:text-emerald-400"
             >
-              <svg className="mr-1 inline h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V3"/></svg>
+              <svg
+                className="mr-1 inline h-3 w-3"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V3"
+                />
+              </svg>
               保存
             </button>
             {diffResult && diffResult.details.length > 0 && (
@@ -3622,7 +3636,7 @@ export default function PromptOptimizerDialog({
                 <div className="flex flex-shrink-0 justify-end border-t border-white/[0.06] px-5 py-3">
                   <button
                     onClick={() => {
-                      if (confirm('确定清空所有历史记录？')) {
+                      if (confirmAction('确定清空所有历史记录？')) {
                         setRecords([])
                         showToast('记录已清空', 'success')
                       }
@@ -3741,7 +3755,7 @@ export default function PromptOptimizerDialog({
                 <div className="flex flex-shrink-0 justify-end border-t border-white/[0.06] px-5 py-3">
                   <button
                     onClick={() => {
-                      if (confirm('确定清空所有收藏？')) {
+                      if (confirmAction('确定清空所有收藏？')) {
                         setFavorites([])
                         showToast('收藏已清空', 'success')
                       }

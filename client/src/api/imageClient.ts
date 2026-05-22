@@ -49,6 +49,9 @@ export type GeneratedImage = {
 // ── 常量 ──────────────────────────────────────────────────
 /** Gemini 规范默认模型（用于 baseUrl 中没有指定模型时的接口路径） */
 const GEMINI_DEFAULT_MODEL = 'gemini-2.0-flash-preview-image-generation'
+const GEMINI_BATCH_CONCURRENCY = 1
+const TRANSIENT_HTTP_STATUS = new Set([408, 429, 500, 502, 503, 504])
+const MAX_TRANSIENT_RETRIES = 2
 
 // ── 工具函数 ──────────────────────────────────────────────
 
@@ -530,9 +533,6 @@ async function buildGeminiBody(params: GenerateParams): Promise<Record<string, u
   // imageSize：优先用 sizeTier，fallback 从像素值推导（防止传参丢失）
   const imageSize =
     toGeminiImageSize(params.sizeTier) ?? toGeminiImageSizeFromPixels(params.width, params.height)
-  console.log(
-    `[buildGeminiBody] sizeTier=${params.sizeTier}, imageSize=${imageSize}, pixels=${params.width}×${params.height}`,
-  )
   // Gemini 官方规范：aspectRatio 和 imageSize 必须放在 generationConfig.imageConfig 内
   const generationConfig: Record<string, unknown> = {}
   // responseModalities 告诉 API 返回图片（部分 API 需要此字段才能出图）
@@ -596,6 +596,38 @@ function errResult(
     error: message,
     httpErrorBody,
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function transientRetryDelayMs(attempt: number): number {
+  return 1500 * 2 ** attempt + Math.floor(Math.random() * 500)
+}
+
+async function runWithConcurrency<T>(
+  count: number,
+  limit: number,
+  worker: (index: number) => Promise<T>,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(count)
+  let nextIndex = 0
+
+  async function runWorker() {
+    while (nextIndex < count) {
+      const index = nextIndex
+      nextIndex += 1
+      try {
+        results[index] = { status: 'fulfilled', value: await worker(index) }
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason }
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), count) }, runWorker))
+  return results
 }
 
 export async function generateImages(params: GenerateParams): Promise<GenerateResult> {
@@ -690,38 +722,59 @@ async function doFetchAndParse(
 ): Promise<GenerateResult> {
   const requestBodyForLog = buildRequestBodyForLog(requestBody)
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 600_000)
+  let resp: Response | null = null
+  let rawText = ''
+  let lastNetworkError: unknown = null
 
-  let resp: Response
-  let rawText: string
-  try {
-    resp = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    })
-    rawText = await resp.text()
-  } catch (err) {
-    clearTimeout(timer)
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      const specLabel = spec === 'gemini' ? 'Gemini 规范' : 'OpenAI 规范'
+  for (let attempt = 0; attempt <= MAX_TRANSIENT_RETRIES; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 600_000)
+
+    try {
+      resp = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      })
+      rawText = await resp.text()
+    } catch (err) {
+      lastNetworkError = err
+      clearTimeout(timer)
+      if (attempt < MAX_TRANSIENT_RETRIES) {
+        await sleep(transientRetryDelayMs(attempt))
+        continue
+      }
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        const specLabel = spec === 'gemini' ? 'Gemini 规范' : 'OpenAI 规范'
+        return errResult(
+          endpoint,
+          spec,
+          requestBodyForLog,
+          `❌ API 对接失败：请求超时（600s）\n\n📌 错误详情：接口 ${endpoint || '(未构建)'} 在 600 秒内未响应，已自动重试 ${MAX_TRANSIENT_RETRIES} 次仍失败\n\n🔍 排查建议：\n· 降低 batchSize / 并行数量后重试\n· 确认接口地址是否正确且可访问\n· 检查服务器端是否存在负载过高或死循环\n· 验证网络代理 / VPN 设置是否影响连接\n\n🌐 请求地址：${endpoint}\n📦 规范类型：${specLabel}`,
+        )
+      }
       return errResult(
         endpoint,
         spec,
         requestBodyForLog,
-        `❌ API 对接失败：请求超时（600s）\n\n📌 错误详情：接口 ${endpoint || '(未构建)'} 在 600 秒内未响应\n\n🔍 排查建议：\n· 确认接口地址是否正确且可访问\n· 检查服务器端是否存在负载过高或死循环\n· 验证网络代理 / VPN 设置是否影响连接\n\n🌐 请求地址：${endpoint}\n📦 规范类型：${specLabel}`,
+        `API 对接失败：网络请求异常，已自动重试 ${MAX_TRANSIENT_RETRIES} 次仍失败。\n详情：${err instanceof Error ? err.message : String(err)}`,
       )
+    } finally {
+      clearTimeout(timer)
     }
+
+    if (!TRANSIENT_HTTP_STATUS.has(resp.status) || attempt >= MAX_TRANSIENT_RETRIES) break
+    await sleep(transientRetryDelayMs(attempt))
+  }
+
+  if (!resp) {
     return errResult(
       endpoint,
       spec,
       requestBodyForLog,
-      `API 对接失败：网络请求异常，请检查接口地址 / 密钥是否正确。\n详情：${err instanceof Error ? err.message : String(err)}`,
+      `API 对接失败：网络请求异常。\n详情：${lastNetworkError instanceof Error ? lastNetworkError.message : String(lastNetworkError)}`,
     )
-  } finally {
-    clearTimeout(timer)
   }
 
   const contentType = resp.headers.get('content-type') ?? ''
@@ -900,13 +953,22 @@ async function doGenerateGemini(
 ): Promise<GenerateResult> {
   // Gemini 每次只返回 1 张，需循环调用 batchSize 次
   if (params.batchSize > 1) {
-    const tasks = Array.from({ length: params.batchSize }, (_, i) =>
-      doGenerateGemini({ ...params, batchSize: 1 }, resolvedModel, endpoint, apiKey).then(r => ({
-        ...r,
-        images: r.images.map(img => ({ ...img, id: `${i}-${img.id}` })),
-      })),
+    const settled = await runWithConcurrency(
+      params.batchSize,
+      GEMINI_BATCH_CONCURRENCY,
+      async i => {
+        const r = await doGenerateGemini(
+          { ...params, batchSize: 1 },
+          resolvedModel,
+          endpoint,
+          apiKey,
+        )
+        return {
+          ...r,
+          images: r.images.map(img => ({ ...img, id: `${i}-${img.id}` })),
+        }
+      },
     )
-    const settled = await Promise.allSettled(tasks)
     const allImages: GeneratedImage[] = []
     let lastResult: GenerateResult | null = null
     let failedCount = 0

@@ -58,6 +58,7 @@ interface Props {
   onSelectSlot?: (slot: GenerationSlotView) => void
   onCloseSlot?: (slotId: string) => void
   onRetrySlot?: (slot: GenerationSlotView) => void
+  onOpenInpaint?: (img: GeneratedImage) => void
 }
 
 const ResultPanel: React.FC<Props> = ({
@@ -86,6 +87,7 @@ const ResultPanel: React.FC<Props> = ({
   onSelectSlot,
   onCloseSlot,
   onRetrySlot,
+  onOpenInpaint,
 }) => {
   const safeIdx =
     results.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), results.length - 1) : 0
@@ -94,6 +96,9 @@ const ResultPanel: React.FC<Props> = ({
   const activeSlotIndex = activeSlot
     ? generationSlots.findIndex(slot => slot.id === activeSlot.id)
     : -1
+  const focusResults = activeSlot?.results ?? results
+  const focusSafeIdx =
+    focusResults.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), focusResults.length - 1) : 0
 
   // ── 右键菜单 ──
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; img: GeneratedImage } | null>(null)
@@ -161,6 +166,11 @@ const ResultPanel: React.FC<Props> = ({
   const handleSaveAs = async (url: string) => {
     setCtxMenu(null)
     await downloadImage(url)
+  }
+
+  const handleOpenInpaint = (img: GeneratedImage) => {
+    setCtxMenu(null)
+    onOpenInpaint?.(img)
   }
 
   const getOriginalUrl = (img: GeneratedImage) =>
@@ -250,16 +260,16 @@ const ResultPanel: React.FC<Props> = ({
           {generationSlots.length > 0 && parallelCount > 1 && setSlotViewMode && (
             <div className="flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
               <button
-                className={`px-2 py-1 text-[11px] transition ${slotViewMode === 'focus' ? 'bg-primary-500/20 text-primary-300' : 'text-slate-400 hover:bg-white/[0.06]'}`}
-                onClick={() => setSlotViewMode('focus')}
-              >
-                聚焦槽位
-              </button>
-              <button
                 className={`px-2 py-1 text-[11px] transition ${slotViewMode === 'grid' ? 'bg-primary-500/20 text-primary-300' : 'text-slate-400 hover:bg-white/[0.06]'}`}
                 onClick={() => setSlotViewMode('grid')}
               >
                 全部槽位
+              </button>
+              <button
+                className={`px-2 py-1 text-[11px] transition ${slotViewMode === 'focus' ? 'bg-primary-500/20 text-primary-300' : 'text-slate-400 hover:bg-white/[0.06]'}`}
+                onClick={() => setSlotViewMode('focus')}
+              >
+                聚焦槽位
               </button>
             </div>
           )}
@@ -349,10 +359,8 @@ const ResultPanel: React.FC<Props> = ({
                     type="button"
                     className="relative flex min-h-48 flex-1 items-center justify-center overflow-hidden bg-black/10"
                     onClick={() => {
-                      if (slot.status === 'success' && firstImg) {
-                        selectSlot(slot)
-                        setPreviewImage(firstImg)
-                      }
+                      selectSlot(slot)
+                      setSlotViewMode?.('focus')
                     }}
                     onContextMenu={firstImg ? e => handleContextMenu(e, firstImg) : undefined}
                   >
@@ -420,28 +428,67 @@ const ResultPanel: React.FC<Props> = ({
             })}
           </div>
         ) : generationSlots.length > 0 && slotViewMode === 'focus' ? (
-          <div className="flex h-full w-full flex-col overflow-hidden">
+          <div className="flex h-full w-full flex-col overflow-hidden bg-[#07080d]">
+            {activeSlot && (
+              <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] bg-white/[0.025] px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-primary-400/25 bg-primary-500/10 px-2 py-0.5 text-[11px] font-semibold text-primary-200">
+                      聚焦槽位 #{generationSlots.length - activeSlotIndex}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] ${activeSlot.status === 'running' ? 'bg-amber-500/15 text-amber-200' : activeSlot.status === 'error' ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'}`}
+                    >
+                      {activeSlot.status === 'running'
+                        ? '生成中'
+                        : activeSlot.status === 'error'
+                          ? '生成失败'
+                          : `已完成 ${activeSlot.results.length} 张`}
+                    </span>
+                    <span className="font-mono text-[11px] text-slate-500">
+                      {activeSlot.request.width}×{activeSlot.request.height} · batch{' '}
+                      {activeSlot.request.batchSize}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-[11px] leading-relaxed text-slate-400">
+                    {activeSlot.request.prompt}
+                  </p>
+                </div>
+                <div className="hidden max-w-[36%] truncate font-mono text-[10px] text-slate-500 lg:block">
+                  {activeSlot.request.model}
+                </div>
+                {activeSlot.status !== 'running' && onRetrySlot && (
+                  <button
+                    className="flex-shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-300 transition hover:bg-white/[0.08]"
+                    onClick={() => onRetrySlot(activeSlot)}
+                  >
+                    重试
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* 主图区 */}
-            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black/10">
+            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.055),transparent_55%)] px-4 py-4">
               {activeSlot?.status === 'running' ? (
-                <div className="flex w-full max-w-xs flex-col items-center gap-3 px-6">
-                  <div className="flex h-20 w-20 flex-col items-center justify-center rounded-2xl border border-amber-400/25 bg-black/35 shadow-2xl backdrop-blur-md">
-                    <div className="h-7 w-7 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                    <span className="mt-2 font-mono text-xs font-semibold text-amber-200">
+                <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-amber-400/20 bg-black/30 px-8 py-8 shadow-2xl backdrop-blur-md">
+                  <div className="flex h-24 w-24 flex-col items-center justify-center rounded-3xl border border-amber-400/25 bg-amber-500/10 shadow-2xl">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                    <span className="mt-3 font-mono text-xs font-semibold text-amber-100">
                       {Math.floor(activeSlot.elapsedSeconds / 60) > 0
                         ? `${Math.floor(activeSlot.elapsedSeconds / 60)}分${activeSlot.elapsedSeconds % 60}秒`
                         : `${activeSlot.elapsedSeconds}秒`}
                     </span>
                   </div>
                   <div className="w-full">
-                    <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
                         style={{ width: `${activeSlot.progressPct}%` }}
                       />
                     </div>
-                    <div className="mt-1 flex justify-between text-[10px] text-amber-200">
-                      <span>槽位生成中</span>
+                    <div className="mt-2 flex justify-between text-[11px] text-amber-100/90">
+                      <span>当前槽位生成中，其他槽位可继续排队或查看</span>
                       <span>{activeSlot.progressPct}%</span>
                     </div>
                   </div>
@@ -459,29 +506,29 @@ const ResultPanel: React.FC<Props> = ({
                     </button>
                   )}
                 </div>
-              ) : results.length > 0 ? (
+              ) : focusResults.length > 0 ? (
                 (() => {
-                  const activeImg = results[safeIdx]
+                  const activeImg = focusResults[focusSafeIdx]
                   const activeImgUrl = getOriginalUrl(activeImg)
                   return (
                     <div
-                      className="group relative h-full w-full cursor-pointer"
+                      className="group relative flex h-full w-full cursor-pointer items-center justify-center"
                       onClick={() => setPreviewImage(activeImg)}
                       onContextMenu={e => handleContextMenu(e, activeImg)}
                     >
                       <img
-                        key={`slot-focus-${activeSlot?.id}-${safeIdx}`}
+                        key={`slot-focus-${activeSlot?.id}-${focusSafeIdx}`}
                         src={safeUrl(activeImgUrl)}
                         alt=""
-                        className="h-full w-full object-contain transition-all duration-300"
+                        className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl transition-all duration-300"
                         draggable={false}
                       />
-                      {results.length > 1 && (
-                        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-xl bg-black/45 px-2 py-1 backdrop-blur">
-                          {results.map((img, idx) => (
+                      {focusResults.length > 1 && (
+                        <div className="absolute bottom-3 left-1/2 flex max-w-[90%] -translate-x-1/2 gap-1.5 overflow-x-auto rounded-xl border border-white/[0.08] bg-black/55 px-2 py-1.5 backdrop-blur">
+                          {focusResults.map((img, idx) => (
                             <button
                               key={img.id}
-                              className={`h-10 w-10 overflow-hidden rounded-lg border-2 transition ${idx === safeIdx ? 'border-primary-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                              className={`h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border-2 transition ${idx === focusSafeIdx ? 'border-primary-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
                               onClick={e => {
                                 e.stopPropagation()
                                 setResultActiveIdx(idx)
@@ -504,55 +551,61 @@ const ResultPanel: React.FC<Props> = ({
               )}
             </div>
             {/* 底部信息栏 + 槽位缩略图 */}
-            <div className="flex flex-shrink-0 items-center gap-2 border-t border-white/[0.06] bg-black/20 px-3 py-2">
+            <div className="flex min-h-[76px] flex-shrink-0 items-center gap-3 border-t border-white/[0.06] bg-black/30 px-3 py-2">
               {/* 当前槽位信息 */}
               {activeSlot && (
-                <div className="min-w-0 flex-shrink-0 truncate text-[11px] text-slate-300">
-                  槽位 #{generationSlots.length - activeSlotIndex} ·{' '}
-                  {activeSlot.status === 'running'
-                    ? '生成中'
-                    : activeSlot.status === 'error'
-                      ? '失败'
-                      : `完成 ${activeSlot.results.length} 张`}{' '}
-                  · {activeSlot.request.model}
-                  {activeSlot.status !== 'running' && onRetrySlot && (
-                    <button
-                      className="ml-2 rounded px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-200"
-                      onClick={() => onRetrySlot(activeSlot)}
-                    >
-                      重试
-                    </button>
-                  )}
+                <div className="hidden min-w-0 max-w-[240px] flex-shrink-0 sm:block">
+                  <div className="truncate text-[11px] font-medium text-slate-300">
+                    槽位 #{generationSlots.length - activeSlotIndex}
+                  </div>
+                  <div className="mt-0.5 truncate text-[10px] text-slate-500">
+                    {activeSlot.lastDuration
+                      ? `用时 ${activeSlot.lastDuration}`
+                      : activeSlot.request.model}
+                  </div>
                 </div>
               )}
               {/* 槽位缩略图列表 — 横向排列在底部 */}
-              <div className="app-scrollbar flex flex-1 items-center gap-1.5 overflow-x-auto">
+              <div className="app-scrollbar flex flex-1 items-stretch gap-2 overflow-x-auto py-1">
                 {generationSlots.map((slot, index) => {
                   const firstImg = slot.results[0]
                   const isActive = slot.id === activeSlot?.id
                   return (
                     <button
                       key={slot.id}
-                      className={`relative flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border transition ${isActive ? 'border-primary-400 ring-1 ring-primary-400/30' : slot.status === 'error' ? 'border-red-400/25' : slot.status === 'running' ? 'border-amber-400/25' : 'border-white/[0.08] hover:border-white/25'}`}
+                      className={`relative flex h-14 w-[108px] flex-shrink-0 overflow-hidden rounded-xl border text-left transition ${isActive ? 'border-primary-400 bg-primary-500/10 ring-1 ring-primary-400/30' : slot.status === 'error' ? 'border-red-400/25 bg-red-500/5' : slot.status === 'running' ? 'border-amber-400/25 bg-amber-500/5' : 'border-white/[0.08] bg-white/[0.035] hover:border-white/25'}`}
                       onClick={() => selectSlot(slot)}
                       title={`槽位 #${generationSlots.length - index}`}
                     >
-                      {firstImg ? (
-                        <img
-                          src={safeUrl(firstImg.url || getOriginalUrl(firstImg))}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : slot.status === 'running' ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-                      ) : slot.status === 'error' ? (
-                        <span className="text-[10px] font-bold text-red-300">!</span>
-                      ) : (
-                        <span className="text-[8px] text-slate-500">空</span>
-                      )}
-                      <span className="absolute bottom-0 right-0 rounded-tl bg-black/60 px-0.5 font-mono text-[7px] text-white">
-                        {generationSlots.length - index}
-                      </span>
+                      <div className="flex h-full w-14 flex-shrink-0 items-center justify-center overflow-hidden bg-black/25">
+                        {firstImg ? (
+                          <img
+                            src={safeUrl(firstImg.url || getOriginalUrl(firstImg))}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : slot.status === 'running' ? (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
+                        ) : slot.status === 'error' ? (
+                          <span className="text-[12px] font-bold text-red-300">!</span>
+                        ) : (
+                          <span className="text-[8px] text-slate-500">空</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 px-2 py-1.5">
+                        <div className="truncate text-[10px] font-semibold text-slate-300">
+                          #{generationSlots.length - index}
+                        </div>
+                        <div
+                          className={`mt-0.5 truncate text-[9px] ${slot.status === 'running' ? 'text-amber-300' : slot.status === 'error' ? 'text-red-300' : 'text-emerald-300'}`}
+                        >
+                          {slot.status === 'running'
+                            ? `${slot.progressPct}%`
+                            : slot.status === 'error'
+                              ? '失败'
+                              : `${slot.results.length}张`}
+                        </div>
+                      </div>
                     </button>
                   )
                 })}
@@ -816,6 +869,25 @@ const ResultPanel: React.FC<Props> = ({
                     />
                   </svg>
                   另存为...
+                </button>
+                <button
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-slate-200 transition hover:bg-white/[0.06]"
+                  onClick={() => handleOpenInpaint(ctxMenu.img)}
+                >
+                  <svg
+                    className="h-3.5 w-3.5 text-primary-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.232 5.232l3.536 3.536M4 20h4.586a1 1 0 00.707-.293l9.475-9.475a2.5 2.5 0 00-3.536-3.536L5.757 16.172a1 1 0 00-.293.707V20z"
+                    />
+                  </svg>
+                  局部重绘
                 </button>
                 <div className="mx-2 my-1 h-px bg-white/[0.06]" />
                 <button

@@ -5,39 +5,48 @@
 
 /** 创建缩略图（限制 base64/blob URL 写入 localStorage 的体积） */
 export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
+  return new Promise(resolve => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload = () => {
-      let canvas: HTMLCanvasElement | null = null;
+      let canvas: HTMLCanvasElement | null = null
       try {
-        canvas = document.createElement("canvas");
-        let { width, height } = img;
+        canvas = document.createElement('canvas')
+        let { width, height } = img
         if (width > height) {
-          if (width > maxSize) { height = Math.round(height * maxSize / width); width = maxSize; }
-        } else {
-          if (height > maxSize) { width = Math.round(width * maxSize / height); height = maxSize; }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          try {
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/jpeg", 0.7));
-          } catch {
-            resolve("");
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width)
+            width = maxSize
           }
         } else {
-          resolve("");
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height)
+            height = maxSize
+          }
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          try {
+            ctx.drawImage(img, 0, 0, width, height)
+            resolve(canvas.toDataURL('image/jpeg', 0.7))
+          } catch {
+            resolve('')
+          }
+        } else {
+          resolve('')
         }
       } catch {
-        resolve("");
+        resolve('')
       } finally {
-        if (canvas) { canvas.width = 0; canvas.height = 0; }
+        if (canvas) {
+          canvas.width = 0
+          canvas.height = 0
+        }
       }
-    };
-    img.onerror = () => resolve("");
-    img.src = imageUrl;
-  });
+    }
+    img.onerror = () => resolve('')
+    img.src = imageUrl
+  })
 }

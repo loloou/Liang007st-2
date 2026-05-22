@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 
 // ── 性能优化：命令行参数（必须在 app.ready 之前设置）────────────────────────
 app.commandLine.appendSwitch('disable-gpu-sandbox');
@@ -12,6 +13,54 @@ app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
 app.commandLine.appendSwitch('js-flags', '--optimize-for-size');
 
 let mainWindow = null;
+
+const ALLOWED_PROXY_METHODS = new Set(['GET', 'POST']);
+const ALLOWED_PROXY_HEADERS = new Set(['accept', 'authorization', 'content-type']);
+const MAX_PROXY_TIMEOUT_MS = 30_000;
+
+function isBlockedProxyHostname(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    net.isIP(host) !== 0
+  );
+}
+
+function normalizeProxyUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('仅支持 HTTP/HTTPS URL');
+  }
+  if (isBlockedProxyHostname(parsed.hostname)) {
+    throw new Error('代理请求不允许访问本机、局域网名称或裸 IP 地址');
+  }
+  return parsed.toString();
+}
+
+function sanitizeProxyHeaders(headers = {}) {
+  const safeHeaders = {};
+  for (const [key, value] of Object.entries(headers || {})) {
+    if (ALLOWED_PROXY_HEADERS.has(String(key).toLowerCase()) && typeof value === 'string') {
+      safeHeaders[key] = value;
+    }
+  }
+  return safeHeaders;
+}
+
+function normalizeProxyMethod(method) {
+  const normalized = String(method || 'GET').toUpperCase();
+  return ALLOWED_PROXY_METHODS.has(normalized) ? normalized : 'GET';
+}
+
+function normalizeProxyTimeout(timeout) {
+  const value = Number(timeout || 15_000);
+  return Math.max(1_000, Math.min(Number.isFinite(value) ? value : 15_000, MAX_PROXY_TIMEOUT_MS));
+}
 
 // ── 便携模式：把用户数据放在 exe 同目录的 .liang007-data 文件夹里 ──────────────
 function initPortableUserData() {
@@ -116,20 +165,23 @@ ipcMain.on('window-toggle-maximize', () => {
 
 // ── 代理 HTTP 请求（绕过 CORS） ────────────────────────────────────────────
 ipcMain.handle('fetch-request', async (_event, { url, method, headers, body, timeout }) => {
+  const requestTimeout = normalizeProxyTimeout(timeout);
   try {
+    const safeUrl = normalizeProxyUrl(url);
+    const safeMethod = normalizeProxyMethod(method);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout || 15000);
+    const timer = setTimeout(() => controller.abort(), requestTimeout);
 
     const fetchOptions = {
-      method: method || 'GET',
-      headers: headers || {},
+      method: safeMethod,
+      headers: sanitizeProxyHeaders(headers),
       signal: controller.signal,
     };
-    if (body && method !== 'GET') {
+    if (body && safeMethod !== 'GET') {
       fetchOptions.body = body;
     }
 
-    const resp = await fetch(url, fetchOptions);
+    const resp = await fetch(safeUrl, fetchOptions);
     clearTimeout(timer);
 
     const respHeaders = {};
@@ -163,13 +215,28 @@ ipcMain.handle('fetch-request', async (_event, { url, method, headers, body, tim
       statusText: isTimeout ? 'Timeout' : 'Network Error',
       headers: {},
       body: null,
-      error: isTimeout ? `请求超时 (${timeout || 15000}ms)` : `网络错误: ${msg}`,
+      error: isTimeout ? `请求超时 (${requestTimeout}ms)` : `网络错误: ${msg}`,
     };
   }
 });
 
 app.whenReady().then(() => {
   initPortableUserData();
+
+  // ── 移除 CORS 限制：允许渲染进程直接发 multipart 请求到 API ────────────────
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    // 移除 Origin 头，避免服务器拒绝非同源请求
+    delete details.requestHeaders['Origin'];
+    callback({ requestHeaders: details.requestHeaders });
+  });
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = details.responseHeaders || {};
+    headers['access-control-allow-origin'] = ['*'];
+    headers['access-control-allow-headers'] = ['*'];
+    headers['access-control-allow-methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
+    callback({ responseHeaders: headers });
+  });
+
   createWindow();
 });
 

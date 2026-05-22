@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  lazy,
+  Suspense,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import { useUiStore } from './store/uiStore'
 import { useGenerationStore, STORAGE_KEYS } from './store/generationStore'
 import { generateImages, GeneratedImage } from './api/imageClient'
@@ -27,7 +34,6 @@ import {
   type ResolutionPresetId,
   type SizeTierId,
 } from './utils/resolutionPresets'
-import { resolveGenerationSize } from './utils/generationSize'
 import { checkImageRatio } from './utils/ratioCheck'
 import {
   groupModelsByCategory,
@@ -38,7 +44,7 @@ import {
   MODEL_CATEGORY_TAGS,
   MODEL_VENDOR_TAGS,
 } from './utils/modelCategories'
-import { fetchBalance, fetchAllBalances, type MultiBalanceResult } from './api/balance'
+import { fetchAllBalances, type MultiBalanceResult } from './api/balance'
 import {
   THEMES,
   getTheme,
@@ -52,6 +58,7 @@ import SettingsDialog from './components/SettingsDialog'
 import VendorManager from './components/VendorManager'
 import ControlPanel from './components/ControlPanel'
 import ResultPanel from './components/ResultPanel'
+import InpaintDialog from './components/InpaintDialog'
 import { getRealPerformanceData, FPSCalculator } from './utils/performanceMonitor'
 
 type GenerationStatus = 'idle' | 'running'
@@ -79,6 +86,48 @@ type GenerationSlot = {
   error?: string
   createdAt: number
   hidden?: boolean
+}
+
+type GenerationHistoryEntry = {
+  id: string
+  slotId?: string
+  time: string
+  prompt: string
+  negativePrompt?: string
+  model: string
+  width: number
+  height: number
+  batchSize: number
+  results: GeneratedImage[]
+  error?: string
+  createdAt?: number
+  endpoint?: string
+  requestBodyJson?: string
+  responseSummary?: string
+  httpStatus?: number
+}
+
+function isImageInputUnsupportedError(message: string): boolean {
+  const errMsg = message.toLowerCase()
+  return (
+    errMsg.includes('does not support image input') ||
+    errMsg.includes('does not support image') ||
+    errMsg.includes('image input is not supported') ||
+    errMsg.includes('cannot read') ||
+    errMsg.includes("can't read") ||
+    errMsg.includes('unable to read') ||
+    errMsg.includes('inform the user') ||
+    errMsg.includes('this model does not') ||
+    errMsg.includes('model does not support') ||
+    (errMsg.includes('vision') && errMsg.includes('not support')) ||
+    (errMsg.includes('multimodal') && errMsg.includes('not support')) ||
+    (errMsg.includes('invalid') && errMsg.includes('image_url')) ||
+    (errMsg.includes('unsupported') && errMsg.includes('image')) ||
+    errMsg.includes('不支持图片输入') ||
+    errMsg.includes('不支持参考图') ||
+    errMsg.includes('不支持图片') ||
+    errMsg.includes('去掉参考图')
+  )
 }
 
 const RIGHT_PANEL_MIN = 280
@@ -131,6 +180,7 @@ function App() {
   const progressPct = useGenerationStore(s => s.progressPct)
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set())
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null)
+  const [inpaintTarget, setInpaintTarget] = useState<GeneratedImage | null>(null)
   const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading'>('idle')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelSelectOpen, setModelSelectOpen] = useState(false)
@@ -214,22 +264,7 @@ function App() {
   const [balancePopupOpen, setBalancePopupOpen] = useState(false)
   const [whiteboardOpen, setWhiteboardOpen] = useState(false)
 
-  const [generationHistory, setGenerationHistory] = useState<
-    {
-      id: string
-      slotId?: string
-      time: string
-      prompt: string
-      negativePrompt?: string
-      model: string
-      width: number
-      height: number
-      batchSize: number
-      results: GeneratedImage[]
-      error?: string // 失败时的错误信息
-      createdAt?: number // 创建时间戳，用于清理超时条目
-    }[]
-  >(() => {
+  const [generationHistory, setGenerationHistory] = useState<GenerationHistoryEntry[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.GENERATION_HISTORY)
       return raw ? JSON.parse(raw) : []
@@ -315,6 +350,12 @@ function App() {
     images: GeneratedImage[]
     index: number
   } | null>(null)
+  const [historyContextMenu, setHistoryContextMenu] = useState<{
+    x: number
+    y: number
+    entryId: string
+    imageId?: string
+  } | null>(null)
   const openHistoryPreview = (images: GeneratedImage[], index = 0, entryId?: string) => {
     if (images.length === 0) return
     if (entryId) {
@@ -325,10 +366,87 @@ function App() {
       index: Math.min(Math.max(index, 0), images.length - 1),
     })
   }
+  const applyHistoryPrompt = (entry: GenerationHistoryEntry) => {
+    setPrompt(entry.prompt.replace(/^\[局部重绘\]\s*/, ''))
+    setNegativePrompt(entry.negativePrompt ?? '')
+  }
+  const openHistoryImageMenu = (
+    event: ReactMouseEvent,
+    entry: GenerationHistoryEntry,
+    image: GeneratedImage,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setHistoryContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entryId: entry.id,
+      imageId: image.id,
+    })
+  }
+  const openHistoryEntryMenu = (event: ReactMouseEvent, entry: GenerationHistoryEntry) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setHistoryContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      entryId: entry.id,
+    })
+  }
+  const deleteHistoryImage = (entryId: string, imageId: string) => {
+    setGenerationHistory(prev => {
+      const updated = prev
+        .map(entry =>
+          entry.id === entryId
+            ? { ...entry, results: entry.results.filter(img => img.id !== imageId) }
+            : entry,
+        )
+        .filter(entry => entry.results.length > 0 || entry.error)
+      saveHistory(updated)
+      return updated
+    })
+    setResults(prev => prev.filter(img => img.id !== imageId))
+    setHistoryFullPreview(prev => {
+      if (!prev) return prev
+      const nextImages = prev.images.filter(img => img.id !== imageId)
+      if (nextImages.length === 0) return null
+      return { images: nextImages, index: Math.min(prev.index, nextImages.length - 1) }
+    })
+    setHistoryContextMenu(null)
+  }
+  const deleteHistoryEntry = (entryId: string) => {
+    setGenerationHistory(prev => {
+      const updated = prev.filter(entry => entry.id !== entryId)
+      saveHistory(updated)
+      return updated
+    })
+    setHistorySelected(prev => {
+      const next = new Set(prev)
+      next.delete(entryId)
+      return next
+    })
+    setViewedHistoryIds(prev => {
+      const next = new Set(prev)
+      next.delete(entryId)
+      return next
+    })
+    setHistoryContextMenu(null)
+  }
   const [historyBatchMode, setHistoryBatchMode] = useState(false)
   const [historySelected, setHistorySelected] = useState<Set<string>>(new Set())
   const [historyLayout, setHistoryLayout] = useState<'list' | 'grid'>('list')
   const [viewedHistoryIds, setViewedHistoryIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!historyContextMenu) return
+    const close = () => setHistoryContextMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('contextmenu', close)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('contextmenu', close)
+    }
+  }, [historyContextMenu])
 
   // ── 优化3：尺寸比例不一致弹窗 ─────────────────────────────────────────────
   const [ratioMismatchDialog, setRatioMismatchDialog] = useState<{
@@ -416,9 +534,10 @@ function App() {
   }, [generationSlots])
 
   useEffect(() => {
+    const timers = slotTimersRef.current
     return () => {
-      slotTimersRef.current.forEach(timer => clearInterval(timer))
-      slotTimersRef.current.clear()
+      timers.forEach(timer => clearInterval(timer))
+      timers.clear()
     }
   }, [])
 
@@ -515,11 +634,19 @@ function App() {
 
   const handleGenerate = async () => {
     try {
-      if (parallelCount <= 1 && status === 'running') {
+      const parallelLimit = Math.max(1, Math.min(4, parallelCount))
+      const runningCount = generationSlots.filter(slot => slot.status === 'running').length
+      if (runningCount >= parallelLimit) {
         const time = new Date().toLocaleTimeString('zh-CN')
         setLogEntries(prev => [
           ...prev.slice(-99),
-          { time, error: '正在生图中，请等待当前任务完成。' },
+          {
+            time,
+            error:
+              parallelLimit <= 1
+                ? '正在生图中，请等待当前任务完成。'
+                : `当前已有 ${runningCount} 个任务运行，已达到并行上限 ${parallelLimit}。请等待任一任务完成后再继续。`,
+          },
         ])
         return
       }
@@ -552,7 +679,6 @@ function App() {
 
       setError(null)
       setPreviewImage(null)
-      const parallel = Math.max(1, Math.min(4, parallelCount))
       const requestBase = {
         prompt,
         negativePrompt: negativePrompt || undefined,
@@ -575,32 +701,26 @@ function App() {
         referenceImages,
       }
 
-      const slotIds = Array.from(
-        { length: parallel },
-        () => `${Date.now()}-${++slotSeqRef.current}`,
-      )
-      if (parallel > 1) {
-        setActiveSlotId(prev => prev || slotIds[0] || null)
-      }
-      const slotCreatedAt = new Map<string, number>()
-      slotIds.forEach(id => slotCreatedAt.set(id, Date.now()))
-      const newSlots = slotIds.map(id => ({
-        id,
+      const slotId = `${Date.now()}-${++slotSeqRef.current}`
+      const createdAt = Date.now()
+      const newSlot: GenerationSlot = {
+        id: slotId,
         request: snapshot,
-        status: 'running' as const,
+        status: 'running',
         elapsedSeconds: 0,
         progressPct: 0,
         lastDuration: null,
         results: [],
-        createdAt: Date.now(),
-        hidden: parallel <= 1,
-      }))
-      setGenerationSlots(prev => (parallel > 1 ? [...newSlots, ...prev] : newSlots))
+        createdAt,
+        hidden: parallelLimit <= 1,
+      }
+      setActiveSlotId(slotId)
+      setGenerationSlots(prev => (parallelLimit > 1 ? [newSlot, ...prev] : [newSlot]))
       setResults([])
       setResultActiveIdx(0)
       setSelectedImageIds(new Set())
 
-      const reqInfo = { ...requestBase, parallelCount: parallel }
+      const reqInfo = { ...requestBase, parallelLimit, runningCount: runningCount + 1 }
       const time = new Date().toLocaleTimeString('zh-CN')
       setLogEntries(prev => [
         ...prev.slice(-99),
@@ -642,31 +762,14 @@ function App() {
         makeSlotTimer(slotId)
         const isRatioRetry = ratioMismatchRetried.current
         ratioMismatchRetried.current = false
-        const createdAt = slotCreatedAt.get(slotId) ?? Date.now()
         try {
           let result = await generateImages({ ...requestBase, referenceImages })
           if (result.error && referenceImages.length > 0) {
-            const errMsg = result.error.toLowerCase()
-            const isImageUnsupported =
-              errMsg.includes('does not support image input') ||
-              errMsg.includes('does not support image') ||
-              errMsg.includes('image input is not supported') ||
-              errMsg.includes('cannot read') ||
-              errMsg.includes("can't read") ||
-              errMsg.includes('unable to read') ||
-              errMsg.includes('inform the user') ||
-              errMsg.includes('this model does not') ||
-              errMsg.includes('model does not support') ||
-              (errMsg.includes('vision') && errMsg.includes('not support')) ||
-              (errMsg.includes('multimodal') && errMsg.includes('not support')) ||
-              (errMsg.includes('invalid') && errMsg.includes('image_url')) ||
-              (errMsg.includes('unsupported') && errMsg.includes('image')) ||
-              (errMsg.includes('cannot read') && errMsg.includes('does not support'))
-            if (isImageUnsupported) {
+            if (isImageInputUnsupportedError(result.error)) {
               result = await generateImages({ ...requestBase, referenceImages: [] })
               if (!result.error) {
                 const warnMsg =
-                  '⚠️ 当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
+                  '当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
                 setError(warnMsg)
                 setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 10000)
               }
@@ -720,22 +823,9 @@ function App() {
           }
 
           const images = result.images
-          const imagesWithThumbnails = await Promise.all(
-            images.map(async img => {
-              if (!img || !img.url) return img
-              if (img.url.startsWith('data:image/jpeg;base64,') && img.url.length < 2000) return img
-              try {
-                const thumbnail = await createThumbnail(img.url, 150)
-                return { ...img, url: thumbnail, originalUrl: img.url }
-              } catch (error) {
-                console.error('生成缩略图失败:', error)
-                return { ...img, url: img.url, originalUrl: img.url }
-              }
-            }),
-          )
-          const validImages = imagesWithThumbnails.filter(img => img && img.url)
+          const validImages = await prepareGeneratedImages(images)
           setResults(prev => {
-            if (parallelCount <= 1) return validImages
+            if (parallelLimit <= 1) return validImages
             if (activeSlotId === slotId || (!activeSlotId && prev.length === 0)) return validImages
             return prev.length > 0 ? prev : validImages
           })
@@ -814,7 +904,7 @@ function App() {
         }
       }
 
-      await Promise.all(slotIds.map(id => runSlot(id)))
+      await runSlot(slotId)
       if (prompt.trim()) {
         setPromptHistory(prev =>
           [prompt.trim(), ...prev.filter(p => p !== prompt.trim())].slice(0, 50),
@@ -879,6 +969,106 @@ function App() {
     } finally {
       setDownloadStatus('idle')
     }
+  }
+
+  const prepareGeneratedImages = async (images: GeneratedImage[]): Promise<GeneratedImage[]> => {
+    const imagesWithThumbnails = await Promise.all(
+      images.map(async img => {
+        if (!img || !img.url) return img
+        if (img.url.startsWith('data:image/jpeg;base64,') && img.url.length < 2000) return img
+        try {
+          const thumbnail = await createThumbnail(img.url, 150)
+          return { ...img, url: thumbnail, originalUrl: img.url }
+        } catch (error) {
+          console.error('生成缩略图失败:', error)
+          return { ...img, url: img.url, originalUrl: img.url }
+        }
+      }),
+    )
+    return imagesWithThumbnails.filter(img => img && img.url)
+  }
+
+  const handleInpaintComplete = async (
+    images: GeneratedImage[],
+    meta: {
+      prompt: string
+      endpoint?: string
+      responseSummary?: string
+      requestBodyJson?: string
+      httpStatus?: number
+      modelId?: string
+      sourceWidth: number
+      sourceHeight: number
+    },
+  ) => {
+    const validImages = await prepareGeneratedImages(images)
+    const inpaintModel = meta.modelId?.trim() || model
+    const slotId = `${Date.now()}-${++slotSeqRef.current}`
+    const createdAt = Date.now()
+    const slot: GenerationSlot = {
+      id: slotId,
+      request: {
+        prompt: `[局部重绘] ${meta.prompt}`,
+        negativePrompt: '',
+        batchSize: validImages.length,
+        width: meta.sourceWidth,
+        height: meta.sourceHeight,
+        model: inpaintModel,
+        resolutionPreset,
+        sizeTier,
+        referenceImages: [],
+      },
+      status: 'success',
+      elapsedSeconds: 0,
+      progressPct: 100,
+      lastDuration: null,
+      results: validImages,
+      createdAt,
+      hidden: false,
+    }
+    setGenerationSlots(prev => [slot, ...prev])
+    setActiveSlotId(slotId)
+    setSlotViewMode('focus')
+    setResults(validImages)
+    setResultActiveIdx(0)
+    setSelectedImageIds(new Set())
+    setInpaintTarget(null)
+    setLogEntries(prev => [
+      ...prev.slice(-99),
+      {
+        time: new Date().toLocaleTimeString('zh-CN'),
+        request: `[局部重绘] ${meta.prompt}`,
+        response: `成功，返回 ${validImages.length} 张图`,
+        endpoint: meta.endpoint,
+        requestBody: meta.requestBodyJson,
+        responseBody: meta.responseSummary,
+        httpStatus: meta.httpStatus ?? 200,
+        jsonValid: true,
+      },
+    ])
+    setGenerationHistory(prev => {
+      const updated = [
+        {
+          id: `${slotId}-${Date.now()}`,
+          slotId,
+          time: new Date().toLocaleString('zh-CN'),
+          prompt: `[局部重绘] ${meta.prompt}`,
+          model: inpaintModel,
+          width: meta.sourceWidth,
+          height: meta.sourceHeight,
+          batchSize: validImages.length,
+          results: validImages,
+          createdAt,
+          endpoint: meta.endpoint,
+          requestBodyJson: meta.requestBodyJson,
+          responseSummary: meta.responseSummary,
+          httpStatus: meta.httpStatus,
+        },
+        ...prev,
+      ].slice(0, 50)
+      saveHistory(updated)
+      return updated
+    })
   }
 
   // 切换主题
@@ -2221,6 +2411,7 @@ function App() {
                           className={`group relative cursor-pointer overflow-hidden rounded-xl transition hover:ring-2 hover:ring-primary-400/50 ${
                             historySelected.has(entry.id) ? 'ring-2 ring-primary-500' : ''
                           } ${viewedHistoryIds.has(entry.id) ? 'ring-1 ring-emerald-400/40' : ''}`}
+                          onContextMenu={event => openHistoryEntryMenu(event, entry)}
                           onClick={() => {
                             if (historyBatchMode) {
                               setHistorySelected(prev => {
@@ -2262,8 +2453,6 @@ function App() {
                                 }
                                 useUiStore.getState().setSelectedLogEntry(errorLog)
                                 useUiStore.getState().setShowDetailedLog(true)
-                              } else if (firstImg) {
-                                openHistoryPreview(entry.results, 0, entry.id)
                               }
                             }
                           }}
@@ -2273,7 +2462,11 @@ function App() {
                               src={firstImg.url}
                               alt=""
                               className="aspect-square w-full cursor-zoom-in bg-white/[0.06] object-cover transition hover:opacity-90"
-                              onDoubleClick={() => openHistoryPreview(entry.results, 0, entry.id)}
+                              onContextMenu={event => openHistoryImageMenu(event, entry, firstImg)}
+                              onDoubleClick={event => {
+                                event.stopPropagation()
+                                openHistoryPreview(entry.results, 0, entry.id)
+                              }}
                               title="双击查看大图"
                             />
                           ) : (
@@ -2319,7 +2512,16 @@ function App() {
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
                           {/* 底部信息 */}
                           <div className="absolute bottom-0 left-0 right-0 p-1.5">
-                            <p className="truncate text-[9px] text-white/80">{entry.prompt}</p>
+                            <p
+                              className="truncate text-[9px] text-white/80"
+                              onDoubleClick={event => {
+                                event.stopPropagation()
+                                applyHistoryPrompt(entry)
+                              }}
+                              title="双击应用提示词到主界面"
+                            >
+                              {entry.prompt}
+                            </p>
                             <div className="mt-0.5 flex items-center gap-1">
                               {entry.results.length > 0 && (
                                 <span className="text-[8px] text-primary-300">
@@ -2391,6 +2593,7 @@ function App() {
                               ? 'border-l-2 border-l-emerald-400/60'
                               : ''
                         } ${historyBatchMode ? 'pl-3' : ''}`}
+                        onContextMenu={event => openHistoryEntryMenu(event, entry)}
                         onClick={() => {
                           if (historyBatchMode) {
                             setHistorySelected(prev => {
@@ -2428,8 +2631,6 @@ function App() {
                               }
                               useUiStore.getState().setSelectedLogEntry(errorLog)
                               useUiStore.getState().setShowDetailedLog(true)
-                            } else if (firstImg) {
-                              openHistoryPreview(entry.results, 0, entry.id)
                             }
                           }
                         }}
@@ -2440,7 +2641,11 @@ function App() {
                               src={firstImg.url}
                               alt=""
                               className="h-14 w-14 flex-shrink-0 cursor-zoom-in rounded-lg bg-white/[0.06] object-cover transition hover:ring-2 hover:ring-primary-400"
-                              onDoubleClick={() => openHistoryPreview(entry.results, 0, entry.id)}
+                              onContextMenu={event => openHistoryImageMenu(event, entry, firstImg)}
+                              onDoubleClick={event => {
+                                event.stopPropagation()
+                                openHistoryPreview(entry.results, 0, entry.id)
+                              }}
                               title="双击查看大图"
                             />
                           ) : (
@@ -2483,7 +2688,14 @@ function App() {
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-400 dark:text-slate-300">
+                            <p
+                              className="line-clamp-2 text-[11px] leading-relaxed text-slate-400 transition hover:text-primary-300 dark:text-slate-300"
+                              onDoubleClick={event => {
+                                event.stopPropagation()
+                                applyHistoryPrompt(entry)
+                              }}
+                              title="双击应用提示词到主界面"
+                            >
                               {entry.prompt}
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -2605,6 +2817,7 @@ function App() {
               setSizeTier(slot.request.sizeTier)
               setTimeout(() => handleGenerateRef.current(), 0)
             }}
+            onOpenInpaint={img => setInpaintTarget(img)}
           />
         </div>
 
@@ -2615,10 +2828,50 @@ function App() {
             setPreviewImage(null)
             if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
           }}
+          onOpenInpaint={img => {
+            setPreviewImage(null)
+            setInpaintTarget(img)
+          }}
+        />
+
+        <InpaintDialog
+          open={Boolean(inpaintTarget)}
+          image={inpaintTarget}
+          model={model}
+          onClose={() => setInpaintTarget(null)}
+          onComplete={handleInpaintComplete}
         />
 
         {/* 详细日志弹窗 */}
         <DetailedLogDialog />
+
+        {historyContextMenu && (
+          <div
+            className="fixed z-[10030] min-w-28 overflow-hidden rounded-lg border border-white/[0.08] bg-slate-950/95 py-1 text-xs shadow-2xl backdrop-blur"
+            style={{ left: historyContextMenu.x, top: historyContextMenu.y }}
+            onClick={event => event.stopPropagation()}
+            onContextMenu={event => event.preventDefault()}
+          >
+            {historyContextMenu.imageId && (
+              <button
+                type="button"
+                className="block w-full px-3 py-2 text-left text-red-300 transition hover:bg-red-500/15 hover:text-red-200"
+                onClick={() =>
+                  deleteHistoryImage(historyContextMenu.entryId, historyContextMenu.imageId!)
+                }
+              >
+                删除图片
+              </button>
+            )}
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left text-red-300 transition hover:bg-red-500/15 hover:text-red-200"
+              onClick={() => deleteHistoryEntry(historyContextMenu.entryId)}
+            >
+              删除记录
+            </button>
+          </div>
+        )}
 
         {/* 无限画布 */}
         {whiteboardOpen && (
@@ -3520,7 +3773,10 @@ function App() {
           width={width}
           height={height}
           status={status}
-          isRegularGenerating={parallelCount <= 1 && status === 'running'}
+          isRegularGenerating={
+            generationSlots.filter(slot => slot.status === 'running').length >=
+            Math.max(1, Math.min(4, parallelCount))
+          }
           handleGenerate={handleGenerate}
           onOpenModelPicker={() => {
             const cfg = getApiConfig()

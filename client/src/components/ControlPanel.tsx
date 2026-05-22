@@ -475,7 +475,7 @@ const ControlPanel: React.FC<Props> = ({
             value={parallelCount}
             onChange={e => setParallelCount(Math.max(1, Math.min(4, Number(e.target.value) || 1)))}
             className="w-24 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
-            title="并行路数：1为常规单次生图，2-4为并发生图"
+            title="最大同时运行任务数：每次点击只新增 1 个任务"
           >
             <option value={1}>1 路</option>
             <option value={2}>2 路</option>
@@ -551,7 +551,7 @@ const ControlPanel: React.FC<Props> = ({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              <span>{parallelCount > 1 ? '新增并行生图' : '正在生图中'}</span>
+              <span>{parallelCount > 1 && !isRegularGenerating ? '新增任务' : '正在生图中'}</span>
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2">
