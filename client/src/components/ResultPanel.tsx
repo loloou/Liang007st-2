@@ -13,6 +13,9 @@ import { downloadImage } from '../utils/download'
 
 type GenerationSlotView = {
   id: string
+  historySlotId?: string
+  viewportIndex?: number
+  viewportName?: string
   request: {
     prompt: string
     negativePrompt: string
@@ -51,12 +54,12 @@ interface Props {
   setPreviewImage: (img: GeneratedImage | null) => void
   generationSlots?: GenerationSlotView[]
   parallelCount?: number
-  slotViewMode?: 'grid' | 'focus'
-  setSlotViewMode?: (mode: 'grid' | 'focus') => void
+  viewportCount?: number
   activeSlotId?: string | null
   setActiveSlotId?: (slotId: string | null) => void
   onSelectSlot?: (slot: GenerationSlotView) => void
-  onCloseSlot?: (slotId: string) => void
+  onRegenerateSlot?: (slot: GenerationSlotView) => void
+  onRenameSlot?: (slot: GenerationSlotView) => void
   onRetrySlot?: (slot: GenerationSlotView) => void
   onOpenInpaint?: (img: GeneratedImage) => void
 }
@@ -80,22 +83,21 @@ const ResultPanel: React.FC<Props> = ({
   setPreviewImage,
   generationSlots = [],
   parallelCount = 1,
-  slotViewMode = 'focus',
-  setSlotViewMode,
+  viewportCount: rawViewportCount = 1,
   activeSlotId,
   setActiveSlotId,
   onSelectSlot,
-  onCloseSlot,
+  onRegenerateSlot,
+  onRenameSlot,
   onRetrySlot,
   onOpenInpaint,
 }) => {
+  const viewportCount = Math.max(1, Math.min(6, rawViewportCount))
+  const [maximizedViewportIndex, setMaximizedViewportIndex] = useState<number | null>(null)
   const safeIdx =
     results.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), results.length - 1) : 0
   const activeSlot =
     generationSlots.find(slot => slot.id === activeSlotId) || generationSlots[0] || null
-  const activeSlotIndex = activeSlot
-    ? generationSlots.findIndex(slot => slot.id === activeSlot.id)
-    : -1
   const focusResults = activeSlot?.results ?? results
   const focusSafeIdx =
     focusResults.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), focusResults.length - 1) : 0
@@ -222,6 +224,211 @@ const ResultPanel: React.FC<Props> = ({
     }
   }
 
+  useEffect(() => {
+    if (maximizedViewportIndex !== null && maximizedViewportIndex >= viewportCount) {
+      setMaximizedViewportIndex(null)
+    }
+  }, [maximizedViewportIndex, viewportCount])
+
+  useEffect(() => {
+    if (maximizedViewportIndex === null) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMaximizedViewportIndex(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [maximizedViewportIndex])
+
+  // 视口网格 class
+  const gridClass =
+    viewportCount <= 1
+      ? ''
+      : viewportCount <= 2
+        ? 'grid grid-cols-2 grid-rows-1 gap-1'
+        : viewportCount <= 4
+          ? 'grid grid-cols-2 grid-rows-2 gap-1'
+          : 'grid grid-cols-3 grid-rows-2 gap-1'
+
+  // 将 slots 映射到视口：取最近的 viewportCount 个 slot（不足则填 null）
+  const viewportSlots: (GenerationSlotView | null)[] = []
+  for (let i = 0; i < viewportCount; i++) {
+    viewportSlots.push(generationSlots[i] ?? null)
+  }
+  const visibleViewportSlots = viewportSlots
+  const maximizedSlot =
+    maximizedViewportIndex !== null ? (viewportSlots[maximizedViewportIndex] ?? null) : null
+  const viewportStageClass = `min-h-[560px] flex-1 overflow-hidden p-1 ${gridClass}`
+
+  // 渲染单个视口
+  const renderViewportCell = (slot: GenerationSlotView | null, vpIndex: number) => {
+    const isActive = slot ? slot.id === activeSlotId : false
+    const firstImg = slot?.results?.[0]
+    const imgUrl = firstImg ? getOriginalUrl(firstImg) : null
+
+    return (
+      <div
+        key={slot?.id ?? `empty-${vpIndex}`}
+        className={`group relative flex min-h-0 flex-1 flex-col overflow-hidden border transition ${
+          isActive
+            ? 'border-primary-400/50 bg-white/[0.03]'
+            : 'border-white/[0.06] bg-[#07080d] hover:border-white/15'
+        } ${viewportCount <= 1 ? '' : 'rounded-lg'} ${maximizedViewportIndex === vpIndex ? 'h-full w-full rounded-xl' : ''}`}
+        onClick={() => {
+          if (slot) {
+            selectSlot(slot)
+          }
+        }}
+      >
+        {viewportCount >= 2 && (
+          <div className="absolute right-1.5 top-1.5 z-20 flex gap-1 opacity-0 transition group-hover:opacity-100">
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-[10px] text-slate-300 transition hover:bg-primary-500/25 hover:text-primary-100"
+              onClick={e => {
+                e.stopPropagation()
+                setMaximizedViewportIndex(maximizedViewportIndex === vpIndex ? null : vpIndex)
+              }}
+              title={maximizedViewportIndex === vpIndex ? '还原视口' : '最大化视口'}
+            >
+              {maximizedViewportIndex === vpIndex ? '↙' : '⛶'}
+            </button>
+            {slot && (
+              <>
+                {onRenameSlot && (
+                  <button
+                    type="button"
+                    className="flex h-6 min-w-6 items-center justify-center rounded-full bg-black/55 px-1.5 text-[10px] text-slate-300 transition hover:bg-blue-500/25 hover:text-blue-100"
+                    onClick={e => {
+                      e.stopPropagation()
+                      onRenameSlot(slot)
+                    }}
+                    title="命名视口"
+                  >
+                    名
+                  </button>
+                )}
+                {onRegenerateSlot && (
+                  <button
+                    type="button"
+                    className="flex h-6 min-w-6 items-center justify-center rounded-full bg-black/55 px-1.5 text-[10px] text-slate-300 transition hover:bg-emerald-500/25 hover:text-emerald-100"
+                    onClick={e => {
+                      e.stopPropagation()
+                      onRegenerateSlot(slot)
+                    }}
+                    title="重新生成此视口"
+                  >
+                    重
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {slot?.viewportName && (
+          <div className="absolute left-1.5 top-1.5 z-20 rounded-full bg-black/55 px-2 py-0.5 text-[9px] text-slate-200 backdrop-blur">
+            {slot.viewportIndex ? `视口 ${slot.viewportIndex}` : '视口'} · {slot.viewportName}
+          </div>
+        )}
+        {/* 视口内：生成中 */}
+        {slot?.status === 'running' ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+            <div className="w-full max-w-[200px]">
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
+                  style={{ width: `${slot.progressPct}%` }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between text-[10px] text-amber-200">
+                <span>
+                  {Math.floor(slot.elapsedSeconds / 60) > 0
+                    ? `${Math.floor(slot.elapsedSeconds / 60)}分${slot.elapsedSeconds % 60}秒`
+                    : `${slot.elapsedSeconds}秒`}
+                </span>
+                <span>{slot.progressPct}%</span>
+              </div>
+            </div>
+            {viewportCount > 1 && (
+              <p className="truncate text-[10px] text-slate-500">{slot.request.model}</p>
+            )}
+          </div>
+        ) : /* 视口内：失败 */
+        slot?.status === 'error' ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+            <svg
+              className="h-6 w-6 text-red-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <p className="line-clamp-2 text-[11px] text-red-200/80">{slot.error}</p>
+            {onRetrySlot && (
+              <button
+                className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-1 text-[11px] text-red-200 transition hover:bg-red-500/20"
+                onClick={e => {
+                  e.stopPropagation()
+                  onRetrySlot(slot)
+                }}
+              >
+                重试
+              </button>
+            )}
+          </div>
+        ) : /* 视口内：有结果 */
+        slot && imgUrl ? (
+          <div
+            className="group relative flex flex-1 cursor-pointer items-center justify-center overflow-hidden"
+            onClick={e => {
+              e.stopPropagation()
+              setPreviewImage(firstImg!)
+            }}
+            onContextMenu={e => handleContextMenu(e, firstImg!)}
+          >
+            <img
+              src={safeUrl(imgUrl)}
+              alt=""
+              className="max-h-full max-w-full object-contain transition-all duration-200 group-hover:scale-[1.01]"
+              draggable={false}
+            />
+            {slot.results.length > 1 && (
+              <div className="absolute bottom-1 right-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-medium text-white/80">
+                {slot.results.length} 张
+              </div>
+            )}
+          </div>
+        ) : (
+          /* 视口内：空占位 */
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-slate-500">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04]">
+              <svg
+                className="h-5 w-5 opacity-40"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <span className="text-[10px]">视口 {vpIndex + 1}</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <section
       className={`glass-card workspace-panel flex min-w-[200px] flex-1 flex-col overflow-hidden ${status === 'running' ? 'generating-pulse' : ''}`}
@@ -237,8 +444,7 @@ const ResultPanel: React.FC<Props> = ({
           {generationSlots.length > 0 && parallelCount > 1 && (
             <span className="badge-primary/60 font-mono text-slate-400">
               并行 {parallelCount} · 运行{' '}
-              {generationSlots.filter(slot => slot.status === 'running').length} · 槽位{' '}
-              {generationSlots.length}
+              {generationSlots.filter(slot => slot.status === 'running').length}
             </span>
           )}
           {storeStatus === 'running' &&
@@ -257,22 +463,6 @@ const ResultPanel: React.FC<Props> = ({
           )}
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          {generationSlots.length > 0 && parallelCount > 1 && setSlotViewMode && (
-            <div className="flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.04]">
-              <button
-                className={`px-2 py-1 text-[11px] transition ${slotViewMode === 'grid' ? 'bg-primary-500/20 text-primary-300' : 'text-slate-400 hover:bg-white/[0.06]'}`}
-                onClick={() => setSlotViewMode('grid')}
-              >
-                全部槽位
-              </button>
-              <button
-                className={`px-2 py-1 text-[11px] transition ${slotViewMode === 'focus' ? 'bg-primary-500/20 text-primary-300' : 'text-slate-400 hover:bg-white/[0.06]'}`}
-                onClick={() => setSlotViewMode('focus')}
-              >
-                聚焦槽位
-              </button>
-            </div>
-          )}
           {results.length > 0 && (
             <>
               <button
@@ -294,148 +484,66 @@ const ResultPanel: React.FC<Props> = ({
       </div>
 
       {/* 内容区 */}
-      <div className="app-scrollbar flex flex-1 items-center justify-center overflow-auto">
-        {generationSlots.length > 0 && slotViewMode === 'grid' ? (
-          <div className="grid h-full w-full auto-rows-min grid-cols-1 gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
-            {generationSlots.map((slot, index) => {
-              const firstImg = slot.results[0]
-              const extImg = firstImg as (typeof firstImg & { originalUrl?: string }) | undefined
-              const imgUrl = extImg?.originalUrl || firstImg?.url
-              const mins = Math.floor(slot.elapsedSeconds / 60)
-              const secs = slot.elapsedSeconds % 60
-              return (
-                <article
-                  key={slot.id}
-                  className={`group relative flex min-h-64 flex-col overflow-hidden rounded-2xl border bg-white/[0.035] transition hover:border-primary-400/35 hover:bg-white/[0.055] ${slot.status === 'running' ? 'generating-pulse border-amber-400/30' : slot.status === 'error' ? 'border-red-400/25' : 'border-white/[0.08]'}`}
-                >
-                  <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-xs text-slate-300">
-                        <span className="font-semibold">
-                          槽位 #{generationSlots.length - index}
-                        </span>
-                        {slot.status === 'running' && (
-                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
-                            生成中 {mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`}
-                          </span>
-                        )}
-                        {slot.status === 'success' && (
-                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                            完成 {slot.results.length}张
-                          </span>
-                        )}
-                        {slot.status === 'error' && (
-                          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] text-red-300">
-                            失败
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[10px] text-slate-500">
-                        {slot.request.model} · {slot.request.width}×{slot.request.height} · batch{' '}
-                        {slot.request.batchSize}
-                      </p>
-                    </div>
-                    <div className="flex flex-shrink-0 items-center gap-1">
-                      {slot.status !== 'running' && onRetrySlot && (
-                        <button
-                          className="rounded-lg px-2 py-1 text-[10px] text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-200"
-                          onClick={() => onRetrySlot(slot)}
-                        >
-                          重试
-                        </button>
-                      )}
-                      {onCloseSlot && (
-                        <button
-                          className="rounded-lg px-2 py-1 text-[10px] text-slate-400 transition hover:bg-red-500/15 hover:text-red-300"
-                          onClick={() => onCloseSlot(slot.id)}
-                        >
-                          关闭
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* ── 多视口网格（viewportCount >= 2）── */}
+        {viewportCount >= 2 ? (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className={viewportStageClass}>
+              {visibleViewportSlots.map((slot, idx) =>
+                renderViewportCell(slot, maximizedViewportIndex ?? idx),
+              )}
+            </div>
+            {/* 底部视口切换栏 */}
+            <div className="app-scrollbar flex h-11 flex-shrink-0 items-center justify-center gap-1.5 overflow-x-auto border-t border-white/[0.06] bg-black/20 px-2 py-1.5">
+              {viewportSlots.map((slot, idx) => {
+                const isActive = slot ? slot.id === activeSlotId : false
+                const thumb = slot?.results?.[0]
+                return (
                   <button
-                    type="button"
-                    className="relative flex min-h-48 flex-1 items-center justify-center overflow-hidden bg-black/10"
+                    key={slot?.id ?? `vp-${idx}`}
+                    className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border transition ${
+                      isActive
+                        ? 'border-primary-400 bg-primary-500/15 ring-1 ring-primary-400/30'
+                        : slot?.status === 'running'
+                          ? 'border-amber-400/30 bg-amber-500/10'
+                          : slot?.status === 'error'
+                            ? 'border-red-400/30 bg-red-500/10'
+                            : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
+                    }`}
                     onClick={() => {
-                      selectSlot(slot)
-                      setSlotViewMode?.('focus')
+                      if (slot) {
+                        selectSlot(slot)
+                      }
+                      if (maximizedViewportIndex !== null) setMaximizedViewportIndex(idx)
                     }}
-                    onContextMenu={firstImg ? e => handleContextMenu(e, firstImg) : undefined}
+                    title={`视口 ${idx + 1}${slot?.status === 'running' ? ' · 生成中' : slot?.status === 'error' ? ' · 失败' : slot?.results?.length ? ` · ${slot.results.length}张` : ''}`}
                   >
-                    {slot.status === 'running' ? (
-                      <div className="flex w-full max-w-xs flex-col items-center gap-3 px-6">
-                        <div className="h-12 w-12 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                        <div className="w-full">
-                          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
-                              style={{ width: `${slot.progressPct}%` }}
-                            />
-                          </div>
-                          <div className="mt-1 flex justify-between text-[10px] text-amber-200">
-                            <span>独立槽位生成中</span>
-                            <span>{slot.progressPct}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : slot.status === 'error' ? (
-                      <div className="flex flex-col items-center gap-2 px-6 text-center text-red-300">
-                        <span className="text-sm font-semibold">生成失败</span>
-                        <p className="line-clamp-4 text-[11px] text-red-200/80">{slot.error}</p>
-                      </div>
-                    ) : imgUrl ? (
+                    {thumb ? (
                       <img
-                        src={safeUrl(imgUrl)}
+                        src={safeUrl(thumb.url || getOriginalUrl(thumb))}
                         alt=""
-                        className="h-full max-h-[420px] w-full object-contain transition group-hover:scale-[1.01]"
-                        draggable={false}
+                        className="h-full w-full object-cover"
                       />
+                    ) : slot?.status === 'running' ? (
+                      <div className="h-3 w-3 animate-spin rounded-full border border-amber-300 border-t-transparent" />
+                    ) : slot?.status === 'error' ? (
+                      <span className="text-[10px] font-bold text-red-300">!</span>
                     ) : (
-                      <span className="text-xs text-slate-500">暂无图片</span>
+                      <span className="text-[8px] text-slate-500">{idx + 1}</span>
                     )}
                   </button>
-
-                  <div className="space-y-2 border-t border-white/[0.06] p-3">
-                    <p className="line-clamp-2 text-[11px] leading-relaxed text-slate-400">
-                      {slot.request.prompt}
-                    </p>
-                    {slot.results.length > 1 && (
-                      <div className="flex gap-1 overflow-x-auto">
-                        {slot.results.map(img => {
-                          const thumb =
-                            (img as typeof img & { originalUrl?: string }).originalUrl || img.url
-                          return (
-                            <img
-                              key={img.id}
-                              src={safeUrl(thumb)}
-                              alt=""
-                              className="h-9 w-9 rounded-md object-cover"
-                            />
-                          )
-                        })}
-                      </div>
-                    )}
-                    {slot.lastDuration && (
-                      <p className="font-mono text-[10px] text-slate-500">
-                        用时 {slot.lastDuration}
-                      </p>
-                    )}
-                  </div>
-                </article>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        ) : generationSlots.length > 0 && slotViewMode === 'focus' ? (
+        ) : /* ── 单视口模式（viewportCount=1） ── */
+        generationSlots.length > 0 && generationSlots[0] ? (
           <div className="flex h-full w-full flex-col overflow-hidden bg-[#07080d]">
+            {/* 活跃槽位信息 */}
             {activeSlot && (
               <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] bg-white/[0.025] px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-primary-400/25 bg-primary-500/10 px-2 py-0.5 text-[11px] font-semibold text-primary-200">
-                      聚焦槽位 #{generationSlots.length - activeSlotIndex}
-                    </span>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] ${activeSlot.status === 'running' ? 'bg-amber-500/15 text-amber-200' : activeSlot.status === 'error' ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'}`}
                     >
@@ -488,7 +596,7 @@ const ResultPanel: React.FC<Props> = ({
                       />
                     </div>
                     <div className="mt-2 flex justify-between text-[11px] text-amber-100/90">
-                      <span>当前槽位生成中，其他槽位可继续排队或查看</span>
+                      <span>生成中…</span>
                       <span>{activeSlot.progressPct}%</span>
                     </div>
                   </div>
@@ -550,67 +658,6 @@ const ResultPanel: React.FC<Props> = ({
                 <span className="text-xs text-slate-500">暂无图片</span>
               )}
             </div>
-            {/* 底部信息栏 + 槽位缩略图 */}
-            <div className="flex min-h-[76px] flex-shrink-0 items-center gap-3 border-t border-white/[0.06] bg-black/30 px-3 py-2">
-              {/* 当前槽位信息 */}
-              {activeSlot && (
-                <div className="hidden min-w-0 max-w-[240px] flex-shrink-0 sm:block">
-                  <div className="truncate text-[11px] font-medium text-slate-300">
-                    槽位 #{generationSlots.length - activeSlotIndex}
-                  </div>
-                  <div className="mt-0.5 truncate text-[10px] text-slate-500">
-                    {activeSlot.lastDuration
-                      ? `用时 ${activeSlot.lastDuration}`
-                      : activeSlot.request.model}
-                  </div>
-                </div>
-              )}
-              {/* 槽位缩略图列表 — 横向排列在底部 */}
-              <div className="app-scrollbar flex flex-1 items-stretch gap-2 overflow-x-auto py-1">
-                {generationSlots.map((slot, index) => {
-                  const firstImg = slot.results[0]
-                  const isActive = slot.id === activeSlot?.id
-                  return (
-                    <button
-                      key={slot.id}
-                      className={`relative flex h-14 w-[108px] flex-shrink-0 overflow-hidden rounded-xl border text-left transition ${isActive ? 'border-primary-400 bg-primary-500/10 ring-1 ring-primary-400/30' : slot.status === 'error' ? 'border-red-400/25 bg-red-500/5' : slot.status === 'running' ? 'border-amber-400/25 bg-amber-500/5' : 'border-white/[0.08] bg-white/[0.035] hover:border-white/25'}`}
-                      onClick={() => selectSlot(slot)}
-                      title={`槽位 #${generationSlots.length - index}`}
-                    >
-                      <div className="flex h-full w-14 flex-shrink-0 items-center justify-center overflow-hidden bg-black/25">
-                        {firstImg ? (
-                          <img
-                            src={safeUrl(firstImg.url || getOriginalUrl(firstImg))}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : slot.status === 'running' ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" />
-                        ) : slot.status === 'error' ? (
-                          <span className="text-[12px] font-bold text-red-300">!</span>
-                        ) : (
-                          <span className="text-[8px] text-slate-500">空</span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 px-2 py-1.5">
-                        <div className="truncate text-[10px] font-semibold text-slate-300">
-                          #{generationSlots.length - index}
-                        </div>
-                        <div
-                          className={`mt-0.5 truncate text-[9px] ${slot.status === 'running' ? 'text-amber-300' : slot.status === 'error' ? 'text-red-300' : 'text-emerald-300'}`}
-                        >
-                          {slot.status === 'running'
-                            ? `${slot.progressPct}%`
-                            : slot.status === 'error'
-                              ? '失败'
-                              : `${slot.results.length}张`}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
           </div>
         ) : status === 'running' && results.length === 0 ? (
           /* 骨架屏 */
@@ -627,7 +674,7 @@ const ResultPanel: React.FC<Props> = ({
           </div>
         ) : results.length === 0 ? (
           /* 空状态 */
-          <div className="flex h-full flex-col items-center justify-center px-8 py-12 text-slate-500">
+          <div className="flex h-full w-full flex-col items-center justify-center px-8 py-12 text-slate-500">
             <div className="empty-placeholder group mb-6 flex h-52 w-72 cursor-default flex-col items-center justify-center rounded-[30px]">
               <div className="mb-5 grid grid-cols-3 gap-2 opacity-50">
                 {[
@@ -820,6 +867,64 @@ const ResultPanel: React.FC<Props> = ({
           })()
         )}
       </div>
+
+      {/* ── 自定义右键菜单 ── */}
+      {maximizedViewportIndex !== null &&
+        createPortal(
+          <div className="fixed inset-0 z-[9990] flex flex-col bg-[#03040a]">
+            <div className="flex min-h-0 min-w-0 flex-1 p-2">
+              {renderViewportCell(maximizedSlot, maximizedViewportIndex)}
+            </div>
+            <div className="app-scrollbar flex h-12 flex-shrink-0 items-center justify-center gap-2 overflow-x-auto border-t border-white/[0.08] bg-black/45 px-3 py-2 backdrop-blur-xl">
+              {viewportSlots.map((slot, idx) => {
+                const isActive = idx === maximizedViewportIndex
+                const thumb = slot?.results?.[0]
+                return (
+                  <button
+                    key={slot?.id ?? `max-vp-${idx}`}
+                    className={`relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border transition ${
+                      isActive
+                        ? 'border-primary-400 bg-primary-500/15 ring-1 ring-primary-400/40'
+                        : slot?.status === 'running'
+                          ? 'border-amber-400/30 bg-amber-500/10'
+                          : slot?.status === 'error'
+                            ? 'border-red-400/30 bg-red-500/10'
+                            : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
+                    }`}
+                    onClick={() => {
+                      if (slot) selectSlot(slot)
+                      setMaximizedViewportIndex(idx)
+                    }}
+                    title={`视口 ${idx + 1}`}
+                  >
+                    {thumb ? (
+                      <img
+                        src={safeUrl(thumb.url || getOriginalUrl(thumb))}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : slot?.status === 'running' ? (
+                      <div className="h-3 w-3 animate-spin rounded-full border border-amber-300 border-t-transparent" />
+                    ) : slot?.status === 'error' ? (
+                      <span className="text-[10px] font-bold text-red-300">!</span>
+                    ) : (
+                      <span className="text-[8px] text-slate-500">{idx + 1}</span>
+                    )}
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-sm text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
+                onClick={() => setMaximizedViewportIndex(null)}
+                title="退出最大化"
+              >
+                ↙
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* ── 自定义右键菜单 ── */}
       {ctxMenu &&

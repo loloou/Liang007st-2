@@ -83,6 +83,21 @@ function extractErrorMessage(parsed: unknown, fallback: string): string {
   return fallback || JSON.stringify(parsed)
 }
 
+function isImageInputUnsupportedError(message: string): boolean {
+  const text = message.toLowerCase()
+  return (
+    text.includes('does not support image input') ||
+    text.includes('does not support image') ||
+    text.includes('image input is not supported') ||
+    text.includes('cannot read') ||
+    text.includes('image.png') ||
+    text.includes('inform the user') ||
+    text.includes('model does not support') ||
+    text.includes('this model does not') ||
+    (text.includes('unsupported') && text.includes('image'))
+  )
+}
+
 function extractImages(data: unknown): GeneratedImage[] | null {
   if (!data || typeof data !== 'object') return null
   const obj = data as Record<string, unknown>
@@ -375,6 +390,16 @@ export async function inpaintImage(params: InpaintParams): Promise<GenerateResul
   const parsed = safeParseJson(rawText)
   if (!resp.ok) {
     const detail = extractErrorMessage(parsed, rawText || `HTTP ${resp.status}`)
+    if (isImageInputUnsupportedError(detail)) {
+      return errResult(
+        endpoint,
+        resolved.spec,
+        requestBodyJson,
+        '当前局部重绘模型不支持图片输入，无法读取 image.png。请在设置中切换到支持 /v1/images/edits 的图片编辑模型，或为该模型配置正确的 Inpaint Endpoint。',
+        resp.status,
+        rawText.slice(0, 500),
+      )
+    }
     return errResult(
       endpoint,
       resolved.spec,

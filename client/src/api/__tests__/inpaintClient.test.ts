@@ -238,6 +238,30 @@ describe('inpaintImage', () => {
     expect(result.httpErrorBody).toContain('mask size mismatch')
   })
 
+  it('turns unsupported image input errors into actionable Chinese guidance', async () => {
+    saveConfig(makeConfig())
+    mockDataUrlBlobFetch(
+      new Response(
+        JSON.stringify({
+          error: {
+            message:
+              'Cannot read "image.png" (this model does not support image input). Inform the user.',
+          },
+        }),
+        {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    )
+
+    const result = await inpaintImage(baseParams)
+
+    expect(result.httpStatus).toBe(400)
+    expect(result.error).toContain('当前局部重绘模型不支持图片输入')
+    expect(result.error).toContain('Inpaint Endpoint')
+  })
+
   it('detects HTML responses as endpoint configuration errors', async () => {
     saveConfig(makeConfig())
     mockDataUrlBlobFetch(

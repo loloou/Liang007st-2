@@ -473,14 +473,16 @@ const ControlPanel: React.FC<Props> = ({
           <span className="whitespace-nowrap text-[10px] font-medium text-slate-500">并行生图</span>
           <select
             value={parallelCount}
-            onChange={e => setParallelCount(Math.max(1, Math.min(4, Number(e.target.value) || 1)))}
+            onChange={e => setParallelCount(Math.max(1, Math.min(6, Number(e.target.value) || 1)))}
             className="w-24 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary-500/30"
-            title="最大同时运行任务数：每次点击只新增 1 个任务"
+            title="最大同时运行任务数：每次点击只新增 1 个任务，视口数随路数变化"
           >
             <option value={1}>1 路</option>
             <option value={2}>2 路</option>
             <option value={3}>3 路</option>
             <option value={4}>4 路</option>
+            <option value={5}>5 路</option>
+            <option value={6}>6 路</option>
           </select>
         </div>
 
