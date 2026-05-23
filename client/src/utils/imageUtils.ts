@@ -4,7 +4,7 @@
  */
 
 /** 创建缩略图（限制 base64/blob URL 写入 localStorage 的体积） */
-export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<string> {
+export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<string | null> {
   return new Promise(resolve => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -32,13 +32,13 @@ export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<
             ctx.drawImage(img, 0, 0, width, height)
             resolve(canvas.toDataURL('image/jpeg', 0.7))
           } catch {
-            resolve('')
+            resolve(null)
           }
         } else {
-          resolve('')
+          resolve(null)
         }
       } catch {
-        resolve('')
+        resolve(null)
       } finally {
         if (canvas) {
           canvas.width = 0
@@ -46,7 +46,7 @@ export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<
         }
       }
     }
-    img.onerror = () => resolve('')
+    img.onerror = () => resolve(null)
     img.src = imageUrl
   })
 }

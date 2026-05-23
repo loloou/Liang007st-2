@@ -178,7 +178,8 @@ function resolveInpaintModel(paramsModel: string): {
   const cfg = getApiConfig()
   const active = getActiveImageModel(cfg)
   const requested =
-    cfg.imageModels.find(m => m.modelId === paramsModel || m.id === cfg.activeImageModelId) ??
+    cfg.imageModels.find(m => m.modelId === paramsModel) ??
+    cfg.imageModels.find(m => m.id === cfg.activeImageModelId) ??
     active.model
 
   const INPAINT_MODEL_PATTERNS =

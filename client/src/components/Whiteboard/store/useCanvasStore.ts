@@ -19,6 +19,7 @@ import {
 } from '../../../utils/resolutionPresets'
 import { resolveGenerationSize } from '../../../utils/generationSize'
 import { useGenerationStore } from '../../../store/generationStore'
+import { idbGet, idbSet } from '../../../utils/idb'
 
 export type NodeKind = 'image' | 'text' | 'generate'
 
@@ -99,28 +100,58 @@ function getGenerationParams() {
 }
 
 function saveCanvas(nodes: CanvasNode[], edges: Edge[]) {
+  const payload = { nodes, edges, ts: Date.now() }
+  // 主存储：IndexedDB（无容量限制）
+  idbSet('canvas', 'canvas_data', payload).catch(() => {})
+  // 兜底：localStorage 精简版（移除 data: URL 图片）
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges, ts: Date.now() }))
+    const lightNodes = nodes.map(n => {
+      if (n.data?.imageUrl?.startsWith('data:')) {
+        return { ...n, data: { ...n.data, imageUrl: undefined } }
+      }
+      return n
+    })
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes: lightNodes, edges, ts: Date.now() }))
   } catch {
-    /* quota */
+    // localStorage 配额超限静默
   }
 }
 
-function loadCanvas(): { nodes: CanvasNode[]; edges: Edge[] } | null {
+function loadCanvas(): { nodes: CanvasNode[]; edges: Edge[]; ts?: number } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const d = JSON.parse(raw)
-    if (Array.isArray(d.nodes)) return { nodes: d.nodes, edges: d.edges ?? [] }
+    if (Array.isArray(d.nodes)) return { nodes: d.nodes, edges: d.edges ?? [], ts: d.ts }
   } catch {
     /* corrupt */
   }
   return null
 }
 
-function saveChat(history: ChatMessage[]) {
+/** 异步从 IndexedDB 加载完整白板数据（含图片） */
+async function loadCanvasAsync(): Promise<{
+  nodes: CanvasNode[]
+  edges: Edge[]
+  ts?: number
+} | null> {
   try {
-    localStorage.setItem(CHAT_KEY, JSON.stringify(history.slice(-100)))
+    const data = await idbGet<{ nodes: CanvasNode[]; edges: Edge[]; ts?: number }>(
+      'canvas',
+      'canvas_data',
+    )
+    if (data && Array.isArray(data.nodes)) return data
+  } catch {
+    /* idb unavailable */
+  }
+  return null
+}
+
+function saveChat(history: ChatMessage[]) {
+  const trimmed = history.slice(-100)
+  idbSet('canvas', 'chat_history', trimmed).catch(() => {})
+  try {
+    localStorage.setItem(CHAT_KEY, JSON.stringify(trimmed))
   } catch {
     /* quota */
   }
@@ -701,13 +732,35 @@ export const useCanvasStore = create<CanvasStore>()((set, get) => ({
   },
 
   loadFromStorage: () => {
+    // 同步加载 localStorage 精简版（立即显示）
     const saved = loadCanvas()
     if (saved) set({ nodes: saved.nodes, edges: saved.edges })
+    // 异步加载 IndexedDB 完整版（含图片数据），使用时间戳比较
+    loadCanvasAsync().then(idbData => {
+      if (idbData) {
+        const idbTs = idbData.ts ?? 0
+        const lsTs = saved?.ts ?? 0
+        // IDB 数据更新或同样新且更完整时使用
+        if (idbTs >= lsTs) {
+          set({ nodes: idbData.nodes, edges: idbData.edges })
+        }
+      }
+    })
+    // 异步加载聊天记录
+    idbGet<ChatMessage[]>('canvas', 'chat_history').then(idbChat => {
+      if (idbChat && Array.isArray(idbChat) && idbChat.length > 0) {
+        set(s => {
+          if (idbChat.length >= s.chatHistory.length) return { chatHistory: idbChat }
+          return {}
+        })
+      }
+    })
   },
 
   clearCanvas: () => {
     set({ nodes: [], edges: [], selectedNodeId: null })
     localStorage.removeItem(STORAGE_KEY)
+    idbSet('canvas', 'canvas_data', null).catch(() => {})
   },
 
   exportJSON: () =>

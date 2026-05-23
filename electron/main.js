@@ -108,8 +108,12 @@ function createWindow() {
     show: false,
   });
 
-  const htmlPath = path.join(__dirname, '../client/dist/index.html');
-  mainWindow.loadFile(htmlPath).catch((err) => {
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  const loadPromise = isDev
+    ? mainWindow.loadURL(devServerUrl)
+    : mainWindow.loadFile(path.join(__dirname, '../client/dist/index.html'));
+  loadPromise.catch((err) => {
     console.error('[liang007] 页面加载失败:', err.message);
   });
 
@@ -223,18 +227,42 @@ ipcMain.handle('fetch-request', async (_event, { url, method, headers, body, tim
 app.whenReady().then(() => {
   initPortableUserData();
 
-  // ── 移除 CORS 限制：允许渲染进程直接发 multipart 请求到 API ────────────────
+  // ── CORS 绕过：仅对外部 API 请求注入 CORS 头，跳过本地/内网资源 ────────────
+  const isLocalUrl = (url) => {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      return (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host === '::1' ||
+        host.endsWith('.local') ||
+        host.endsWith('.localhost') ||
+        parsed.protocol === 'file:'
+      );
+    } catch {
+      return true; // 无法解析的 URL 保守处理
+    }
+  };
+
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    // 移除 Origin 头，避免服务器拒绝非同源请求
-    delete details.requestHeaders['Origin'];
+    if (!isLocalUrl(details.url)) {
+      // 仅对外部 API 请求移除 Origin 头
+      delete details.requestHeaders['Origin'];
+    }
     callback({ requestHeaders: details.requestHeaders });
   });
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const headers = details.responseHeaders || {};
-    headers['access-control-allow-origin'] = ['*'];
-    headers['access-control-allow-headers'] = ['*'];
-    headers['access-control-allow-methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
-    callback({ responseHeaders: headers });
+    if (!isLocalUrl(details.url)) {
+      const headers = details.responseHeaders || {};
+      headers['access-control-allow-origin'] = ['*'];
+      headers['access-control-allow-headers'] = ['*'];
+      headers['access-control-allow-methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
+      callback({ responseHeaders: headers });
+    } else {
+      callback({ responseHeaders: details.responseHeaders });
+    }
   });
 
   createWindow();

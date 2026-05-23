@@ -82,9 +82,15 @@ const InpaintDialog: React.FC<InpaintDialogProps> = ({
     setImageStatus('loading')
     setHasMask(false)
     setWorkingSize(null)
+    const imageCanvas = imageCanvasRef.current
+    const maskCanvas = maskCanvasRef.current
+    imageCanvas?.getContext('2d')?.clearRect(0, 0, imageCanvas.width, imageCanvas.height)
+    maskCanvas?.getContext('2d')?.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+    let cancelled = false
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
+      if (cancelled) return
       const imageCanvas = imageCanvasRef.current
       const maskCanvas = maskCanvasRef.current
       const imageCtx = imageCanvas?.getContext('2d')
@@ -104,11 +110,18 @@ const InpaintDialog: React.FC<InpaintDialogProps> = ({
       setImageStatus('ready')
     }
     img.onerror = () => {
+      if (cancelled) return
       setImageStatus('error')
       setWorkingSize(null)
       setError('原图加载失败，无法进入局部重绘。')
     }
     img.src = safeUrl(sourceUrl)
+    return () => {
+      cancelled = true
+      img.onload = null
+      img.onerror = null
+      img.removeAttribute('src')
+    }
   }, [open, sourceUrl])
 
   if (!open || !image) return null

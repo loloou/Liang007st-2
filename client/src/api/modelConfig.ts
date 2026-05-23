@@ -191,7 +191,10 @@ export async function testImageModel(
     endpoint = `${base}/v1beta/models/${modelId}:generateContent`
     body = {
       contents: [{ parts: [{ text: '__api_connectivity_test__' }] }],
-      generationConfig: { responseModalities: ['TEXT', 'IMAGE'], aspectRatio: '1:1' },
+      generationConfig: {
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: { aspectRatio: '1:1', imageSize: '1K' },
+      },
     }
   } else {
     endpoint = `${base}/v1/images/generations`

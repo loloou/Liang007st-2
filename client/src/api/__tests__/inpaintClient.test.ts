@@ -186,6 +186,24 @@ describe('inpaintImage', () => {
     expect(form.get('model')).toBe('gpt-image-2')
   })
 
+  it('prefers the requested model over the active model when both are configured', () => {
+    saveConfig(
+      makeConfig({
+        imageModels: [
+          { id: 'active', modelId: 'gpt-image-active', supportsInpaint: true },
+          { id: 'requested', modelId: 'gpt-image-requested', supportsInpaint: true },
+        ],
+        activeImageModelId: 'active',
+      }),
+    )
+
+    const capability = getInpaintCapability('gpt-image-requested')
+
+    expect(capability.ok).toBe(true)
+    expect(capability.modelId).toBe('gpt-image-requested')
+    expect(capability.autoSelected).toBe(false)
+  })
+
   it('auto-detects gpt-image models by name even without supportsInpaint checked', async () => {
     saveConfig(
       makeConfig({

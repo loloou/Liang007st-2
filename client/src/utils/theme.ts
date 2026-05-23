@@ -85,6 +85,12 @@ export interface ThemeConfig {
   fontStyle: 'sans' | 'serif'
   description: string
   tag: string
+  /** 视口空闲背景色 */
+  viewportBg: string
+  /** 视口选中/活跃背景色 */
+  viewportBgActive: string
+  /** 视口空占位文字颜色 */
+  viewportEmptyText: string
 }
 
 export const THEMES: ThemeConfig[] = [
@@ -112,6 +118,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'serif',
     tag: '帝铸',
+    viewportBg: '#0a0604',
+    viewportBgActive: 'rgba(240, 192, 64, 0.03)',
+    viewportEmptyText: '#b8924e',
   },
   {
     id: 'dark',
@@ -137,6 +146,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'sans',
     tag: '折跃',
+    viewportBg: '#060a18',
+    viewportBgActive: 'rgba(77, 158, 255, 0.03)',
+    viewportEmptyText: '#6888b8',
   },
   {
     id: 'aurora',
@@ -162,6 +174,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'sans',
     tag: '狂潮',
+    viewportBg: '#0a0516',
+    viewportBgActive: 'rgba(191, 0, 255, 0.03)',
+    viewportEmptyText: '#a060d8',
   },
   {
     id: 'cyber',
@@ -187,6 +202,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'sans',
     tag: '渗透',
+    viewportBg: '#050806',
+    viewportBgActive: 'rgba(57, 255, 20, 0.03)',
+    viewportEmptyText: '#60c840',
   },
   {
     id: 'dawn',
@@ -212,6 +230,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'sans',
     tag: '穹顶',
+    viewportBg: '#f5f7fb',
+    viewportBgActive: 'rgba(0, 153, 221, 0.04)',
+    viewportEmptyText: '#7088a8',
   },
   {
     id: 'ember',
@@ -237,6 +258,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'sans',
     tag: '熔核',
+    viewportBg: '#0e0403',
+    viewportBgActive: 'rgba(255, 69, 0, 0.03)',
+    viewportEmptyText: '#e07848',
   },
   {
     id: 'verdant',
@@ -262,6 +286,9 @@ export const THEMES: ThemeConfig[] = [
     style: 'glass',
     fontStyle: 'sans',
     tag: '蚀刻',
+    viewportBg: '#030a06',
+    viewportBgActive: 'rgba(0, 255, 136, 0.03)',
+    viewportEmptyText: '#40c880',
   },
 ]
 
@@ -316,4 +343,7 @@ export function injectThemeVars(config: ThemeConfig): void {
   root.style.setProperty('--bg-base', config.bgBase)
   root.style.setProperty('--bg-raised', config.bgRaised)
   root.style.setProperty('--bg-overlay', config.bgOverlay)
+  root.style.setProperty('--viewport-bg', config.viewportBg)
+  root.style.setProperty('--viewport-bg-active', config.viewportBgActive)
+  root.style.setProperty('--viewport-empty-text', config.viewportEmptyText)
 }

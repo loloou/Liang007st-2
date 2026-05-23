@@ -277,12 +277,18 @@ export const useGenerationStore = create<GenerationState>()((set, get) => {
         get().syncResolution()
         return
       }
+      // 使用版本保护：如果在异步加载期间参考图已被替换，则忽略旧结果
+      const expectedFile = first
       loadImageDimensions(first)
         .then(size => {
+          const current = get().referenceSlots.find(Boolean) as File | undefined
+          if (current !== expectedFile) return // 已被替换，丢弃旧结果
           set({ referenceSize: size })
           get().syncResolution()
         })
         .catch(() => {
+          const current = get().referenceSlots.find(Boolean) as File | undefined
+          if (current !== expectedFile) return
           set({ referenceSize: null })
           get().syncResolution()
         })

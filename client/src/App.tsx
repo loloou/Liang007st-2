@@ -54,6 +54,7 @@ import {
   injectThemeVars,
 } from './utils/theme'
 import { createThumbnail } from './utils/imageUtils'
+import { idbGet, idbSet } from './utils/idb'
 import SettingsDialog from './components/SettingsDialog'
 import VendorManager from './components/VendorManager'
 import ControlPanel from './components/ControlPanel'
@@ -86,6 +87,8 @@ type GenerationSlot = {
   progressPct: number
   lastDuration: string | null
   results: GeneratedImage[]
+  /** 重新生图时保留的上一次结果，供视口内浏览 */
+  previousResults?: GeneratedImage[]
   error?: string
   createdAt: number
   hidden?: boolean
@@ -318,6 +321,29 @@ function App() {
       return []
     }
   })
+  // IndexedDB 异步迁移/恢复：启动时尝试从 IDB 读取更完整的历史
+  const idbHistoryLoaded = useRef(false)
+  // 标记用户是否已修改过历史（删除等），阻止 IDB 异步加载覆盖
+  const historyUserModified = useRef(false)
+  useEffect(() => {
+    if (idbHistoryLoaded.current) return
+    idbHistoryLoaded.current = true
+    idbGet<{ data: GenerationHistoryEntry[]; ts: number } | GenerationHistoryEntry[]>(
+      'history',
+      'generation_history',
+    ).then(raw => {
+      if (!raw || historyUserModified.current) return
+      // 兼容旧格式（纯数组）和新格式（{ data, ts }）
+      const idbData = Array.isArray(raw) ? raw : raw.data
+      if (!Array.isArray(idbData) || idbData.length === 0) return
+      setGenerationHistory(prev => {
+        if (historyUserModified.current) return prev
+        // 优先使用 IDB 数据（更完整，含 originalUrl 等）
+        if (idbData.length >= prev.length) return idbData
+        return prev
+      })
+    })
+  }, [])
   const themeConfig = getThemeConfig(theme)
 
   // ── Electron 环境检测：在 <html> 上添加 electron 类 ──────────────────────────
@@ -379,18 +405,57 @@ function App() {
   const slotTimersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
   const slotSeqRef = useRef(0)
   const regenerateSlotIdRef = useRef<string | null>(null)
+  // 同步运行计数器：防止快速连续点击绕过并行上限
+  const runningCountRef = useRef(0)
   // 存储最新的 handleGenerate 函数引用，避免闭包陷阱
   const handleGenerateRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const saveHistory = (history: typeof generationHistory) => {
     if (historySaveTimer.current) clearTimeout(historySaveTimer.current)
     historySaveTimer.current = setTimeout(() => {
+      const sanitized = sanitizeHistory(history)
+      // 主存储：IndexedDB（无容量限制），保留完整数据 + 时间戳
+      idbSet('history', 'generation_history', { data: sanitized, ts: Date.now() }).catch(() => {})
+      // 兜底：localStorage 只保存精简版（移除大体积 originalUrl / referenceImages）
       try {
-        localStorage.setItem(STORAGE_KEYS.GENERATION_HISTORY, JSON.stringify(history))
+        const light = sanitized.map(entry => ({
+          ...entry,
+          results: entry.results.map(img => {
+            const copy = { ...img } as GeneratedImage & { originalUrl?: string }
+            delete copy.originalUrl
+            return copy
+          }),
+          referenceImages: undefined,
+        }))
+        localStorage.setItem(STORAGE_KEYS.GENERATION_HISTORY, JSON.stringify(light.slice(0, 50)))
       } catch {
-        /* 配额超出静默 */
+        try {
+          const minimal = sanitized.slice(0, 20).map(entry => ({
+            ...entry,
+            results: [],
+            referenceImages: undefined,
+          }))
+          localStorage.setItem(STORAGE_KEYS.GENERATION_HISTORY, JSON.stringify(minimal))
+        } catch {
+          /* 配额超出静默 */
+        }
       }
     }, 500)
   }
+
+  const sanitizePersistedImage = (img: GeneratedImage): GeneratedImage => {
+    const originalUrl = (img as GeneratedImage & { originalUrl?: string }).originalUrl
+    const next: GeneratedImage & { originalUrl?: string } = { ...img }
+    if (originalUrl && (originalUrl.startsWith('data:') || originalUrl.startsWith('blob:'))) {
+      delete next.originalUrl
+    }
+    return next
+  }
+
+  const sanitizeHistory = (history: GenerationHistoryEntry[]): GenerationHistoryEntry[] =>
+    history.map(entry => ({
+      ...entry,
+      results: entry.results.map(sanitizePersistedImage),
+    }))
 
   const imageIdentity = (img: GeneratedImage) =>
     (img as GeneratedImage & { originalUrl?: string }).originalUrl || img.url || img.id
@@ -460,7 +525,7 @@ function App() {
     entryId: string
     imageId?: string
   } | null>(null)
-  const openHistoryPreview = (images: GeneratedImage[], index = 0, entryId?: string) => {
+  const _openHistoryPreview = (images: GeneratedImage[], index = 0, entryId?: string) => {
     if (images.length === 0) return
     if (entryId) {
       setViewedHistoryIds(prev => new Set(prev).add(entryId))
@@ -486,25 +551,66 @@ function App() {
       setReferenceSlots([null, null, null, null])
     }
   }
+  const VIEWPORT_COLORS = [
+    {
+      border: 'border-blue-400/30',
+      bg: 'bg-blue-500/10',
+      text: 'text-blue-300',
+      dot: 'bg-blue-400',
+      accent: '#60a5fa',
+    },
+    {
+      border: 'border-emerald-400/30',
+      bg: 'bg-emerald-500/10',
+      text: 'text-emerald-300',
+      dot: 'bg-emerald-400',
+      accent: '#34d399',
+    },
+    {
+      border: 'border-amber-400/30',
+      bg: 'bg-amber-500/10',
+      text: 'text-amber-300',
+      dot: 'bg-amber-400',
+      accent: '#fbbf24',
+    },
+    {
+      border: 'border-pink-400/30',
+      bg: 'bg-pink-500/10',
+      text: 'text-pink-300',
+      dot: 'bg-pink-400',
+      accent: '#f472b6',
+    },
+    {
+      border: 'border-purple-400/30',
+      bg: 'bg-purple-500/10',
+      text: 'text-purple-300',
+      dot: 'bg-purple-400',
+      accent: '#a78bfa',
+    },
+    {
+      border: 'border-cyan-400/30',
+      bg: 'bg-cyan-500/10',
+      text: 'text-cyan-300',
+      dot: 'bg-cyan-400',
+      accent: '#22d3ee',
+    },
+  ] as const
+  const getViewportColor = (entry: GenerationHistoryEntry) =>
+    VIEWPORT_COLORS[((entry.viewportIndex ?? 1) - 1) % 6]
   const applyHistoryViewportLabel = (entry: GenerationHistoryEntry) => {
     const indexLabel = entry.viewportIndex ? `视口 ${entry.viewportIndex}` : '视口'
     const nameLabel = entry.viewportName?.trim() ? ` · ${entry.viewportName.trim()}` : ''
     return `${indexLabel}${nameLabel}`
   }
-  const renameViewport = (slotId: string, currentName?: string) => {
-    // 简单命名入口，保留现有交互并避免额外弹窗组件
-    // eslint-disable-next-line no-alert
-    const nextName = window.prompt('请输入视口名称', currentName ?? '')?.trim()
-    if (nextName === undefined) return
+  const renameViewport = (slotId: string, newName: string) => {
+    const nextName = newName.trim() || undefined
     setGenerationSlots(prev =>
-      prev.map(slot =>
-        slot.id === slotId ? { ...slot, viewportName: nextName || undefined } : slot,
-      ),
+      prev.map(slot => (slot.id === slotId ? { ...slot, viewportName: nextName } : slot)),
     )
     setGenerationHistory(prev => {
       const updated = prev.map(entry =>
         entry.slotId === slotId || entry.id === slotId
-          ? { ...entry, viewportName: nextName || undefined }
+          ? { ...entry, viewportName: nextName }
           : entry,
       )
       saveHistory(updated)
@@ -556,6 +662,7 @@ function App() {
     setHistoryContextMenu(null)
   }
   const deleteHistoryEntry = (entryId: string) => {
+    historyUserModified.current = true
     setGenerationHistory(prev => {
       const updated = prev.filter(entry => entry.id !== entryId)
       saveHistory(updated)
@@ -775,8 +882,8 @@ function App() {
   const handleGenerate = async () => {
     try {
       const parallelLimit = Math.max(1, Math.min(6, parallelCount))
-      const runningCount = generationSlots.filter(slot => slot.status === 'running').length
-      if (runningCount >= parallelLimit) {
+      // 使用同步 ref 计数器防止快速连续点击绕过并行上限
+      if (runningCountRef.current >= parallelLimit) {
         const time = new Date().toLocaleTimeString('zh-CN')
         setLogEntries(prev => [
           ...prev.slice(-99),
@@ -785,7 +892,7 @@ function App() {
             error:
               parallelLimit <= 1
                 ? '正在生图中，请等待当前任务完成。'
-                : `当前已有 ${runningCount} 个任务运行，已达到并行上限 ${parallelLimit}。请等待任一任务完成后再继续。`,
+                : `当前已有 ${runningCountRef.current} 个任务运行，已达到并行上限 ${parallelLimit}。请等待任一任务完成后再继续。`,
           },
         ])
         return
@@ -843,259 +950,281 @@ function App() {
 
       const slotId = `${Date.now()}-${++slotSeqRef.current}`
       const createdAt = Date.now()
-      const historyReferenceImages = await filesToHistoryReferenceImages(referenceImages)
-      const regenerateSlotId = regenerateSlotIdRef.current
-      regenerateSlotIdRef.current = null
-      const currentViewports = generationSlots.slice(0, parallelLimit)
-      const targetReplaceSlot = currentViewports.find(
-        slot => slot.id === regenerateSlotId && slot.status !== 'running',
-      )
-      const activeReplaceSlot = currentViewports.find(
-        slot => slot.id === activeSlotId && slot.status !== 'running',
-      )
-      const idleReplaceSlot = currentViewports.find(slot => slot.status !== 'running')
-      const replaceSlot =
-        targetReplaceSlot ??
-        (parallelLimit > 1 && currentViewports.length >= parallelLimit
-          ? (activeReplaceSlot ?? idleReplaceSlot ?? null)
-          : null)
-      const historySlotId = replaceSlot?.historySlotId ?? replaceSlot?.id ?? slotId
-      const hasHistoryGroup = generationHistory.some(entry => entry.slotId === historySlotId)
-      const viewportIndex = targetReplaceSlot
-        ? currentViewports.findIndex(slot => slot.id === targetReplaceSlot.id) + 1
-        : replaceSlot
-          ? currentViewports.findIndex(slot => slot.id === replaceSlot.id) + 1
-          : currentViewports.length + 1
-      const newSlot: GenerationSlot = {
-        id: slotId,
-        historySlotId,
-        viewportName: replaceSlot?.viewportName,
-        viewportIndex,
-        request: snapshot,
-        status: 'running',
-        elapsedSeconds: 0,
-        progressPct: 0,
-        lastDuration: null,
-        results: [],
-        createdAt,
-        hidden: false,
-      }
-      setActiveSlotId(slotId)
-      setGenerationSlots(prev => {
-        if (parallelLimit <= 1) return [newSlot]
-
-        const currentViewports = prev.slice(0, parallelLimit)
-        const targetReplaceIndex = currentViewports.findIndex(
+      // 同步占位：立即递增运行计数，防止并发 handleGenerate 绕过上限
+      runningCountRef.current++
+      let slotStarted = false
+      try {
+        const historyReferenceImages = await filesToHistoryReferenceImages(referenceImages)
+        const regenerateSlotId = regenerateSlotIdRef.current
+        regenerateSlotIdRef.current = null
+        const currentViewports = generationSlots.slice(0, parallelLimit)
+        const targetReplaceSlot = currentViewports.find(
           slot => slot.id === regenerateSlotId && slot.status !== 'running',
         )
-        if (targetReplaceIndex >= 0) {
-          return currentViewports.map((slot, index) =>
-            index === targetReplaceIndex ? newSlot : slot,
-          )
-        }
-        if (currentViewports.length < parallelLimit) {
-          return [...currentViewports, newSlot]
-        }
-
-        const activeReplaceIndex = currentViewports.findIndex(
+        const activeReplaceSlot = currentViewports.find(
           slot => slot.id === activeSlotId && slot.status !== 'running',
         )
-        const idleReplaceIndex = currentViewports.findIndex(slot => slot.status !== 'running')
-        const replaceIndex = activeReplaceIndex >= 0 ? activeReplaceIndex : idleReplaceIndex
-
-        if (replaceIndex < 0) return currentViewports
-
-        return currentViewports.map((slot, index) => (index === replaceIndex ? newSlot : slot))
-      })
-      setResults([])
-      setResultActiveIdx(0)
-      setSelectedImageIds(new Set())
-
-      const reqInfo = { ...requestBase, parallelLimit, runningCount: runningCount + 1 }
-      const time = new Date().toLocaleTimeString('zh-CN')
-      setLogEntries(prev => [
-        ...prev.slice(-99),
-        { time, request: JSON.stringify(reqInfo, null, 2) },
-      ])
-
-      const makeSlotTimer = (slotId: string) => {
-        const timer = setInterval(() => {
-          setGenerationSlots(prev =>
-            prev.map(slot =>
-              slot.id === slotId && slot.status === 'running'
-                ? {
-                    ...slot,
-                    elapsedSeconds: Math.min(slot.elapsedSeconds + 1, 720),
-                    progressPct: Math.min(slot.progressPct + 1, 99),
-                  }
-                : slot,
-            ),
-          )
-        }, 1000)
-        slotTimersRef.current.set(slotId, timer)
-      }
-
-      const clearSlotTimer = (slotId: string) => {
-        const timer = slotTimersRef.current.get(slotId)
-        if (timer) {
-          clearInterval(timer)
-          slotTimersRef.current.delete(slotId)
+        const idleReplaceSlot = currentViewports.find(slot => slot.status !== 'running')
+        const replaceSlot =
+          targetReplaceSlot ??
+          (parallelLimit > 1 && currentViewports.length >= parallelLimit
+            ? (activeReplaceSlot ?? idleReplaceSlot ?? null)
+            : null)
+        const historySlotId = replaceSlot?.historySlotId ?? replaceSlot?.id ?? slotId
+        const hasHistoryGroup = generationHistory.some(entry => entry.slotId === historySlotId)
+        const viewportIndex = targetReplaceSlot
+          ? currentViewports.findIndex(slot => slot.id === targetReplaceSlot.id) + 1
+          : replaceSlot
+            ? currentViewports.findIndex(slot => slot.id === replaceSlot.id) + 1
+            : currentViewports.length + 1
+        const newSlot: GenerationSlot = {
+          id: slotId,
+          historySlotId,
+          viewportName: replaceSlot?.viewportName,
+          viewportIndex,
+          request: snapshot,
+          status: 'running',
+          elapsedSeconds: 0,
+          progressPct: 0,
+          lastDuration: null,
+          results: [],
+          createdAt,
+          hidden: false,
         }
-      }
-
-      const updateSlot = (slotId: string, patch: Partial<GenerationSlot>) => {
-        setGenerationSlots(prev =>
-          prev.map(slot => (slot.id === slotId ? { ...slot, ...patch } : slot)),
-        )
-      }
-
-      const runSlot = async (slotId: string) => {
-        makeSlotTimer(slotId)
-        const isRatioRetry = ratioMismatchRetried.current
-        ratioMismatchRetried.current = false
-        try {
-          let result = await generateImages({ ...requestBase, referenceImages })
-          if (result.error && referenceImages.length > 0) {
-            if (isImageInputUnsupportedError(result.error)) {
-              result = await generateImages({ ...requestBase, referenceImages: [] })
-              if (!result.error) {
-                const warnMsg =
-                  '当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
-                setError(warnMsg)
-                setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 10000)
-              }
-            }
+        setActiveSlotId(slotId)
+        setGenerationSlots(prev => {
+          if (parallelLimit <= 1) {
+            const old = prev[0]
+            const slotWithPrev =
+              old && old.results.length > 0 ? { ...newSlot, previousResults: old.results } : newSlot
+            return [slotWithPrev]
           }
 
-          if (result.error) {
-            const message = result.error
-            const duration = `${Math.floor((Date.now() - createdAt) / 60000)}分${Math.floor(((Date.now() - createdAt) % 60000) / 1000)}秒`
+          const currentViewports = prev.slice(0, parallelLimit)
+          const carryPrev = (oldSlot: GenerationSlot) =>
+            oldSlot.results.length > 0 ? { ...newSlot, previousResults: oldSlot.results } : newSlot
+          const targetReplaceIndex = currentViewports.findIndex(
+            slot => slot.id === regenerateSlotId && slot.status !== 'running',
+          )
+          if (targetReplaceIndex >= 0) {
+            return currentViewports.map((slot, index) =>
+              index === targetReplaceIndex ? carryPrev(slot) : slot,
+            )
+          }
+          if (currentViewports.length < parallelLimit) {
+            return [...currentViewports, newSlot]
+          }
+
+          const activeReplaceIndex = currentViewports.findIndex(
+            slot => slot.id === activeSlotId && slot.status !== 'running',
+          )
+          const idleReplaceIndex = currentViewports.findIndex(slot => slot.status !== 'running')
+          const replaceIndex = activeReplaceIndex >= 0 ? activeReplaceIndex : idleReplaceIndex
+
+          if (replaceIndex < 0) return currentViewports
+
+          return currentViewports.map((slot, index) =>
+            index === replaceIndex ? carryPrev(slot) : slot,
+          )
+        })
+        setResults([])
+        setResultActiveIdx(0)
+        setSelectedImageIds(new Set())
+
+        const reqInfo = { ...requestBase, parallelLimit, runningCount: runningCountRef.current }
+        const time = new Date().toLocaleTimeString('zh-CN')
+        setLogEntries(prev => [
+          ...prev.slice(-99),
+          { time, request: JSON.stringify(reqInfo, null, 2) },
+        ])
+
+        const makeSlotTimer = (slotId: string) => {
+          const timer = setInterval(() => {
+            setGenerationSlots(prev =>
+              prev.map(slot =>
+                slot.id === slotId && slot.status === 'running'
+                  ? {
+                      ...slot,
+                      elapsedSeconds: Math.min(slot.elapsedSeconds + 1, 720),
+                      progressPct: Math.min(slot.progressPct + 1, 99),
+                    }
+                  : slot,
+              ),
+            )
+          }, 1000)
+          slotTimersRef.current.set(slotId, timer)
+        }
+
+        const clearSlotTimer = (slotId: string) => {
+          const timer = slotTimersRef.current.get(slotId)
+          if (timer) {
+            clearInterval(timer)
+            slotTimersRef.current.delete(slotId)
+          }
+        }
+
+        const updateSlot = (slotId: string, patch: Partial<GenerationSlot>) => {
+          setGenerationSlots(prev =>
+            prev.map(slot => (slot.id === slotId ? { ...slot, ...patch } : slot)),
+          )
+        }
+
+        const runSlot = async (slotId: string) => {
+          makeSlotTimer(slotId)
+          const isRatioRetry = ratioMismatchRetried.current
+          ratioMismatchRetried.current = false
+          try {
+            let result = await generateImages({ ...requestBase, referenceImages })
+            if (result.error && referenceImages.length > 0) {
+              if (isImageInputUnsupportedError(result.error)) {
+                result = await generateImages({ ...requestBase, referenceImages: [] })
+                if (!result.error) {
+                  const warnMsg =
+                    '当前模型不支持参考图输入，已自动切换为纯文生图模式。如需使用参考图，请在设置中选择支持图片输入的模型。'
+                  setError(warnMsg)
+                  setTimeout(() => setError(prev => (prev === warnMsg ? null : prev)), 10000)
+                }
+              }
+            }
+
+            if (result.error) {
+              const message = result.error
+              const duration = `${Math.floor((Date.now() - createdAt) / 60000)}分${Math.floor(((Date.now() - createdAt) % 60000) / 1000)}秒`
+              updateSlot(slotId, {
+                status: 'error',
+                error: message,
+                progressPct: 100,
+                lastDuration: duration,
+              })
+              setLogEntries(prev => {
+                const last = prev[prev.length - 1]
+                return prev.slice(0, -1).concat([
+                  {
+                    ...last,
+                    error: message,
+                    endpoint: result.endpoint,
+                    requestBody: result.requestBodyJson,
+                    httpStatus: result.httpStatus,
+                    httpErrorBody: result.httpErrorBody,
+                  },
+                ])
+              })
+              upsertHistoryEntry({
+                id: `${historySlotId}-${Date.now()}`,
+                slotId: historySlotId,
+                viewportIndex: newSlot.viewportIndex,
+                viewportName: newSlot.viewportName,
+                time: new Date().toLocaleString('zh-CN'),
+                prompt,
+                negativePrompt: negativePrompt || undefined,
+                model,
+                width,
+                height,
+                batchSize,
+                results: [],
+                error: message,
+                createdAt: Date.now(),
+                referenceImages: historyReferenceImages,
+              })
+              return
+            }
+
+            const images = result.images
+            const validImages = await prepareGeneratedImages(images)
+            const accumulatedResults = [...(replaceSlot?.results ?? []), ...validImages]
+            setResults(prev => {
+              if (parallelLimit <= 1) return validImages
+              if (activeSlotId === slotId || (!activeSlotId && prev.length === 0))
+                return validImages
+              return prev.length > 0 ? prev : validImages
+            })
+            setResultActiveIdx(0)
+
+            if (validImages.length > 0) {
+              const firstUrl = validImages[0].url
+              if (firstUrl) {
+                const img = new Image()
+                img.crossOrigin = 'anonymous'
+                img.onload = () => {
+                  const actualW = img.naturalWidth
+                  const actualH = img.naturalHeight
+                  if (actualW > 0 && actualH > 0) {
+                    const ratioCheck = checkImageRatio(actualW, actualH, width, height)
+                    if (ratioCheck.mismatch && !isRatioRetry) {
+                      setRatioMismatchDialog({
+                        actualRatio: ratioCheck.actualRatio,
+                        expectedRatio: ratioCheck.expectedRatio,
+                        onConfirm: () => {
+                          setRatioMismatchDialog(null)
+                          ratioMismatchRetried.current = true
+                          setTimeout(() => handleGenerateRef.current(), 100)
+                        },
+                      })
+                    }
+                  }
+                }
+                img.onerror = () => {}
+                img.src = firstUrl
+              }
+            }
             updateSlot(slotId, {
-              status: 'error',
-              error: message,
+              status: 'success',
+              results: accumulatedResults,
               progressPct: 100,
-              lastDuration: duration,
+              lastDuration: `${Math.floor((Date.now() - createdAt) / 60000)}分${Math.floor(((Date.now() - createdAt) % 60000) / 1000)}秒`,
             })
             setLogEntries(prev => {
               const last = prev[prev.length - 1]
               return prev.slice(0, -1).concat([
                 {
                   ...last,
-                  error: message,
+                  response: `成功，返回 ${images.length} 张图`,
                   endpoint: result.endpoint,
+                  spec: result.spec,
                   requestBody: result.requestBodyJson,
+                  responseBody: result.responseSummary,
                   httpStatus: result.httpStatus,
-                  httpErrorBody: result.httpErrorBody,
+                  jsonValid: result.jsonValid,
                 },
               ])
             })
-            upsertHistoryEntry({
-              id: `${historySlotId}-${Date.now()}`,
-              slotId: historySlotId,
-              viewportIndex: newSlot.viewportIndex,
-              viewportName: newSlot.viewportName,
-              time: new Date().toLocaleString('zh-CN'),
-              prompt,
-              negativePrompt: negativePrompt || undefined,
-              model,
-              width,
-              height,
-              batchSize,
-              results: [],
-              error: message,
-              createdAt: Date.now(),
-              referenceImages: historyReferenceImages,
-            })
-            return
-          }
-
-          const images = result.images
-          const validImages = await prepareGeneratedImages(images)
-          const accumulatedResults = [...(replaceSlot?.results ?? []), ...validImages]
-          setResults(prev => {
-            if (parallelLimit <= 1) return validImages
-            if (activeSlotId === slotId || (!activeSlotId && prev.length === 0)) return validImages
-            return prev.length > 0 ? prev : validImages
-          })
-          setResultActiveIdx(0)
-
-          if (validImages.length > 0) {
-            const firstUrl = validImages[0].url
-            if (firstUrl) {
-              const img = new Image()
-              img.crossOrigin = 'anonymous'
-              img.onload = () => {
-                const actualW = img.naturalWidth
-                const actualH = img.naturalHeight
-                if (actualW > 0 && actualH > 0) {
-                  const ratioCheck = checkImageRatio(actualW, actualH, width, height)
-                  if (ratioCheck.mismatch && !isRatioRetry) {
-                    setRatioMismatchDialog({
-                      actualRatio: ratioCheck.actualRatio,
-                      expectedRatio: ratioCheck.expectedRatio,
-                      onConfirm: () => {
-                        setRatioMismatchDialog(null)
-                        ratioMismatchRetried.current = true
-                        setTimeout(() => handleGenerateRef.current(), 100)
-                      },
-                    })
-                  }
-                }
-              }
-              img.onerror = () => {}
-              img.src = firstUrl
-            }
-          }
-          updateSlot(slotId, {
-            status: 'success',
-            results: accumulatedResults,
-            progressPct: 100,
-            lastDuration: `${Math.floor((Date.now() - createdAt) / 60000)}分${Math.floor(((Date.now() - createdAt) % 60000) / 1000)}秒`,
-          })
-          setLogEntries(prev => {
-            const last = prev[prev.length - 1]
-            return prev.slice(0, -1).concat([
+            upsertHistoryEntry(
               {
-                ...last,
-                response: `成功，返回 ${images.length} 张图`,
-                endpoint: result.endpoint,
-                spec: result.spec,
-                requestBody: result.requestBodyJson,
-                responseBody: result.responseSummary,
-                httpStatus: result.httpStatus,
-                jsonValid: result.jsonValid,
+                id: `${historySlotId}-${Date.now()}`,
+                slotId: historySlotId,
+                viewportIndex: newSlot.viewportIndex,
+                viewportName: newSlot.viewportName,
+                time: new Date().toLocaleString('zh-CN'),
+                prompt,
+                negativePrompt: negativePrompt || undefined,
+                model,
+                width,
+                height,
+                batchSize: accumulatedResults.length,
+                results: accumulatedResults,
+                createdAt: Date.now(),
+                referenceImages: historyReferenceImages,
               },
-            ])
-          })
-          upsertHistoryEntry(
-            {
-              id: `${historySlotId}-${Date.now()}`,
-              slotId: historySlotId,
-              viewportIndex: newSlot.viewportIndex,
-              viewportName: newSlot.viewportName,
-              time: new Date().toLocaleString('zh-CN'),
-              prompt,
-              negativePrompt: negativePrompt || undefined,
-              model,
-              width,
-              height,
-              batchSize: accumulatedResults.length,
-              results: accumulatedResults,
-              createdAt: Date.now(),
-              referenceImages: historyReferenceImages,
-            },
-            hasHistoryGroup ? 'append-results' : 'replace',
-          )
-        } finally {
-          clearSlotTimer(slotId)
+              hasHistoryGroup ? 'append-results' : 'replace',
+            )
+          } finally {
+            clearSlotTimer(slotId)
+            runningCountRef.current = Math.max(0, runningCountRef.current - 1)
+          }
         }
-      }
 
-      await runSlot(slotId)
-      if (prompt.trim()) {
-        setPromptHistory(prev =>
-          [prompt.trim(), ...prev.filter(p => p !== prompt.trim())].slice(0, 50),
-        )
+        slotStarted = true
+        await runSlot(slotId)
+        if (prompt.trim()) {
+          setPromptHistory(prev =>
+            [prompt.trim(), ...prev.filter(p => p !== prompt.trim())].slice(0, 50),
+          )
+        }
+      } finally {
+        // 如果 slot 未进入 runSlot（中间步骤抛异常），需要释放计数器
+        if (!slotStarted) {
+          runningCountRef.current = Math.max(0, runningCountRef.current - 1)
+        }
       }
     } finally {
       // 独立槽位并发运行，不再使用全局生成锁
@@ -1165,7 +1294,7 @@ function App() {
         if (img.url.startsWith('data:image/jpeg;base64,') && img.url.length < 2000) return img
         try {
           const thumbnail = await createThumbnail(img.url, 150)
-          return { ...img, url: thumbnail, originalUrl: img.url }
+          return { ...img, url: thumbnail || img.url, originalUrl: img.url }
         } catch (error) {
           console.error('生成缩略图失败:', error)
           return { ...img, url: img.url, originalUrl: img.url }
@@ -2599,7 +2728,7 @@ function App() {
                       return (
                         <div
                           key={entry.id}
-                          className={`group relative cursor-pointer overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.035] shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition hover:border-primary-400/35 hover:ring-2 hover:ring-primary-400/50 ${
+                          className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-white/[0.035] shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition hover:ring-2 hover:ring-primary-400/50 ${getViewportColor(entry).border} ${
                             historySelected.has(entry.id) ? 'ring-2 ring-primary-500' : ''
                           } ${viewedHistoryIds.has(entry.id) ? 'ring-1 ring-emerald-400/40' : ''}`}
                           onContextMenu={event => openHistoryEntryMenu(event, entry)}
@@ -2614,18 +2743,20 @@ function App() {
                                 }
                                 return next
                               })
-                            } else if (firstImg) {
-                              if (status !== 'running') {
-                                setResults(entry.results)
-                                setResultActiveIdx(0)
-                              }
+                            } else if (entry.results.length > 0) {
+                              setResults(entry.results)
+                              setResultActiveIdx(0)
                               setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                             }
                           }}
                           onDoubleClick={e => {
                             if (!historyBatchMode) {
                               e.stopPropagation()
-                              if (hasError) {
+                              if (entry.results.length > 0) {
+                                setResults(entry.results)
+                                setResultActiveIdx(0)
+                                setViewedHistoryIds(prev => new Set(prev).add(entry.id))
+                              } else if (hasError) {
                                 // 打开错误详情
                                 const elapsedMs = entry.createdAt
                                   ? Date.now() - entry.createdAt
@@ -2648,15 +2779,53 @@ function App() {
                             }
                           }}
                         >
-                          <div className="absolute left-1 top-1 z-10 max-w-[calc(100%-0.5rem)] rounded-full border border-primary-400/25 bg-black/70 px-1.5 py-0.5 text-[7px] font-semibold text-primary-200 shadow backdrop-blur">
-                            视口组 · {applyHistoryViewportLabel(entry)}
+                          <div
+                            className={`absolute left-1 top-1 z-10 max-w-[calc(100%-0.5rem)] rounded-full border bg-black/70 px-1.5 py-0.5 text-[7px] font-bold shadow backdrop-blur ${getViewportColor(entry).border} ${getViewportColor(entry).text}`}
+                          >
+                            {applyHistoryViewportLabel(entry)}
                           </div>
                           {entry.results.length > 1 && (
-                            <div className="absolute right-1 top-1 z-10 rounded-full border border-white/[0.12] bg-black/70 px-1.5 py-0.5 text-[7px] font-semibold text-white/85 shadow backdrop-blur">
+                            <div
+                              className={`absolute right-1 top-1 z-10 rounded-full border bg-black/70 px-1.5 py-0.5 text-[7px] font-bold shadow backdrop-blur ${getViewportColor(entry).border} ${getViewportColor(entry).text}`}
+                            >
                               {entry.results.length} 张
                             </div>
                           )}
-                          {firstImg ? (
+                          {entry.results.length > 1 ? (
+                            <div
+                              className="relative aspect-square w-full cursor-zoom-in overflow-hidden bg-white/[0.04]"
+                              onDoubleClick={event => {
+                                event.stopPropagation()
+                                setResults(entry.results)
+                                setResultActiveIdx(0)
+                                setViewedHistoryIds(prev => new Set(prev).add(entry.id))
+                              }}
+                              onContextMenu={event =>
+                                openHistoryImageMenu(
+                                  event,
+                                  entry,
+                                  entry.results[entry.results.length - 1],
+                                )
+                              }
+                            >
+                              {entry.results
+                                .slice(-3)
+                                .reverse()
+                                .map((img, idx) => (
+                                  <img
+                                    key={img.id}
+                                    src={img.url}
+                                    alt=""
+                                    className="absolute inset-0 h-full w-full object-cover transition"
+                                    style={{
+                                      transform: `translate(${idx * 3}px, ${idx * 3}px) scale(${1 - idx * 0.03})`,
+                                      zIndex: 3 - idx,
+                                      opacity: idx === 0 ? 1 : 0.6,
+                                    }}
+                                  />
+                                ))}
+                            </div>
+                          ) : firstImg ? (
                             <img
                               src={firstImg.url}
                               alt=""
@@ -2664,9 +2833,11 @@ function App() {
                               onContextMenu={event => openHistoryImageMenu(event, entry, firstImg)}
                               onDoubleClick={event => {
                                 event.stopPropagation()
-                                openHistoryPreview(entry.results, 0, entry.id)
+                                setResults(entry.results)
+                                setResultActiveIdx(0)
+                                setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                               }}
-                              title="双击查看大图"
+                              title="双击在结果区查看"
                             />
                           ) : (
                             <div className="flex aspect-square w-full items-center justify-center bg-white/[0.04]">
@@ -2721,7 +2892,9 @@ function App() {
                             >
                               {entry.prompt}
                             </p>
-                            <div className="mt-0.5 truncate text-[8px] text-primary-300/90">
+                            <div
+                              className={`mt-0.5 truncate text-[8px] font-bold ${getViewportColor(entry).text}`}
+                            >
                               {applyHistoryViewportLabel(entry)}
                             </div>
                             <div className="mt-0.5 flex items-center gap-1">
@@ -2788,7 +2961,7 @@ function App() {
                     return (
                       <div
                         key={entry.id}
-                        className={`group cursor-pointer border-b border-white/20 p-2.5 transition hover:bg-white/10 ${
+                        className={`group cursor-pointer border-b p-2.5 transition hover:bg-white/10 ${getViewportColor(entry).border} ${
                           historySelected.has(entry.id)
                             ? 'bg-primary-500/20 ring-1 ring-primary-400/40'
                             : viewedHistoryIds.has(entry.id)
@@ -2807,17 +2980,19 @@ function App() {
                               }
                               return next
                             })
-                          } else if (firstImg) {
-                            if (status !== 'running') {
-                              setResults(entry.results)
-                              setResultActiveIdx(0)
-                            }
+                          } else if (entry.results.length > 0) {
+                            setResults(entry.results)
+                            setResultActiveIdx(0)
                             setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                           }
                         }}
                         onDoubleClick={() => {
                           if (!historyBatchMode) {
-                            if (hasError) {
+                            if (entry.results.length > 0) {
+                              setResults(entry.results)
+                              setResultActiveIdx(0)
+                              setViewedHistoryIds(prev => new Set(prev).add(entry.id))
+                            } else if (hasError) {
                               const elapsedMs = entry.createdAt
                                 ? Date.now() - entry.createdAt
                                 : null
@@ -2838,7 +3013,48 @@ function App() {
                         }}
                       >
                         <div className="flex items-start gap-2">
-                          {firstImg ? (
+                          {entry.results.length > 1 ? (
+                            <div
+                              className="relative h-14 w-14 flex-shrink-0 cursor-zoom-in rounded-lg"
+                              onDoubleClick={event => {
+                                event.stopPropagation()
+                                setResults(entry.results)
+                                setResultActiveIdx(0)
+                                setViewedHistoryIds(prev => new Set(prev).add(entry.id))
+                              }}
+                              onContextMenu={event =>
+                                openHistoryImageMenu(
+                                  event,
+                                  entry,
+                                  entry.results[entry.results.length - 1],
+                                )
+                              }
+                            >
+                              {entry.results
+                                .slice(-3)
+                                .reverse()
+                                .map((img, idx) => (
+                                  <img
+                                    key={img.id}
+                                    src={img.url}
+                                    alt=""
+                                    className="absolute rounded-lg bg-white/[0.06] object-cover"
+                                    style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      top: `${idx * 2}px`,
+                                      left: `${idx * 2}px`,
+                                      zIndex: 3 - idx,
+                                      opacity: idx === 0 ? 1 : 0.55,
+                                      boxShadow: idx === 0 ? '0 2px 8px rgba(0,0,0,0.3)' : 'none',
+                                    }}
+                                  />
+                                ))}
+                              <div className="absolute bottom-0 right-0 z-10 rounded-br-lg rounded-tl-md bg-black/70 px-1 py-0.5 text-[7px] font-bold text-white/90">
+                                {entry.results.length}
+                              </div>
+                            </div>
+                          ) : firstImg ? (
                             <img
                               src={firstImg.url}
                               alt=""
@@ -2846,9 +3062,11 @@ function App() {
                               onContextMenu={event => openHistoryImageMenu(event, entry, firstImg)}
                               onDoubleClick={event => {
                                 event.stopPropagation()
-                                openHistoryPreview(entry.results, 0, entry.id)
+                                setResults(entry.results)
+                                setResultActiveIdx(0)
+                                setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                               }}
-                              title="双击查看大图"
+                              title="双击在结果区查看"
                             />
                           ) : (
                             <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-white/[0.04]">
@@ -2891,14 +3109,18 @@ function App() {
                           )}
                           <div className="min-w-0 flex-1">
                             <div className="mb-1 flex flex-wrap items-center gap-1">
-                              <span className="rounded-full border border-primary-400/25 bg-primary-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary-300">
-                                视口组
-                              </span>
-                              <span className="text-[9px] text-primary-300/90">
+                              <span
+                                className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${getViewportColor(entry).border} ${getViewportColor(entry).bg} ${getViewportColor(entry).text}`}
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${getViewportColor(entry).dot}`}
+                                />
                                 {applyHistoryViewportLabel(entry)}
                               </span>
                               {entry.results.length > 0 && (
-                                <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] text-slate-400">
+                                <span
+                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${getViewportColor(entry).bg} ${getViewportColor(entry).text}`}
+                                >
                                   组内 {entry.results.length} 张
                                 </span>
                               )}
@@ -2951,6 +3173,7 @@ function App() {
               <span className="text-xs text-white/80">已选 {historySelected.size}</span>
               <button
                 onClick={() => {
+                  historyUserModified.current = true
                   setGenerationHistory(prev => {
                     const filtered = prev.filter(h => !historySelected.has(h.id))
                     saveHistory(filtered)
@@ -3016,7 +3239,7 @@ function App() {
               setSizeTier(slot.request.sizeTier)
               setTimeout(() => handleGenerateRef.current(), 0)
             }}
-            onRenameSlot={slot => renameViewport(slot.id, slot.viewportName)}
+            onRenameSlot={(slotId, newName) => renameViewport(slotId, newName)}
             onRetrySlot={slot => {
               setPrompt(slot.request.prompt)
               setNegativePrompt(slot.request.negativePrompt)

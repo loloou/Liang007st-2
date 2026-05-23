@@ -19,15 +19,39 @@ import {
   type BalanceConfig,
 } from '../api/settings'
 import { buildBalanceTestRequest, getSitePresets, proxyFetch } from '../api/balance'
+import { testChatModel, testImageModel } from '../api/modelConfig'
 import VendorManager from './VendorManager'
 
 // ── 内联 API 函数 ──────────────────────────────────────────────────────────
 async function fetchModelList(
   baseUrl: string,
   apiKey: string,
+  apiSpec?: string,
 ): Promise<{ ok: boolean; models: string[]; error?: string }> {
   try {
-    const url = baseUrl.replace(/\/+$/, '') + '/v1/models'
+    const base = baseUrl.replace(/\/+$/, '')
+    if (!base) return { ok: false, models: [], error: '请先填写 Base URL' }
+
+    if (apiSpec === 'gemini') {
+      // Gemini: GET /v1beta/models
+      const url = `${base}/v1beta/models`
+      const headers: HeadersInit = { 'Content-Type': 'application/json' }
+      if (apiKey?.trim()) headers['Authorization'] = `Bearer ${apiKey.trim()}`
+      const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15000) })
+      if (!resp.ok) return { ok: false, models: [], error: `HTTP ${resp.status}` }
+      const data = (await resp.json()) as { models?: Array<{ name?: string }> }
+      const models = Array.isArray(data?.models)
+        ? data.models.map(m => m.name?.replace(/^models\//, '') ?? '').filter(Boolean)
+        : []
+      return {
+        ok: models.length > 0,
+        models,
+        error: models.length === 0 ? '未获取到模型' : undefined,
+      }
+    }
+
+    // OpenAI: GET /v1/models
+    const url = base + '/v1/models'
     const headers: HeadersInit = { 'Content-Type': 'application/json' }
     if (apiKey?.trim()) headers['Authorization'] = `Bearer ${apiKey.trim()}`
     const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15000) })
@@ -41,34 +65,6 @@ async function fetchModelList(
     }
   } catch (e) {
     return { ok: false, models: [], error: e instanceof Error ? e.message : '网络错误' }
-  }
-}
-
-async function testModelConnection(
-  baseUrl: string,
-  apiKey: string,
-  modelId: string,
-): Promise<{ ok: boolean; message: string; detail?: string }> {
-  try {
-    const url = baseUrl.replace(/\/+$/, '') + '/v1/chat/completions'
-    const headers: HeadersInit = { 'Content-Type': 'application/json' }
-    if (apiKey?.trim()) headers['Authorization'] = `Bearer ${apiKey.trim()}`
-    const body = JSON.stringify({
-      model: modelId,
-      messages: [{ role: 'user', content: 'hi' }],
-      max_tokens: 1,
-    })
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-      signal: AbortSignal.timeout(15000),
-    })
-    if (resp.ok) return { ok: true, message: `HTTP ${resp.status} — 模型可用` }
-    const text = await resp.text().catch(() => '')
-    return { ok: false, message: `HTTP ${resp.status}`, detail: text.slice(0, 200) }
-  } catch (e) {
-    return { ok: false, message: '连接失败', detail: e instanceof Error ? e.message : '网络错误' }
   }
 }
 
@@ -160,7 +156,7 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
         setFetchErr('请先填写 Base URL')
         return
       }
-      const result = await fetchModelList(baseUrl, apiKey)
+      const result = await fetchModelList(baseUrl, apiKey, cfgDraft.globalApiSpec)
       if (result.ok && result.models.length > 0) {
         setModelPickerMode(mode)
         setModelPickerList(result.models)
@@ -686,15 +682,21 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                           onClick={async () => {
                             setModelTestStatus(s => ({ ...s, [m.id]: 'testing' }))
                             setModelTestMsg(s => ({ ...s, [m.id]: '' }))
-                            const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl
-                            const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey
-                            const result = await testModelConnection(baseUrl, apiKey, m.modelId)
+                            const result = await testImageModel(m, {
+                              globalBaseUrl: cfgDraft.globalBaseUrl,
+                              globalApiKey: cfgDraft.globalApiKey,
+                              globalApiSpec: cfgDraft.globalApiSpec,
+                            })
                             setModelTestStatus(s => ({ ...s, [m.id]: result.ok ? 'ok' : 'fail' }))
                             setModelTestMsg(s => ({
                               ...s,
                               [m.id]:
                                 result.message +
-                                (result.ok ? '' : result.detail ? `\n${result.detail}` : ''),
+                                (result.ok
+                                  ? ''
+                                  : 'detail' in result && result.detail
+                                    ? `\n${result.detail}`
+                                    : ''),
                             }))
                           }}
                         >
@@ -877,15 +879,20 @@ const SettingsDialog: React.FC<Props> = ({ open, onClose, onSave }) => {
                           onClick={async () => {
                             setModelTestStatus(s => ({ ...s, [m.id]: 'testing' }))
                             setModelTestMsg(s => ({ ...s, [m.id]: '' }))
-                            const baseUrl = m.baseUrl?.trim() || cfgDraft.globalBaseUrl
-                            const apiKey = m.apiKey?.trim() || cfgDraft.globalApiKey
-                            const result = await testModelConnection(baseUrl, apiKey, m.modelId)
+                            const result = await testChatModel(m, {
+                              globalBaseUrl: cfgDraft.globalBaseUrl,
+                              globalApiKey: cfgDraft.globalApiKey,
+                            })
                             setModelTestStatus(s => ({ ...s, [m.id]: result.ok ? 'ok' : 'fail' }))
                             setModelTestMsg(s => ({
                               ...s,
                               [m.id]:
                                 result.message +
-                                (result.ok ? '' : result.detail ? `\n${result.detail}` : ''),
+                                (result.ok
+                                  ? ''
+                                  : 'detail' in result && result.detail
+                                    ? `\n${result.detail}`
+                                    : ''),
                             }))
                           }}
                         >

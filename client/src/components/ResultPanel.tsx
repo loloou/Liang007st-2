@@ -31,6 +31,8 @@ type GenerationSlotView = {
   progressPct: number
   lastDuration: string | null
   results: GeneratedImage[]
+  /** 重新生图时保留的上一次结果 */
+  previousResults?: GeneratedImage[]
   error?: string
   createdAt: number
 }
@@ -59,7 +61,7 @@ interface Props {
   setActiveSlotId?: (slotId: string | null) => void
   onSelectSlot?: (slot: GenerationSlotView) => void
   onRegenerateSlot?: (slot: GenerationSlotView) => void
-  onRenameSlot?: (slot: GenerationSlotView) => void
+  onRenameSlot?: (slotId: string, newName: string) => void
   onRetrySlot?: (slot: GenerationSlotView) => void
   onOpenInpaint?: (img: GeneratedImage) => void
 }
@@ -94,6 +96,68 @@ const ResultPanel: React.FC<Props> = ({
 }) => {
   const viewportCount = Math.max(1, Math.min(6, rawViewportCount))
   const [maximizedViewportIndex, setMaximizedViewportIndex] = useState<number | null>(null)
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+  const [viewportActiveImgIdx, setViewportActiveImgIdx] = useState<Record<string, number>>({})
+  // 内联编辑视口名称
+  const [editingViewportId, setEditingViewportId] = useState<string | null>(null)
+  const [editingViewportName, setEditingViewportName] = useState('')
+  const editInputRef = useRef<HTMLInputElement>(null)
+  const VIEWPORT_COLORS = [
+    {
+      border: 'border-blue-400/50',
+      bg: 'bg-blue-500/10',
+      text: 'text-blue-300',
+      dot: 'bg-blue-400',
+      label: 'text-blue-300',
+      ring: 'ring-blue-400/30',
+      hex: '#60a5fa',
+    },
+    {
+      border: 'border-emerald-400/50',
+      bg: 'bg-emerald-500/10',
+      text: 'text-emerald-300',
+      dot: 'bg-emerald-400',
+      label: 'text-emerald-300',
+      ring: 'ring-emerald-400/30',
+      hex: '#34d399',
+    },
+    {
+      border: 'border-amber-400/50',
+      bg: 'bg-amber-500/10',
+      text: 'text-amber-300',
+      dot: 'bg-amber-400',
+      label: 'text-amber-300',
+      ring: 'ring-amber-400/30',
+      hex: '#fbbf24',
+    },
+    {
+      border: 'border-pink-400/50',
+      bg: 'bg-pink-500/10',
+      text: 'text-pink-300',
+      dot: 'bg-pink-400',
+      label: 'text-pink-300',
+      ring: 'ring-pink-400/30',
+      hex: '#f472b6',
+    },
+    {
+      border: 'border-purple-400/50',
+      bg: 'bg-purple-500/10',
+      text: 'text-purple-300',
+      dot: 'bg-purple-400',
+      label: 'text-purple-300',
+      ring: 'ring-purple-400/30',
+      hex: '#a78bfa',
+    },
+    {
+      border: 'border-cyan-400/50',
+      bg: 'bg-cyan-500/10',
+      text: 'text-cyan-300',
+      dot: 'bg-cyan-400',
+      label: 'text-cyan-300',
+      ring: 'ring-cyan-400/30',
+      hex: '#22d3ee',
+    },
+  ] as const
   const safeIdx =
     results.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), results.length - 1) : 0
   const activeSlot =
@@ -149,6 +213,8 @@ const ResultPanel: React.FC<Props> = ({
       const res = await fetch(url)
       const blob = await res.blob()
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+      setCopyFeedback('已复制到剪贴板')
+      setTimeout(() => setCopyFeedback(null), 2000)
     } catch {
       // 回退：尝试 png
       try {
@@ -159,8 +225,18 @@ const ResultPanel: React.FC<Props> = ({
             ? blob
             : new Blob([await blob.arrayBuffer()], { type: 'image/png' })
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
-      } catch (err) {
-        console.error('复制图片失败:', err)
+        setCopyFeedback('已复制到剪贴板')
+        setTimeout(() => setCopyFeedback(null), 2000)
+      } catch {
+        // 最终回退：复制图片链接
+        try {
+          await navigator.clipboard.writeText(url)
+          setCopyFeedback('图片复制失败，已复制链接')
+          setTimeout(() => setCopyFeedback(null), 3000)
+        } catch {
+          setCopyFeedback('复制失败，请手动保存')
+          setTimeout(() => setCopyFeedback(null), 3000)
+        }
       }
     }
   }
@@ -268,11 +344,25 @@ const ResultPanel: React.FC<Props> = ({
     return (
       <div
         key={slot?.id ?? `empty-${vpIndex}`}
-        className={`group relative flex min-h-0 flex-1 flex-col overflow-hidden border transition ${
-          isActive
-            ? 'border-primary-400/50 bg-white/[0.03]'
-            : 'border-white/[0.06] bg-[#07080d] hover:border-white/15'
-        } ${viewportCount <= 1 ? '' : 'rounded-lg'} ${maximizedViewportIndex === vpIndex ? 'h-full w-full rounded-xl' : ''}`}
+        className={`group relative flex min-h-0 flex-1 flex-col overflow-hidden border transition ${viewportCount <= 1 ? '' : 'rounded-lg'} ${maximizedViewportIndex === vpIndex ? 'h-full w-full rounded-xl' : ''}`}
+        style={{
+          backgroundColor: isActive
+            ? 'var(--viewport-bg-active, rgba(255,255,255,0.03))'
+            : 'var(--viewport-bg, #07080d)',
+          borderColor: isActive
+            ? VIEWPORT_COLORS[vpIndex % 6].hex
+            : `${VIEWPORT_COLORS[vpIndex % 6].hex}33`,
+        }}
+        onMouseEnter={e => {
+          if (!isActive)
+            (e.currentTarget as HTMLElement).style.borderColor =
+              `${VIEWPORT_COLORS[vpIndex % 6].hex}80`
+        }}
+        onMouseLeave={e => {
+          if (!isActive)
+            (e.currentTarget as HTMLElement).style.borderColor =
+              `${VIEWPORT_COLORS[vpIndex % 6].hex}33`
+        }}
         onClick={() => {
           if (slot) {
             selectSlot(slot)
@@ -294,19 +384,6 @@ const ResultPanel: React.FC<Props> = ({
             </button>
             {slot && (
               <>
-                {onRenameSlot && (
-                  <button
-                    type="button"
-                    className="flex h-6 min-w-6 items-center justify-center rounded-full bg-black/55 px-1.5 text-[10px] text-slate-300 transition hover:bg-blue-500/25 hover:text-blue-100"
-                    onClick={e => {
-                      e.stopPropagation()
-                      onRenameSlot(slot)
-                    }}
-                    title="命名视口"
-                  >
-                    名
-                  </button>
-                )}
                 {onRegenerateSlot && (
                   <button
                     type="button"
@@ -324,33 +401,153 @@ const ResultPanel: React.FC<Props> = ({
             )}
           </div>
         )}
-        {slot?.viewportName && (
-          <div className="absolute left-1.5 top-1.5 z-20 rounded-full bg-black/55 px-2 py-0.5 text-[9px] text-slate-200 backdrop-blur">
-            {slot.viewportIndex ? `视口 ${slot.viewportIndex}` : '视口'} · {slot.viewportName}
+        {(slot?.viewportName || viewportCount >= 2) && (
+          <div
+            className={`absolute left-1.5 top-1.5 z-20 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-bold backdrop-blur ${VIEWPORT_COLORS[vpIndex % 6].label}`}
+            onDoubleClick={e => {
+              e.stopPropagation()
+              if (slot && onRenameSlot) {
+                setEditingViewportId(slot.id)
+                setEditingViewportName(slot.viewportName ?? '')
+                setTimeout(() => editInputRef.current?.focus(), 0)
+              }
+            }}
+            title={slot ? '双击重命名视口' : undefined}
+          >
+            {editingViewportId === slot?.id ? (
+              <input
+                ref={editInputRef}
+                type="text"
+                className="w-20 border-none bg-transparent text-[9px] font-bold outline-none placeholder:text-white/30"
+                style={{ color: 'inherit' }}
+                value={editingViewportName}
+                placeholder="输入名称"
+                onChange={e => setEditingViewportName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if (slot) onRenameSlot?.(slot.id, editingViewportName.trim())
+                    setEditingViewportId(null)
+                  } else if (e.key === 'Escape') {
+                    setEditingViewportId(null)
+                  }
+                }}
+                onBlur={() => {
+                  if (slot) onRenameSlot?.(slot.id, editingViewportName.trim())
+                  setEditingViewportId(null)
+                }}
+                onClick={e => e.stopPropagation()}
+                autoFocus
+              />
+            ) : (
+              <>
+                {slot?.viewportIndex ? `视口 ${slot.viewportIndex}` : `视口 ${vpIndex + 1}`}
+                {slot?.viewportName ? ` · ${slot.viewportName}` : ''}
+              </>
+            )}
           </div>
         )}
         {/* 视口内：生成中 */}
         {slot?.status === 'running' ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-            <div className="w-full max-w-[200px]">
-              <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
-                  style={{ width: `${slot.progressPct}%` }}
-                />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* 上一次结果预览（如有） */}
+            {slot.previousResults && slot.previousResults.length > 0 ? (
+              (() => {
+                const prevResults = slot.previousResults
+                const prevActiveIdx =
+                  viewportActiveImgIdx[`prev-${slot.id}`] ?? prevResults.length - 1
+                const safePrevIdx = Math.min(Math.max(prevActiveIdx, 0), prevResults.length - 1)
+                const prevImg = prevResults[safePrevIdx]
+                const prevImgUrl = prevImg ? getOriginalUrl(prevImg) : null
+                return (
+                  <>
+                    {/* 上一次主图（半透明叠加进度） */}
+                    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+                      {prevImgUrl && (
+                        <img
+                          src={safeUrl(prevImgUrl)}
+                          alt=""
+                          className="max-h-full max-w-full object-contain opacity-40 transition"
+                          draggable={false}
+                          onClick={e => {
+                            e.stopPropagation()
+                            setPreviewImage(prevImg)
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      )}
+                      {/* 进度叠加层 */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40">
+                        <div className="h-7 w-7 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                        <div className="w-full max-w-[180px] px-4">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
+                              style={{ width: `${slot.progressPct}%` }}
+                            />
+                          </div>
+                          <div className="mt-0.5 flex justify-between text-[9px] text-amber-200/90">
+                            <span>
+                              {Math.floor(slot.elapsedSeconds / 60) > 0
+                                ? `${Math.floor(slot.elapsedSeconds / 60)}分${slot.elapsedSeconds % 60}秒`
+                                : `${slot.elapsedSeconds}秒`}
+                            </span>
+                            <span>{slot.progressPct}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* 上一次缩略图条 */}
+                    {prevResults.length >= 1 && (
+                      <div className="app-scrollbar flex flex-shrink-0 items-center gap-1 overflow-x-auto border-t border-white/[0.06] bg-black/30 px-1.5 py-1">
+                        {prevResults.map((img, idx) => (
+                          <button
+                            key={img.id}
+                            className={`h-8 w-8 flex-shrink-0 overflow-hidden rounded border-2 transition ${idx === safePrevIdx ? 'border-amber-400/70 ring-1 ring-amber-400/30' : 'border-transparent opacity-50 hover:opacity-80'}`}
+                            onClick={e => {
+                              e.stopPropagation()
+                              setViewportActiveImgIdx(prev => ({
+                                ...prev,
+                                [`prev-${slot.id}`]: idx,
+                              }))
+                            }}
+                          >
+                            <img
+                              src={safeUrl(img.url || getOriginalUrl(img))}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )
+              })()
+            ) : (
+              /* 无上一次结果：纯进度条 */
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                <div className="w-full max-w-[200px]">
+                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
+                      style={{ width: `${slot.progressPct}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px] text-amber-200">
+                    <span>
+                      {Math.floor(slot.elapsedSeconds / 60) > 0
+                        ? `${Math.floor(slot.elapsedSeconds / 60)}分${slot.elapsedSeconds % 60}秒`
+                        : `${slot.elapsedSeconds}秒`}
+                    </span>
+                    <span>{slot.progressPct}%</span>
+                  </div>
+                </div>
+                {viewportCount > 1 && (
+                  <p className="truncate text-[10px] text-slate-500">{slot.request.model}</p>
+                )}
               </div>
-              <div className="mt-1 flex justify-between text-[10px] text-amber-200">
-                <span>
-                  {Math.floor(slot.elapsedSeconds / 60) > 0
-                    ? `${Math.floor(slot.elapsedSeconds / 60)}分${slot.elapsedSeconds % 60}秒`
-                    : `${slot.elapsedSeconds}秒`}
-                </span>
-                <span>{slot.progressPct}%</span>
-              </div>
-            </div>
-            {viewportCount > 1 && (
-              <p className="truncate text-[10px] text-slate-500">{slot.request.model}</p>
             )}
           </div>
         ) : /* 视口内：失败 */
@@ -384,29 +581,57 @@ const ResultPanel: React.FC<Props> = ({
           </div>
         ) : /* 视口内：有结果 */
         slot && imgUrl ? (
-          <div
-            className="group relative flex flex-1 cursor-pointer items-center justify-center overflow-hidden"
-            onClick={e => {
-              e.stopPropagation()
-              setPreviewImage(firstImg!)
-            }}
-            onContextMenu={e => handleContextMenu(e, firstImg!)}
-          >
-            <img
-              src={safeUrl(imgUrl)}
-              alt=""
-              className="max-h-full max-w-full object-contain transition-all duration-200 group-hover:scale-[1.01]"
-              draggable={false}
-            />
-            {slot.results.length > 1 && (
-              <div className="absolute bottom-1 right-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-medium text-white/80">
-                {slot.results.length} 张
+          (() => {
+            const activeIdx = viewportActiveImgIdx[slot.id] ?? slot.results.length - 1
+            const safeActiveIdx = Math.min(Math.max(activeIdx, 0), slot.results.length - 1)
+            const activeImg = slot.results[safeActiveIdx] ?? firstImg!
+            const activeImgUrl = getOriginalUrl(activeImg)
+            return (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div
+                  className="group relative flex min-h-0 flex-1 cursor-pointer items-center justify-center overflow-hidden"
+                  onClick={e => {
+                    e.stopPropagation()
+                    setPreviewImage(activeImg)
+                  }}
+                  onContextMenu={e => handleContextMenu(e, activeImg)}
+                >
+                  <img
+                    src={safeUrl(activeImgUrl)}
+                    alt=""
+                    className="max-h-full max-w-full object-contain transition-all duration-200 group-hover:scale-[1.01]"
+                    draggable={false}
+                  />
+                </div>
+                {slot.results.length > 1 && (
+                  <div className="app-scrollbar flex flex-shrink-0 items-center gap-1 overflow-x-auto border-t border-white/[0.06] bg-black/30 px-1.5 py-1">
+                    {slot.results.map((img, idx) => (
+                      <button
+                        key={img.id}
+                        className={`h-8 w-8 flex-shrink-0 overflow-hidden rounded border-2 transition ${idx === safeActiveIdx ? 'border-primary-400 ring-1 ring-primary-400/30' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setViewportActiveImgIdx(prev => ({ ...prev, [slot.id]: idx }))
+                        }}
+                      >
+                        <img
+                          src={safeUrl(img.url || getOriginalUrl(img))}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            )
+          })()
         ) : (
           /* 视口内：空占位 */
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-slate-500">
+          <div
+            className="flex flex-1 flex-col items-center justify-center gap-2"
+            style={{ color: 'var(--viewport-empty-text, rgb(100,116,139))' }}
+          >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04]">
               <svg
                 className="h-5 w-5 opacity-40"
@@ -503,13 +728,22 @@ const ResultPanel: React.FC<Props> = ({
                     key={slot?.id ?? `vp-${idx}`}
                     className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border transition ${
                       isActive
-                        ? 'border-primary-400 bg-primary-500/15 ring-1 ring-primary-400/30'
+                        ? `${VIEWPORT_COLORS[idx % 6].bg} ring-1 ${VIEWPORT_COLORS[idx % 6].ring}`
                         : slot?.status === 'running'
                           ? 'border-amber-400/30 bg-amber-500/10'
                           : slot?.status === 'error'
                             ? 'border-red-400/30 bg-red-500/10'
-                            : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
+                            : 'bg-white/[0.04]'
                     }`}
+                    style={{
+                      borderColor: isActive
+                        ? VIEWPORT_COLORS[idx % 6].hex
+                        : slot?.status === 'running'
+                          ? undefined
+                          : slot?.status === 'error'
+                            ? undefined
+                            : `${VIEWPORT_COLORS[idx % 6].hex}33`,
+                    }}
                     onClick={() => {
                       if (slot) {
                         selectSlot(slot)
@@ -529,7 +763,9 @@ const ResultPanel: React.FC<Props> = ({
                     ) : slot?.status === 'error' ? (
                       <span className="text-[10px] font-bold text-red-300">!</span>
                     ) : (
-                      <span className="text-[8px] text-slate-500">{idx + 1}</span>
+                      <span className={`text-[8px] font-bold ${VIEWPORT_COLORS[idx % 6].label}`}>
+                        {idx + 1}
+                      </span>
                     )}
                   </button>
                 )
@@ -908,7 +1144,9 @@ const ResultPanel: React.FC<Props> = ({
                     ) : slot?.status === 'error' ? (
                       <span className="text-[10px] font-bold text-red-300">!</span>
                     ) : (
-                      <span className="text-[8px] text-slate-500">{idx + 1}</span>
+                      <span className={`text-[8px] font-bold ${VIEWPORT_COLORS[idx % 6].label}`}>
+                        {idx + 1}
+                      </span>
                     )}
                   </button>
                 )
@@ -1019,6 +1257,13 @@ const ResultPanel: React.FC<Props> = ({
           })(),
           document.body,
         )}
+      {copyFeedback && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-8 z-[99999] flex justify-center">
+          <div className="pointer-events-auto rounded-lg bg-slate-800/90 px-4 py-2 text-xs text-slate-100 shadow-lg backdrop-blur">
+            {copyFeedback}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

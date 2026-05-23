@@ -3,15 +3,20 @@
  */
 
 const DOWNLOAD_TIMEOUT_MS = 30_000 // 30 秒超时
+const REVOKE_OBJECT_URL_DELAY_MS = 30_000
 
 /** 生成基于当前时间的文件名，格式: Liang007_20260520_154512_001.png */
-function makeTimestampFilename(index?: number, ext = 'png'): string {
+function makeTimestampFilename(index?: number, ext = 'png', prefix = 'Liang007'): string {
   const now = new Date()
   const pad = (n: number, len = 2) => String(n).padStart(len, '0')
   const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
   const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
   const suffix = index != null ? `_${String(index).padStart(3, '0')}` : ''
-  return `Liang007_${date}_${time}${suffix}.${ext}`
+  return `${prefix}_${date}_${time}${suffix}.${ext}`
+}
+
+function revokeObjectUrlLater(url: string): void {
+  window.setTimeout(() => URL.revokeObjectURL(url), REVOKE_OBJECT_URL_DELAY_MS)
 }
 
 /**
@@ -62,7 +67,7 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
       try {
         triggerDownload(blobUrl, getFileName())
       } finally {
-        URL.revokeObjectURL(blobUrl)
+        revokeObjectUrlLater(blobUrl)
       }
       return
     }
@@ -87,7 +92,7 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
     try {
       triggerDownload(blobUrl, getFileName())
     } finally {
-      URL.revokeObjectURL(blobUrl)
+      revokeObjectUrlLater(blobUrl)
     }
   } catch (error) {
     console.warn('fetch 下载图片失败，尝试使用浏览器直链下载兜底:', error)
@@ -108,13 +113,13 @@ export async function downloadImage(url: string, filename?: string): Promise<voi
  */
 export async function downloadImages(
   images: string[] | { url: string; originalUrl?: string; id?: string }[],
-  _prefix: string = 'image',
+  prefix: string = 'Liang007',
 ): Promise<void> {
   const urls = images.map(img => (typeof img === 'string' ? img : img.originalUrl || img.url))
 
   // 使用Promise.allSettled并行下载
   const results = await Promise.allSettled(
-    urls.map((url, index) => downloadImage(url, makeTimestampFilename(index + 1))),
+    urls.map((url, index) => downloadImage(url, makeTimestampFilename(index + 1, 'png', prefix))),
   )
 
   // 统计成功和失败数量
