@@ -7,7 +7,17 @@ import {
   type ApiSpec,
   type ImageModel,
 } from './settings'
-import type { GeneratedImage, GenerateResult } from './imageClient'
+import type { GeneratedImage } from './imageClient'
+import type { GenerateResult } from './apiUtils'
+import {
+  toOpenAISizeString,
+  safeParseJson,
+  isHtmlContent,
+  extractErrorMessage,
+  errResult,
+  extractImagesOpenAI,
+  isImageInputUnsupportedError,
+} from './apiUtils'
 
 export type InpaintParams = {
   imageUrl: string
@@ -40,95 +50,6 @@ function buildEndpoint(baseUrl: string, customEndpoint?: string): string {
   return `${clean}/v1/images/edits`
 }
 
-function toOpenAISizeString(width: number, height: number): string {
-  const sizes = [512, 768, 1024, 1536, 2048, 4096]
-  const snap = (value: number) =>
-    sizes.reduce((best, size) => (Math.abs(size - value) < Math.abs(best - value) ? size : best))
-  return `${snap(width)}x${snap(height)}`
-}
-
-function safeParseJson(text: string): unknown | null {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-function isHtmlContent(text: string): boolean {
-  const t = text.trimStart().toLowerCase()
-  return t.startsWith('<!doctype') || t.startsWith('<html')
-}
-
-function stringifyError(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) return value.map(stringifyError).filter(Boolean).join('；')
-  if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    return stringifyError(obj.message ?? obj.msg ?? obj.detail ?? JSON.stringify(value))
-  }
-  return ''
-}
-
-function extractErrorMessage(parsed: unknown, fallback: string): string {
-  if (!parsed || typeof parsed !== 'object') return fallback
-  const obj = parsed as Record<string, unknown>
-  for (const key of ['message', 'error', 'detail', 'msg', 'reason', 'description']) {
-    if (obj[key] !== undefined) {
-      const msg = stringifyError(obj[key])
-      if (msg) return msg
-    }
-  }
-  return fallback || JSON.stringify(parsed)
-}
-
-function isImageInputUnsupportedError(message: string): boolean {
-  const text = message.toLowerCase()
-  return (
-    text.includes('does not support image input') ||
-    text.includes('does not support image') ||
-    text.includes('image input is not supported') ||
-    text.includes('cannot read') ||
-    text.includes('image.png') ||
-    text.includes('inform the user') ||
-    text.includes('model does not support') ||
-    text.includes('this model does not') ||
-    (text.includes('unsupported') && text.includes('image'))
-  )
-}
-
-function extractImages(data: unknown): GeneratedImage[] | null {
-  if (!data || typeof data !== 'object') return null
-  const obj = data as Record<string, unknown>
-  if (Array.isArray(obj.data) && obj.data.length > 0) {
-    const first = obj.data[0] as Record<string, unknown>
-    if (typeof first.url === 'string' || typeof first.b64_json === 'string') {
-      return (obj.data as { url?: string; b64_json?: string }[]).map((item, idx) => ({
-        id: String(idx),
-        url: item.url ?? (item.b64_json ? `data:image/png;base64,${item.b64_json}` : ''),
-      }))
-    }
-  }
-  if (Array.isArray(obj.images) && obj.images.length > 0) {
-    if (typeof obj.images[0] === 'string') {
-      return (obj.images as string[]).map((url, idx) => ({ id: String(idx), url }))
-    }
-    return (obj.images as { id?: string; url?: string; b64_json?: string }[]).map((img, idx) => ({
-      id: img.id ?? String(idx),
-      url: img.url ?? (img.b64_json ? `data:image/png;base64,${img.b64_json}` : ''),
-    }))
-  }
-  if (Array.isArray(data) && data.length > 0) {
-    if (typeof data[0] === 'string')
-      return (data as string[]).map((url, idx) => ({ id: String(idx), url }))
-    return (data as { id?: string; url?: string }[])
-      .filter(img => typeof img.url === 'string')
-      .map((img, idx) => ({ id: img.id ?? String(idx), url: img.url ?? '' }))
-  }
-  return null
-}
-
 async function urlToBlob(url: string, errorMessage: string): Promise<Blob> {
   if (url.startsWith('data:')) {
     const resp = await fetch(url)
@@ -145,27 +66,6 @@ async function urlToBlob(url: string, errorMessage: string): Promise<Blob> {
 
 function buildRequestBodyForLog(fields: Record<string, unknown>): string {
   return JSON.stringify(fields, null, 2)
-}
-
-function errResult(
-  endpoint: string,
-  spec: ApiSpec,
-  requestBodyJson: string,
-  message: string,
-  httpStatus = 0,
-  httpErrorBody?: string,
-): GenerateResult {
-  return {
-    images: [],
-    endpoint,
-    spec,
-    requestBodyJson,
-    httpStatus,
-    responseSummary: '',
-    jsonValid: false,
-    error: message,
-    httpErrorBody,
-  }
 }
 
 function resolveInpaintModel(paramsModel: string): {
@@ -349,30 +249,59 @@ export async function inpaintImage(params: InpaintParams): Promise<GenerateResul
   const headers: HeadersInit = { Accept: 'application/json' }
   if (resolved.apiKey.trim()) headers.Authorization = `Bearer ${resolved.apiKey.trim()}`
 
-  let resp: Response
+  const TRANSIENT_STATUS = new Set([408, 429, 500, 502, 503, 504])
+  const MAX_RETRIES = 2
+
+  function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  let resp: Response | undefined
   let rawText = ''
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 600_000)
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      resp = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: form,
-        signal: controller.signal,
-      })
-      rawText = await resp.text()
-    } finally {
-      clearTimeout(timer)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 600_000)
+      try {
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: form,
+          signal: controller.signal,
+        })
+        rawText = await resp.text()
+      } finally {
+        clearTimeout(timer)
+      }
+    } catch (err) {
+      lastError = err
+      if (attempt < MAX_RETRIES) {
+        await sleep(1500 * 2 ** attempt + Math.floor(Math.random() * 500))
+        continue
+      }
+      return errResult(
+        endpoint,
+        resolved.spec,
+        requestBodyJson,
+        err instanceof DOMException && err.name === 'AbortError'
+          ? '局部重绘请求超时（600s），请稍后重试或降低生成数量。'
+          : `局部重绘网络请求失败（已重试 ${MAX_RETRIES} 次）：${err instanceof Error ? err.message : String(err)}`,
+      )
     }
-  } catch (err) {
+
+    // 非瞬态错误或已到最大重试次数，跳出
+    if (!resp || !TRANSIENT_STATUS.has(resp.status) || attempt >= MAX_RETRIES) break
+    await sleep(1500 * 2 ** attempt + Math.floor(Math.random() * 500))
+  }
+
+  if (!resp) {
     return errResult(
       endpoint,
       resolved.spec,
       requestBodyJson,
-      err instanceof DOMException && err.name === 'AbortError'
-        ? '局部重绘请求超时（600s），请稍后重试或降低生成数量。'
-        : `局部重绘网络请求失败：${err instanceof Error ? err.message : String(err)}`,
+      `局部重绘网络请求失败：${lastError instanceof Error ? lastError.message : String(lastError)}`,
     )
   }
 
@@ -421,7 +350,7 @@ export async function inpaintImage(params: InpaintParams): Promise<GenerateResul
     )
   }
 
-  const images = extractImages(parsed)?.filter(img => img.url) ?? []
+  const images = extractImagesOpenAI(parsed)?.filter(img => img.url) ?? []
   if (images.length === 0) {
     return errResult(
       endpoint,

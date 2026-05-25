@@ -293,7 +293,12 @@ interface EditorStore {
 }
 
 // ─── 工具函数 ────────────────────────────────────────────────
-const genId = () => Math.random().toString(36).slice(2, 10)
+const genId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return Math.random().toString(36).slice(2, 10)
+}
 
 const getSnapshot = (s: EditorStore): EditorSnapshot => ({
   maskLayers: s.maskLayers,
@@ -483,8 +488,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       locked: false,
       opacity: 100,
     }
-    set(s => ({ maskLayers: [...s.maskLayers, layer], activeMaskLayerId: id }))
     get().pushHistory()
+    set(s => ({ maskLayers: [...s.maskLayers, layer], activeMaskLayerId: id }))
     return id
   },
 
@@ -514,12 +519,12 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   setMaskPrompt: (layerId, prompt, negPrompt) => {
+    get().pushHistory()
     set(s => ({
       maskLayers: s.maskLayers.map(l =>
         l.id === layerId ? { ...l, prompt, negativePrompt: negPrompt } : l,
       ),
     }))
-    get().pushHistory()
   },
 
   setMaskLayerVisibility: (id, v) => {
@@ -546,9 +551,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     const id = genId()
     const label = String(get().pins.length + 1)
     const newPin: PinMarker = { ...pin, id, label, timestamp: Date.now() }
+    get().pushHistory()
     set(s => ({ pins: [...s.pins, newPin], selectedPinId: id }))
     get().rebuildLayers()
-    get().pushHistory()
     return id
   },
 
@@ -580,9 +585,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   addText: text => {
     const id = genId()
     const newText: TextAddition = { ...text, id, visible: true, locked: false }
+    get().pushHistory()
     set(s => ({ textAdditions: [...s.textAdditions, newText], selectedTextId: id }))
     get().rebuildLayers()
-    get().pushHistory()
     return id
   },
 
@@ -612,9 +617,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   addTextReplacement: rep => {
     const id = genId()
     const r: TextReplacement = { ...rep, id, visible: true, locked: false }
+    get().pushHistory()
     set(s => ({ textReplacements: [...s.textReplacements, r] }))
     get().rebuildLayers()
-    get().pushHistory()
     return id
   },
 
@@ -630,9 +635,9 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   addEraseRegion: region => {
     const id = genId()
     const r: EraseRegion = { ...region, id, visible: true, locked: false }
+    get().pushHistory()
     set(s => ({ eraseRegions: [...s.eraseRegions, r] }))
     get().rebuildLayers()
-    get().pushHistory()
     return id
   },
 

@@ -680,4 +680,4 @@ const ControlPanel: React.FC<Props> = ({
   )
 }
 
-export default ControlPanel
+export default React.memo(ControlPanel)

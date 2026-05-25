@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useRef,
+  useMemo,
   lazy,
   Suspense,
   type MouseEvent as ReactMouseEvent,
@@ -9,7 +10,7 @@ import {
 import { useUiStore } from './store/uiStore'
 import { useGenerationStore, STORAGE_KEYS } from './store/generationStore'
 import { generateImages, GeneratedImage } from './api/imageClient'
-import { downloadImage, downloadImages } from './utils/download'
+import { downloadImages } from './utils/download'
 const PromptOptimizerDialog = lazy(() => import('./components/PromptOptimizerDialog'))
 const InfiniteCanvas = lazy(() => import('./components/InfiniteCanvas'))
 import AboutDialog from './components/Dialogs/AboutDialog'
@@ -45,17 +46,11 @@ import {
   MODEL_VENDOR_TAGS,
 } from './utils/modelCategories'
 import { fetchAllBalances, type MultiBalanceResult } from './api/balance'
-import {
-  THEMES,
-  getTheme,
-  setTheme,
-  getThemeConfig,
-  type ThemeMode,
-  injectThemeVars,
-} from './utils/theme'
+import { getTheme, setTheme, getThemeConfig, type ThemeMode, injectThemeVars } from './utils/theme'
 import { createThumbnail } from './utils/imageUtils'
 import { idbGet, idbSet } from './utils/idb'
 import SettingsDialog from './components/SettingsDialog'
+import ThemeMenu from './components/ThemeMenu'
 import VendorManager from './components/VendorManager'
 import ControlPanel from './components/ControlPanel'
 import ResultPanel from './components/ResultPanel'
@@ -123,28 +118,8 @@ type GenerationHistoryEntry = {
   viewportName?: string
 }
 
-function isImageInputUnsupportedError(message: string): boolean {
-  const errMsg = message.toLowerCase()
-  return (
-    errMsg.includes('does not support image input') ||
-    errMsg.includes('does not support image') ||
-    errMsg.includes('image input is not supported') ||
-    errMsg.includes('cannot read') ||
-    errMsg.includes("can't read") ||
-    errMsg.includes('unable to read') ||
-    errMsg.includes('inform the user') ||
-    errMsg.includes('this model does not') ||
-    errMsg.includes('model does not support') ||
-    (errMsg.includes('vision') && errMsg.includes('not support')) ||
-    (errMsg.includes('multimodal') && errMsg.includes('not support')) ||
-    (errMsg.includes('invalid') && errMsg.includes('image_url')) ||
-    (errMsg.includes('unsupported') && errMsg.includes('image')) ||
-    errMsg.includes('不支持图片输入') ||
-    errMsg.includes('不支持参考图') ||
-    errMsg.includes('不支持图片') ||
-    errMsg.includes('去掉参考图')
-  )
-}
+import { isImageInputUnsupportedError } from './api/apiUtils'
+import { getViewportColorByIndex } from './utils/viewportColors'
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -180,9 +155,7 @@ async function historyReferenceToFile(ref: HistoryReferenceImage): Promise<File 
   }
 }
 
-const RIGHT_PANEL_MIN = 280
-const RIGHT_PANEL_MAX = 640
-const RIGHT_PANEL_DEFAULT = 340
+import { RIGHT_PANEL_MIN, RIGHT_PANEL_MAX, RIGHT_PANEL_DEFAULT } from './store/uiStore'
 
 function App() {
   const [prompt, setPrompt] = useState('')
@@ -234,8 +207,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelSelectOpen, setModelSelectOpen] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [modelPickerMode, _setModelPickerMode] = useState<'image' | 'chat'>('image')
-  const [modelPickerList, _setModelPickerList] = useState<string[]>([])
+  const modelPickerMode: 'image' | 'chat' = 'image'
+  const modelPickerList: string[] = []
   const [modelPickerSelected, setModelPickerSelected] = useState<Set<string>>(new Set())
   const [modelPickerSearch, setModelPickerSearch] = useState('')
   const [modelPickerCategoryTag, setModelPickerCategoryTag] = useState<string | null>(null)
@@ -256,7 +229,7 @@ function App() {
       apiValidateJson: s.apiValidateJson ?? true,
     }
   })
-  const [fetchedModelList, _setFetchedModelList] = useState<string[]>([])
+  const fetchedModelList: string[] = []
   const [selectedModelIdsInModal, setSelectedModelIdsInModal] = useState<string[]>([])
   const [modelSearchQuery, setModelSearchQuery] = useState('')
   const [rightPanelWidth, setRightPanelWidth] = useState(RIGHT_PANEL_DEFAULT)
@@ -271,13 +244,12 @@ function App() {
   })
   const [filterCategoryTag, setFilterCategoryTag] = useState<string | null>(null)
   const [filterVendorTag, setFilterVendorTag] = useState<string | null>(null)
-  const [_filterMode, _setFilterMode] = useState<'union' | 'intersect'>('union')
   const [selectedModelManageOpen, setSelectedModelManageOpen] = useState(false)
   // 选择模型弹窗可拖拽缩放尺寸
   const [modelModalSize, setModelModalSize] = useState({ w: 880, h: 620 })
   const modelModalResizing = useRef(false)
   const modelModalResizeStart = useRef({ mouseX: 0, mouseY: 0, w: 880, h: 620 })
-  const [_logEntries, setLogEntries] = useState<
+  const [, setLogEntries] = useState<
     {
       time: string
       request?: string
@@ -302,7 +274,6 @@ function App() {
   const [balanceStatus, setBalanceStatus] = useState<'idle' | 'loading' | 'ok' | 'fail'>('idle')
   const [balanceMessage, setBalanceMessage] = useState('')
   const [multiBalanceResult, setMultiBalanceResult] = useState<MultiBalanceResult | null>(null)
-  const [_showAbout, _setShowAbout] = useState(false)
   const [theme, setThemeState] = useState<ThemeMode>(() => getTheme())
   const [themeMenuOpen, setThemeMenuOpen] = useState(false)
   const [performanceMonitorOpen, setPerformanceMonitorOpen] = useState(false)
@@ -344,7 +315,7 @@ function App() {
       })
     })
   }, [])
-  const themeConfig = getThemeConfig(theme)
+  const themeConfig = useMemo(() => getThemeConfig(theme), [theme])
 
   // ── Electron 环境检测：在 <html> 上添加 electron 类 ──────────────────────────
   useEffect(() => {
@@ -354,19 +325,21 @@ function App() {
   }, [])
 
   // ── 清理超时的"生图中..."条目（超过12分钟自动标记为失败）──────────────
+  // 使用定时器代替 generationHistory 依赖，避免 setState → useEffect → setState 循环
   useEffect(() => {
-    const now = Date.now()
     const TIMEOUT = 12 * 60 * 1000 // 12分钟超时
-    const hasStuck = generationHistory.some(
-      entry =>
-        entry.results.length === 0 &&
-        !entry.error &&
-        entry.createdAt &&
-        now - entry.createdAt > TIMEOUT,
-    )
-    if (hasStuck) {
-      setGenerationHistory(prev =>
-        prev.map(entry => {
+    const cleanup = () => {
+      const now = Date.now()
+      setGenerationHistory(prev => {
+        const hasStuck = prev.some(
+          entry =>
+            entry.results.length === 0 &&
+            !entry.error &&
+            entry.createdAt &&
+            now - entry.createdAt > TIMEOUT,
+        )
+        if (!hasStuck) return prev
+        return prev.map(entry => {
           if (
             entry.results.length === 0 &&
             !entry.error &&
@@ -376,10 +349,13 @@ function App() {
             return { ...entry, error: '生成超时（超过12分钟）' }
           }
           return entry
-        }),
-      )
+        })
+      })
     }
-  }, [generationHistory])
+    cleanup()
+    const timer = setInterval(cleanup, 60_000)
+    return () => clearInterval(timer)
+  }, [])
 
   // ── localStorage 配额管理：清理旧数据 ─────────────────────────────────────
   useEffect(() => {
@@ -399,6 +375,12 @@ function App() {
 
   // ── 优化：history debounced 持久化（避免频繁 JSON.stringify 阻塞主线程）───
   const historySaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 卸载时清理 historySaveTimer，防止内存泄漏
+  useEffect(() => {
+    return () => {
+      if (historySaveTimer.current) clearTimeout(historySaveTimer.current)
+    }
+  }, [])
   // 比例不匹配弹窗防重入标记：用户点"重新生成"后，下一次结果不再触发弹窗
   const ratioMismatchRetried = useRef(false)
   // 多槽位计时器
@@ -525,16 +507,6 @@ function App() {
     entryId: string
     imageId?: string
   } | null>(null)
-  const _openHistoryPreview = (images: GeneratedImage[], index = 0, entryId?: string) => {
-    if (images.length === 0) return
-    if (entryId) {
-      setViewedHistoryIds(prev => new Set(prev).add(entryId))
-    }
-    setHistoryFullPreview({
-      images,
-      index: Math.min(Math.max(index, 0), images.length - 1),
-    })
-  }
   const applyHistoryPrompt = async (entry: GenerationHistoryEntry) => {
     setPrompt(entry.prompt.replace(/^\[局部重绘\]\s*/, ''))
     setNegativePrompt(entry.negativePrompt ?? '')
@@ -551,52 +523,8 @@ function App() {
       setReferenceSlots([null, null, null, null])
     }
   }
-  const VIEWPORT_COLORS = [
-    {
-      border: 'border-blue-400/30',
-      bg: 'bg-blue-500/10',
-      text: 'text-blue-300',
-      dot: 'bg-blue-400',
-      accent: '#60a5fa',
-    },
-    {
-      border: 'border-emerald-400/30',
-      bg: 'bg-emerald-500/10',
-      text: 'text-emerald-300',
-      dot: 'bg-emerald-400',
-      accent: '#34d399',
-    },
-    {
-      border: 'border-amber-400/30',
-      bg: 'bg-amber-500/10',
-      text: 'text-amber-300',
-      dot: 'bg-amber-400',
-      accent: '#fbbf24',
-    },
-    {
-      border: 'border-pink-400/30',
-      bg: 'bg-pink-500/10',
-      text: 'text-pink-300',
-      dot: 'bg-pink-400',
-      accent: '#f472b6',
-    },
-    {
-      border: 'border-purple-400/30',
-      bg: 'bg-purple-500/10',
-      text: 'text-purple-300',
-      dot: 'bg-purple-400',
-      accent: '#a78bfa',
-    },
-    {
-      border: 'border-cyan-400/30',
-      bg: 'bg-cyan-500/10',
-      text: 'text-cyan-300',
-      dot: 'bg-cyan-400',
-      accent: '#22d3ee',
-    },
-  ] as const
   const getViewportColor = (entry: GenerationHistoryEntry) =>
-    VIEWPORT_COLORS[((entry.viewportIndex ?? 1) - 1) % 6]
+    getViewportColorByIndex((entry.viewportIndex ?? 1) - 1)
   const applyHistoryViewportLabel = (entry: GenerationHistoryEntry) => {
     const indexLabel = entry.viewportIndex ? `视口 ${entry.viewportIndex}` : '视口'
     const nameLabel = entry.viewportName?.trim() ? ` · ${entry.viewportName.trim()}` : ''
@@ -737,7 +665,10 @@ function App() {
     }
   }, [generationSlots, activeSlotId])
 
-  const referenceImages = referenceSlots.filter((f): f is File => f != null)
+  const referenceImages = useMemo(
+    () => referenceSlots.filter((f): f is File => f != null),
+    [referenceSlots],
+  )
 
   // 参考图预览 URL 与回收
   useEffect(() => {
@@ -1115,12 +1046,12 @@ function App() {
                 viewportIndex: newSlot.viewportIndex,
                 viewportName: newSlot.viewportName,
                 time: new Date().toLocaleString('zh-CN'),
-                prompt,
-                negativePrompt: negativePrompt || undefined,
-                model,
-                width,
-                height,
-                batchSize,
+                prompt: snapshot.prompt,
+                negativePrompt: snapshot.negativePrompt || undefined,
+                model: snapshot.model,
+                width: snapshot.width,
+                height: snapshot.height,
+                batchSize: snapshot.batchSize,
                 results: [],
                 error: message,
                 createdAt: Date.now(),
@@ -1195,11 +1126,11 @@ function App() {
                 viewportIndex: newSlot.viewportIndex,
                 viewportName: newSlot.viewportName,
                 time: new Date().toLocaleString('zh-CN'),
-                prompt,
-                negativePrompt: negativePrompt || undefined,
-                model,
-                width,
-                height,
+                prompt: snapshot.prompt,
+                negativePrompt: snapshot.negativePrompt || undefined,
+                model: snapshot.model,
+                width: snapshot.width,
+                height: snapshot.height,
                 batchSize: accumulatedResults.length,
                 results: accumulatedResults,
                 createdAt: Date.now(),
@@ -1236,37 +1167,12 @@ function App() {
     handleGenerateRef.current = handleGenerate
   })
 
-  // 切换图片选中状态
-  const _toggleImageSelection = (id: string) => {
-    setSelectedImageIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }
-
   // 全选/取消全选
   const toggleSelectAll = () => {
     if (selectedImageIds.size === results.length) {
       setSelectedImageIds(new Set())
     } else {
       setSelectedImageIds(new Set(results.map(r => r.id)))
-    }
-  }
-
-  // 下载单张图片
-  const _handleDownloadSingle = async (img: GeneratedImage) => {
-    try {
-      setDownloadStatus('downloading')
-      await downloadImage(img.url)
-    } catch (e) {
-      setError(`下载失败: ${e instanceof Error ? e.message : String(e)}`)
-    } finally {
-      setDownloadStatus('idle')
     }
   }
 
@@ -1496,27 +1402,17 @@ function App() {
     }
   }, [isDraggingHistory])
 
-  // 删除历史记录
-  const _handleDeleteHistory = (id: string) => {
-    setGenerationHistory(prev => {
-      const filtered = prev.filter(h => h.id !== id)
-      saveHistory(filtered)
-      return filtered
-    })
-  }
-
   // 管理弹窗尺寸
   const [manageModalSize, setManageModalSize] = useState({ w: 640, h: 520 })
   const manageModalResizing = useRef(false)
   const manageModalResizeStart = useRef({ mouseX: 0, mouseY: 0, w: 640, h: 520 })
 
-  const [_isOptimizing, _setIsOptimizing] = useState(false)
   // ── 优化5：提示词优化独立弹窗 ─────────────────────────────────────────────
   const [promptOptimizeDialogOpen, setPromptOptimizeDialogOpen] = useState(false)
 
   // 折叠状态
-  const [_negPromptOpen, setNegPromptOpen] = useState(true)
-  const [_refImgOpen, setRefImgOpen] = useState(true)
+  const [, setNegPromptOpen] = useState(true)
+  const [, setRefImgOpen] = useState(true)
 
   // 小屏响应式：窗口宽度 < 1280px 时折叠参考图和反向提示词
   useEffect(() => {
@@ -1756,108 +1652,16 @@ function App() {
       </header>
 
       {/* 主题菜单 */}
-      {themeMenuOpen && themeBtnRef.current && (
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setThemeMenuOpen(false)} />
-          <div
-            className="glass-popup popup-enter fixed z-[9999] w-60 rounded-xl py-1.5"
-            style={{
-              left: themeBtnRef.current.getBoundingClientRect().left,
-              top: themeBtnRef.current.getBoundingClientRect().bottom + 8,
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="mb-1 border-b border-white/[0.06] px-3 pb-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                    Theme
-                  </div>
-                  <div className="mt-0.5 text-[11px] font-medium text-amber-100">
-                    龙鳞帝铸 / Dragon Scale Console
-                  </div>
-                </div>
-                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[9px] uppercase tracking-[0.2em] text-slate-400">
-                  HUD
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5 px-2.5 pb-2">
-              {THEMES.map((t, index) => {
-                const isActive = theme === t.id
-                const code = String(index + 1).padStart(2, '0')
-                const shortCode = t.id === 'dragon' ? t.name : t.name.replace(/^星域-\d+\s*/, '')
-                return (
-                  <button
-                    key={t.id}
-                    className={`flex min-h-[56px] w-full items-stretch gap-2 overflow-hidden rounded-lg text-left text-xs transition-all ${
-                      isActive
-                        ? 'bg-white/[0.09] ring-1 ring-primary-400/20'
-                        : 'hover:bg-white/[0.04] hover:ring-1 hover:ring-white/[0.04]'
-                    }`}
-                    onClick={() => {
-                      handleThemeChange(t.id)
-                      setThemeMenuOpen(false)
-                    }}
-                  >
-                    <div
-                      className="w-1 flex-shrink-0"
-                      style={{
-                        background: t.accentColor,
-                        boxShadow: `0 0 14px ${t.accentColor}55`,
-                      }}
-                    />
-                    <div className="flex flex-shrink-0 flex-col items-center justify-center gap-0.5 py-0.5 pl-0.5">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full ring-1 ring-white/10"
-                        style={{
-                          background: t.accentColor,
-                          boxShadow: `0 0 10px ${t.accentColor}44`,
-                        }}
-                      />
-                      <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-1 py-0.5 text-[7px] font-semibold tracking-[0.16em] text-slate-400">
-                        {code}
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1 py-1.5 pr-2">
-                      <div className="flex items-center gap-1">
-                        <span
-                          className={`text-[11px] ${isActive ? 'font-semibold text-amber-300' : 'text-slate-300'}`}
-                        >
-                          {shortCode}
-                        </span>
-                        <span className="rounded-full bg-white/[0.04] px-1 py-0.5 text-[7px] uppercase tracking-[0.16em] text-slate-500">
-                          {t.id}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1">
-                        <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-1 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                          {t.tag}
-                        </span>
-                      </div>
-                    </div>
-                    {isActive && (
-                      <svg
-                        className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-300"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2.5}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </>
-      )}
+      <ThemeMenu
+        open={themeMenuOpen}
+        theme={theme}
+        buttonRef={themeBtnRef}
+        onSelect={t => {
+          handleThemeChange(t)
+          setThemeMenuOpen(false)
+        }}
+        onClose={() => setThemeMenuOpen(false)}
+      />
 
       {/* 余额弹窗 */}
       <BalancePopup
@@ -4042,7 +3846,6 @@ function App() {
                       type="button"
                       className="rounded-lg bg-red-500 px-3 py-1 text-[11px] text-white transition hover:bg-red-600"
                       onClick={() => {
-                        const _toDel = [...selectedPromptHistory].sort((a, b) => b - a)
                         setPromptHistory(prev =>
                           prev.filter((_, i) => !selectedPromptHistory.has(i)),
                         )

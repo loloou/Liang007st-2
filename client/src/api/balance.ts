@@ -1000,7 +1000,9 @@ async function fetchAutoDetect(baseUrl: string, apiKey: string): Promise<Balance
 // ── 今日用量 & 签到状态（从 Global Config 的 baseUrl+apiKey 自动查询）──────────
 
 type UsageCheckinResult = {
+  /** 累计已用额度 (USD)，注意：非今日用量 */
   todayUsageUSD?: number
+  /** 累计已用额度 (CNY)，注意：非今日用量 */
   todayUsageCNY?: number
   checkinStatus?: 'signed' | 'unsigned' | 'unavailable'
   checkinReward?: string
@@ -1022,13 +1024,15 @@ async function fetchUsageAndCheckin(
     ...(apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {}),
   }
 
-  // ── 1. 今日用量：从余额查询的 data 里提取 used_quota ──────────────────────
+  // ── 1. 累计已用额度：从余额查询的 data 里提取 used_quota ──────────────────────
+  // 注意：One API / New API 系列的 used_quota 是账户累计已用额度，并非今日用量
   if (balanceRes.ok && balanceRes.data) {
     const obj = balanceRes.data as Record<string, unknown>
     const inner =
       obj.data && typeof obj.data === 'object' ? (obj.data as Record<string, unknown>) : obj
 
     // used_quota: 和 quota 一样是原始值（需要除以 QUOTA_CONVERSION_FACTOR）
+    // 注意：这是账户累计已用额度，而非仅今日用量
     const usedQuota =
       typeof inner.used_quota === 'number'
         ? inner.used_quota

@@ -34,7 +34,7 @@ export type ImageModel = {
   label?: string
   apiKey?: string
   baseUrl?: string
-  /** 接口规范，不填则继承全局，默认 openai */
+  /** 接口规范，不填则继承全局，默认 gemini */
   apiSpec?: ApiSpec
   /** 是否显式启用 /v1/images/edits 局部重绘能力 */
   supportsInpaint?: boolean
@@ -124,6 +124,9 @@ export type ApiConfig = {
 // ── 工具函数 ────────────────────────────────────────────────────────────────
 
 function genId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
@@ -327,8 +330,8 @@ export function getApiConfig(): ApiConfig {
 export function saveApiConfig(config: ApiConfig): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-  } catch {
-    /* quota exceeded */
+  } catch (e) {
+    console.warn('[settings] API 配置保存失败（localStorage 配额可能已满）：', e)
   }
 }
 

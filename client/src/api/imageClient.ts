@@ -12,16 +12,16 @@
 //  请求头统一：Authorization: Bearer {apiKey}，Content-Type: application/json
 // ─────────────────────────────────────────────────────────────────────────────
 
-import {
-  getApiConfig,
-  getActiveImageModel,
-  getApiSettings as _getApiSettings,
-  resolveApiSpec as _resolveApiSpec,
-  type ApiSpec,
-  type ImageModel as _ImageModel,
-  type ApiConfig as _ApiConfig,
-} from './settings'
+import { getApiConfig, getActiveImageModel, type ApiSpec } from './settings'
 import { type ResolutionPresetId, type SizeTierId } from '../utils/resolutionPresets'
+import {
+  toOpenAISizeString,
+  safeParseJson,
+  isHtmlContent,
+  extractErrorMessage,
+  errResult,
+  extractImagesOpenAI,
+} from './apiUtils'
 
 // ── 请求参数类型 ──────────────────────────────────────────
 export type GenerateParams = {
@@ -49,7 +49,7 @@ export type GeneratedImage = {
 // ── 常量 ──────────────────────────────────────────────────
 /** Gemini 规范默认模型（用于 baseUrl 中没有指定模型时的接口路径） */
 const GEMINI_DEFAULT_MODEL = 'gemini-2.0-flash-preview-image-generation'
-const GEMINI_BATCH_CONCURRENCY = 1
+const GEMINI_BATCH_CONCURRENCY = 2
 const TRANSIENT_HTTP_STATUS = new Set([408, 429, 500, 502, 503, 504])
 const MAX_TRANSIENT_RETRIES = 2
 
@@ -98,23 +98,6 @@ function buildEndpoint(baseUrl: string, spec: ApiSpec, modelId: string): string 
 }
 
 /**
- * 任意宽高 → OpenAI API 尺寸字符串
- * 大多数兼容 API 支持：512/1024/1536/2048/4096 等档位
- * 若传入尺寸不在支持列表中，返回最接近的标准尺寸
- */
-function toOpenAISizeString(width: number, height: number): string {
-  const SIZES = [512, 768, 1024, 1536, 2048, 4096]
-  function snap(v: number): number {
-    let best = SIZES[0]
-    for (const s of SIZES) {
-      if (Math.abs(s - v) < Math.abs(best - v)) best = s
-    }
-    return Math.min(best, 4096)
-  }
-  return `${snap(width)}x${snap(height)}`
-}
-
-/**
  * width × height → Gemini aspectRatio（精确映射）
  * 官方支持 10 种比例：1:1 / 16:9 / 9:16 / 4:3 / 3:4 / 21:9 / 3:2 / 2:3 / 5:4 / 4:5
  * presetId 存在时直接用预设 ratio；fallback 时通过宽高比像素值映射
@@ -143,20 +126,22 @@ function toAspectRatio(width: number, height: number, presetId?: string): string
   // 按像素比映射 fallback（阈值为相邻预设的几何均值）
   const ratio = width / height
 
-  // 横向
-  if (ratio > 2.0) return '21:9' // ~2.333
-  if (ratio > 1.54) return '16:9' // ~1.778
-  if (ratio > 1.41) return '3:2' // 1.5
-  if (ratio > 1.1) return '5:4' // 1.25
-  if (ratio > 1.02) return '4:3' // ~1.333
+  // 横向：阈值取相邻标准比例的几何均值
+  // 21:9=2.333, 16:9=1.778, 3:2=1.5, 4:3=1.333, 5:4=1.25, 1:1=1.0
+  if (ratio > 2.0) return '21:9' // > geomean(2.333, 1.778) ≈ 2.04
+  if (ratio > 1.63) return '16:9' // > geomean(1.778, 1.5) ≈ 1.63
+  if (ratio > 1.41) return '3:2' // > geomean(1.5, 1.333) ≈ 1.41
+  if (ratio > 1.29) return '4:3' // > geomean(1.333, 1.25) ≈ 1.29
+  if (ratio > 1.12) return '5:4' // > geomean(1.25, 1.0) ≈ 1.12
   // 正方形
-  if (ratio >= 0.98) return '1:1'
+  if (ratio >= 0.89) return '1:1' // geomean(1.0, 0.8) ≈ 0.89
 
   // 纵向（ratio < 1，返回的 aspectRatio 也是纵向）
-  if (ratio > 0.9) return '4:5' // 0.8
-  if (ratio > 0.77) return '3:4' // ~0.75
-  if (ratio > 0.61) return '2:3' // ~0.667
-  return '9:16' // ~0.5625
+  // 4:5=0.8, 3:4=0.75, 2:3=0.667, 9:16=0.5625
+  if (ratio > 0.77) return '4:5' // > geomean(0.8, 0.75) ≈ 0.77
+  if (ratio > 0.71) return '3:4' // > geomean(0.75, 0.667) ≈ 0.71
+  if (ratio > 0.61) return '2:3' // > geomean(0.667, 0.5625) ≈ 0.61
+  return '9:16'
 }
 
 /**
@@ -191,101 +176,6 @@ async function fileToBase64(file: File): Promise<{ mimeType: string; data: strin
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
-}
-
-/** 判断响应内容是否为 HTML */
-function isHtmlContent(text: string): boolean {
-  const t = text.trimStart().toLowerCase()
-  return t.startsWith('<!doctype') || t.startsWith('<html')
-}
-
-/** 安全解析 JSON */
-function safeParseJson(text: string): unknown | null {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
-/**
- * 从已解析 JSON 中提取可读错误描述，防止 [object Object]。
- * 支持：{ message }、{ error }、{ error.message }、{ detail }、FastAPI 数组
- */
-function extractErrorMessage(parsed: unknown, rawFallback: string): string {
-  if (!parsed || typeof parsed !== 'object') return rawFallback
-  const obj = parsed as Record<string, unknown>
-
-  function stringify(val: unknown): string {
-    if (typeof val === 'string') return val
-    if (typeof val === 'number' || typeof val === 'boolean') return String(val)
-    if (Array.isArray(val)) {
-      const msgs = val
-        .map(item => {
-          if (typeof item === 'string') return item
-          if (item && typeof item === 'object') {
-            const o = item as Record<string, unknown>
-            return String(o.msg ?? o.message ?? o.detail ?? JSON.stringify(item))
-          }
-          return String(item)
-        })
-        .filter(Boolean)
-      return msgs.join('；') || JSON.stringify(val)
-    }
-    if (typeof val === 'object' && val !== null) {
-      const o = val as Record<string, unknown>
-      if (o.message) return stringify(o.message)
-      if (o.msg) return stringify(o.msg)
-      if (o.detail) return stringify(o.detail)
-      return JSON.stringify(val)
-    }
-    return String(val)
-  }
-
-  for (const key of ['message', 'error', 'detail', 'msg', 'reason', 'description']) {
-    if (obj[key] !== undefined) {
-      const r = stringify(obj[key])
-      if (r) return r
-    }
-  }
-  return rawFallback || JSON.stringify(parsed)
-}
-
-/** 从 OpenAI 兼容格式响应中提取图片列表 */
-function extractImagesOpenAI(data: unknown): GeneratedImage[] | null {
-  if (!data || typeof data !== 'object') return null
-  const obj = data as Record<string, unknown>
-
-  // { data: [{ url | b64_json }] }
-  if (Array.isArray(obj.data) && obj.data.length > 0) {
-    const first = obj.data[0] as Record<string, unknown>
-    if (typeof first.url === 'string' || typeof first.b64_json === 'string') {
-      return (obj.data as { url?: string; b64_json?: string }[]).map((item, idx) => ({
-        id: String(idx),
-        url: item.url ?? (item.b64_json ? `data:image/png;base64,${item.b64_json}` : ''),
-      }))
-    }
-  }
-  // { images: string[] }
-  if (Array.isArray(obj.images) && obj.images.length > 0) {
-    if (typeof obj.images[0] === 'string')
-      return (obj.images as string[]).map((url, idx) => ({ id: String(idx), url }))
-    return (obj.images as { id?: string; url: string }[]).map((img, idx) => ({
-      id: img.id ?? String(idx),
-      url: img.url,
-    }))
-  }
-  // 直接数组
-  if (Array.isArray(data) && data.length > 0) {
-    if (typeof data[0] === 'string')
-      return (data as string[]).map((url, idx) => ({ id: String(idx), url }))
-    if (typeof (data[0] as Record<string, unknown>).url === 'string')
-      return (data as { id?: string; url: string }[]).map((img, idx) => ({
-        id: img.id ?? String(idx),
-        url: img.url,
-      }))
-  }
-  return null
 }
 
 /**
@@ -555,48 +445,9 @@ async function buildGeminiBody(params: GenerateParams): Promise<Record<string, u
 
 // ── 核心生图接口 ──────────────────────────────────────────
 
-/** generateImages 返回值，包含图片列表与详细请求日志；失败时 images=[] 同时附上 error 字段 */
-export type GenerateResult = {
-  images: GeneratedImage[]
-  /** 完整请求 endpoint */
-  endpoint: string
-  /** 接口规范 */
-  spec: ApiSpec
-  /** 完整请求体（JSON 字符串） */
-  requestBodyJson: string
-  /** HTTP 状态码 */
-  httpStatus: number
-  /** 响应原始文本摘要（最多 2000 字符） */
-  responseSummary: string
-  /** 响应是否为有效 JSON */
-  jsonValid: boolean
-  /** 失败时包含错误信息 */
-  error?: string
-  /** 失败时的 HTTP 响应体原始文本 */
-  httpErrorBody?: string
-}
-
-/** 构造失败结果对象（替代 throw），确保详细日志有完整上下文 */
-function errResult(
-  endpoint: string,
-  spec: ApiSpec,
-  requestBodyJson: string,
-  message: string,
-  httpStatus = 0,
-  httpErrorBody?: string,
-): GenerateResult {
-  return {
-    images: [],
-    endpoint,
-    spec,
-    requestBodyJson,
-    httpStatus,
-    responseSummary: '',
-    jsonValid: false,
-    error: message,
-    httpErrorBody,
-  }
-}
+/** generateImages 返回值 — 从 apiUtils 统一导入，保持单一类型源 */
+export type { GenerateResult } from './apiUtils'
+import type { GenerateResult } from './apiUtils'
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))

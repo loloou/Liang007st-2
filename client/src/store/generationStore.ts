@@ -67,6 +67,7 @@ function safeSaveHistory(history: HistoryEntry[]): void {
     localStorage.setItem(STORAGE_KEYS.GENERATION_HISTORY, JSON.stringify(trimmed))
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string }
+    console.warn('[generationStore] 历史记录保存失败：', err?.message ?? e)
     if (err?.name === 'QuotaExceededError' || err?.message?.includes('quota')) {
       try {
         const minimal = history.slice(0, 10).map(h => ({ ...h, results: [] }))

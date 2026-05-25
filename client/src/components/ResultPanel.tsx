@@ -10,6 +10,7 @@ import type { GeneratedImage } from '../api/imageClient'
 import type { ResolutionPresetId, SizeTierId } from '../utils/resolutionPresets'
 import { safeUrl } from '../utils/safeUrl'
 import { downloadImage } from '../utils/download'
+import { VIEWPORT_COLORS } from '../utils/viewportColors'
 
 type GenerationSlotView = {
   id: string
@@ -97,67 +98,22 @@ const ResultPanel: React.FC<Props> = ({
   const viewportCount = Math.max(1, Math.min(6, rawViewportCount))
   const [maximizedViewportIndex, setMaximizedViewportIndex] = useState<number | null>(null)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+  const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showCopyFeedback = useCallback((msg: string, duration = 2000) => {
+    if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current)
+    setCopyFeedback(msg)
+    copyFeedbackTimerRef.current = setTimeout(() => setCopyFeedback(null), duration)
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current)
+    }
+  }, [])
   const [viewportActiveImgIdx, setViewportActiveImgIdx] = useState<Record<string, number>>({})
   // 内联编辑视口名称
   const [editingViewportId, setEditingViewportId] = useState<string | null>(null)
   const [editingViewportName, setEditingViewportName] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
-  const VIEWPORT_COLORS = [
-    {
-      border: 'border-blue-400/50',
-      bg: 'bg-blue-500/10',
-      text: 'text-blue-300',
-      dot: 'bg-blue-400',
-      label: 'text-blue-300',
-      ring: 'ring-blue-400/30',
-      hex: '#60a5fa',
-    },
-    {
-      border: 'border-emerald-400/50',
-      bg: 'bg-emerald-500/10',
-      text: 'text-emerald-300',
-      dot: 'bg-emerald-400',
-      label: 'text-emerald-300',
-      ring: 'ring-emerald-400/30',
-      hex: '#34d399',
-    },
-    {
-      border: 'border-amber-400/50',
-      bg: 'bg-amber-500/10',
-      text: 'text-amber-300',
-      dot: 'bg-amber-400',
-      label: 'text-amber-300',
-      ring: 'ring-amber-400/30',
-      hex: '#fbbf24',
-    },
-    {
-      border: 'border-pink-400/50',
-      bg: 'bg-pink-500/10',
-      text: 'text-pink-300',
-      dot: 'bg-pink-400',
-      label: 'text-pink-300',
-      ring: 'ring-pink-400/30',
-      hex: '#f472b6',
-    },
-    {
-      border: 'border-purple-400/50',
-      bg: 'bg-purple-500/10',
-      text: 'text-purple-300',
-      dot: 'bg-purple-400',
-      label: 'text-purple-300',
-      ring: 'ring-purple-400/30',
-      hex: '#a78bfa',
-    },
-    {
-      border: 'border-cyan-400/50',
-      bg: 'bg-cyan-500/10',
-      text: 'text-cyan-300',
-      dot: 'bg-cyan-400',
-      label: 'text-cyan-300',
-      ring: 'ring-cyan-400/30',
-      hex: '#22d3ee',
-    },
-  ] as const
   const safeIdx =
     results.length > 0 ? Math.min(Math.max(resultActiveIdx, 0), results.length - 1) : 0
   const activeSlot =
@@ -213,8 +169,7 @@ const ResultPanel: React.FC<Props> = ({
       const res = await fetch(url)
       const blob = await res.blob()
       await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
-      setCopyFeedback('已复制到剪贴板')
-      setTimeout(() => setCopyFeedback(null), 2000)
+      showCopyFeedback('已复制到剪贴板')
     } catch {
       // 回退：尝试 png
       try {
@@ -225,17 +180,14 @@ const ResultPanel: React.FC<Props> = ({
             ? blob
             : new Blob([await blob.arrayBuffer()], { type: 'image/png' })
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
-        setCopyFeedback('已复制到剪贴板')
-        setTimeout(() => setCopyFeedback(null), 2000)
+        showCopyFeedback('已复制到剪贴板')
       } catch {
         // 最终回退：复制图片链接
         try {
           await navigator.clipboard.writeText(url)
-          setCopyFeedback('图片复制失败，已复制链接')
-          setTimeout(() => setCopyFeedback(null), 3000)
+          showCopyFeedback('图片复制失败，已复制链接', 3000)
         } catch {
-          setCopyFeedback('复制失败，请手动保存')
-          setTimeout(() => setCopyFeedback(null), 3000)
+          showCopyFeedback('复制失败，请手动保存', 3000)
         }
       }
     }
@@ -1268,4 +1220,4 @@ const ResultPanel: React.FC<Props> = ({
   )
 }
 
-export default ResultPanel
+export default React.memo(ResultPanel)
