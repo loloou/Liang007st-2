@@ -501,6 +501,22 @@ function App() {
     images: GeneratedImage[]
     index: number
   } | null>(null)
+  // ── 历史视口组预览（覆盖层，不干扰当前并行生图） ──────────────────────────
+  // ── 画廊数据（历史视口组查看，不干扰并行生图）────────────────────────────
+  const [galleryEntries, setGalleryEntries] = useState<
+    | {
+        id: string
+        viewportIndex?: number
+        viewportName?: string
+        prompt: string
+        model: string
+        width: number
+        height: number
+        batchSize: number
+        results: GeneratedImage[]
+      }[]
+    | null
+  >(null)
   const [historyContextMenu, setHistoryContextMenu] = useState<{
     x: number
     y: number
@@ -1197,6 +1213,17 @@ function App() {
     const imagesWithThumbnails = await Promise.all(
       images.map(async img => {
         if (!img || !img.url) return img
+        // 验证 base64 data URL 的数据部分不为空
+        if (img.url.startsWith('data:')) {
+          const commaIdx = img.url.indexOf(',')
+          if (commaIdx < 0 || img.url.length - commaIdx - 1 < 100) {
+            console.warn(
+              '[prepareGeneratedImages] 跳过无效/过短的 base64 图片:',
+              img.url.slice(0, 60),
+            )
+            return null
+          }
+        }
         if (img.url.startsWith('data:image/jpeg;base64,') && img.url.length < 2000) return img
         try {
           const thumbnail = await createThumbnail(img.url, 150)
@@ -1207,7 +1234,7 @@ function App() {
         }
       }),
     )
-    return imagesWithThumbnails.filter(img => img && img.url)
+    return imagesWithThumbnails.filter((img): img is GeneratedImage => !!img && !!img.url)
   }
 
   const handleInpaintComplete = async (
@@ -1255,7 +1282,15 @@ function App() {
       results: validImages,
       createdAt,
     }
-    setGenerationSlots(prev => [slot, ...prev])
+    setGenerationSlots(prev => {
+      // 局部重绘完成：替换来源视口 slot，而非无条件 prepend（防止 slots 数组膨胀）
+      if (sourceSlot) {
+        return prev.map(s => (s.id === sourceSlot.id ? slot : s))
+      }
+      // 无来源视口（如从历史记录进入 inpaint）：prepend 但裁切到 parallelCount
+      const limit = Math.max(1, Math.min(6, parallelCount))
+      return [slot, ...prev].slice(0, limit)
+    })
     setActiveSlotId(slotId)
     setResults(validImages)
     setResultActiveIdx(0)
@@ -2548,8 +2583,20 @@ function App() {
                                 return next
                               })
                             } else if (entry.results.length > 0) {
-                              setResults(entry.results)
-                              setResultActiveIdx(0)
+                              // 单击历史条目 → 在画廊中显示
+                              setGalleryEntries([
+                                {
+                                  id: entry.id,
+                                  viewportIndex: entry.viewportIndex,
+                                  viewportName: entry.viewportName,
+                                  prompt: entry.prompt,
+                                  model: entry.model,
+                                  width: entry.width,
+                                  height: entry.height,
+                                  batchSize: entry.batchSize,
+                                  results: entry.results,
+                                },
+                              ])
                               setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                             }
                           }}
@@ -2557,9 +2604,53 @@ function App() {
                             if (!historyBatchMode) {
                               e.stopPropagation()
                               if (entry.results.length > 0) {
-                                setResults(entry.results)
-                                setResultActiveIdx(0)
-                                setViewedHistoryIds(prev => new Set(prev).add(entry.id))
+                                // 尝试找同组视口（时间窗口+同参数+不同viewportIndex）
+                                let groupEntries: GenerationHistoryEntry[] = []
+                                if (entry.viewportIndex && entry.viewportIndex > 0) {
+                                  const entryTime = entry.createdAt ?? 0
+                                  const TIME_WINDOW = 10 * 60 * 1000
+                                  groupEntries = generationHistory
+                                    .filter(
+                                      h =>
+                                        h.results.length > 0 &&
+                                        h.viewportIndex !== undefined &&
+                                        h.viewportIndex > 0 &&
+                                        entryTime > 0 &&
+                                        h.createdAt !== undefined &&
+                                        Math.abs((h.createdAt ?? 0) - entryTime) < TIME_WINDOW &&
+                                        h.model === entry.model &&
+                                        h.width === entry.width &&
+                                        h.height === entry.height,
+                                    )
+                                    .sort((a, b) => (a.viewportIndex ?? 0) - (b.viewportIndex ?? 0))
+                                    .filter(
+                                      (h, i, arr) =>
+                                        i === 0 || h.viewportIndex !== arr[i - 1].viewportIndex,
+                                    )
+                                }
+                                // 分组失败则当作单条
+                                if (groupEntries.length < 2) {
+                                  groupEntries = [entry]
+                                }
+                                // 直接在画廊标签中显示
+                                setGalleryEntries(
+                                  groupEntries.map(h => ({
+                                    id: h.id,
+                                    viewportIndex: h.viewportIndex,
+                                    viewportName: h.viewportName,
+                                    prompt: h.prompt,
+                                    model: h.model,
+                                    width: h.width,
+                                    height: h.height,
+                                    batchSize: h.batchSize,
+                                    results: h.results,
+                                  })),
+                                )
+                                setViewedHistoryIds(prev => {
+                                  const next = new Set(prev)
+                                  groupEntries.forEach(h => next.add(h.id))
+                                  return next
+                                })
                               } else if (hasError) {
                                 // 打开错误详情
                                 const elapsedMs = entry.createdAt
@@ -2600,8 +2691,19 @@ function App() {
                               className="relative aspect-square w-full cursor-zoom-in overflow-hidden bg-white/[0.04]"
                               onDoubleClick={event => {
                                 event.stopPropagation()
-                                setResults(entry.results)
-                                setResultActiveIdx(0)
+                                setGalleryEntries([
+                                  {
+                                    id: entry.id,
+                                    viewportIndex: entry.viewportIndex,
+                                    viewportName: entry.viewportName,
+                                    prompt: entry.prompt,
+                                    model: entry.model,
+                                    width: entry.width,
+                                    height: entry.height,
+                                    batchSize: entry.batchSize,
+                                    results: entry.results,
+                                  },
+                                ])
                                 setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                               }}
                               onContextMenu={event =>
@@ -2637,11 +2739,22 @@ function App() {
                               onContextMenu={event => openHistoryImageMenu(event, entry, firstImg)}
                               onDoubleClick={event => {
                                 event.stopPropagation()
-                                setResults(entry.results)
-                                setResultActiveIdx(0)
+                                setGalleryEntries([
+                                  {
+                                    id: entry.id,
+                                    viewportIndex: entry.viewportIndex,
+                                    viewportName: entry.viewportName,
+                                    prompt: entry.prompt,
+                                    model: entry.model,
+                                    width: entry.width,
+                                    height: entry.height,
+                                    batchSize: entry.batchSize,
+                                    results: entry.results,
+                                  },
+                                ])
                                 setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                               }}
-                              title="双击在结果区查看"
+                              title="双击在画廊中查看"
                             />
                           ) : (
                             <div className="flex aspect-square w-full items-center justify-center bg-white/[0.04]">
@@ -2785,17 +2898,69 @@ function App() {
                               return next
                             })
                           } else if (entry.results.length > 0) {
-                            setResults(entry.results)
-                            setResultActiveIdx(0)
+                            setGalleryEntries([
+                              {
+                                id: entry.id,
+                                viewportIndex: entry.viewportIndex,
+                                viewportName: entry.viewportName,
+                                prompt: entry.prompt,
+                                model: entry.model,
+                                width: entry.width,
+                                height: entry.height,
+                                batchSize: entry.batchSize,
+                                results: entry.results,
+                              },
+                            ])
                             setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                           }
                         }}
                         onDoubleClick={() => {
                           if (!historyBatchMode) {
                             if (entry.results.length > 0) {
-                              setResults(entry.results)
-                              setResultActiveIdx(0)
-                              setViewedHistoryIds(prev => new Set(prev).add(entry.id))
+                              let groupEntries: GenerationHistoryEntry[] = []
+                              if (entry.viewportIndex && entry.viewportIndex > 0) {
+                                const entryTime = entry.createdAt ?? 0
+                                const TIME_WINDOW = 10 * 60 * 1000
+                                groupEntries = generationHistory
+                                  .filter(
+                                    h =>
+                                      h.results.length > 0 &&
+                                      h.viewportIndex !== undefined &&
+                                      h.viewportIndex > 0 &&
+                                      entryTime > 0 &&
+                                      h.createdAt !== undefined &&
+                                      Math.abs((h.createdAt ?? 0) - entryTime) < TIME_WINDOW &&
+                                      h.model === entry.model &&
+                                      h.width === entry.width &&
+                                      h.height === entry.height,
+                                  )
+                                  .sort((a, b) => (a.viewportIndex ?? 0) - (b.viewportIndex ?? 0))
+                                  .filter(
+                                    (h, i, arr) =>
+                                      i === 0 || h.viewportIndex !== arr[i - 1].viewportIndex,
+                                  )
+                              }
+                              if (groupEntries.length < 2) {
+                                groupEntries = [entry]
+                              }
+                              setGalleryEntries(
+                                groupEntries.map(h => ({
+                                  id: h.id,
+                                  viewportIndex: h.viewportIndex,
+                                  viewportName: h.viewportName,
+                                  prompt: h.prompt,
+                                  model: h.model,
+                                  width: h.width,
+                                  height: h.height,
+                                  batchSize: h.batchSize,
+                                  results: h.results,
+                                })),
+                              )
+                              setViewedHistoryIds(prev => {
+                                const next = new Set(prev)
+                                groupEntries.forEach(h => next.add(h.id))
+                                return next
+                              })
                             } else if (hasError) {
                               const elapsedMs = entry.createdAt
                                 ? Date.now() - entry.createdAt
@@ -2822,8 +2987,19 @@ function App() {
                               className="relative h-14 w-14 flex-shrink-0 cursor-zoom-in rounded-lg"
                               onDoubleClick={event => {
                                 event.stopPropagation()
-                                setResults(entry.results)
-                                setResultActiveIdx(0)
+                                setGalleryEntries([
+                                  {
+                                    id: entry.id,
+                                    viewportIndex: entry.viewportIndex,
+                                    viewportName: entry.viewportName,
+                                    prompt: entry.prompt,
+                                    model: entry.model,
+                                    width: entry.width,
+                                    height: entry.height,
+                                    batchSize: entry.batchSize,
+                                    results: entry.results,
+                                  },
+                                ])
                                 setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                               }}
                               onContextMenu={event =>
@@ -2866,11 +3042,22 @@ function App() {
                               onContextMenu={event => openHistoryImageMenu(event, entry, firstImg)}
                               onDoubleClick={event => {
                                 event.stopPropagation()
-                                setResults(entry.results)
-                                setResultActiveIdx(0)
+                                setGalleryEntries([
+                                  {
+                                    id: entry.id,
+                                    viewportIndex: entry.viewportIndex,
+                                    viewportName: entry.viewportName,
+                                    prompt: entry.prompt,
+                                    model: entry.model,
+                                    width: entry.width,
+                                    height: entry.height,
+                                    batchSize: entry.batchSize,
+                                    results: entry.results,
+                                  },
+                                ])
                                 setViewedHistoryIds(prev => new Set(prev).add(entry.id))
                               }}
-                              title="双击在结果区查看"
+                              title="双击在画廊中查看"
                             />
                           ) : (
                             <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-white/[0.04]">
@@ -3021,6 +3208,7 @@ function App() {
             toggleSelectAll={toggleSelectAll}
             handleBatchDownload={handleBatchDownload}
             setPreviewImage={setPreviewImage}
+            previewImage={previewImage}
             generationSlots={generationSlots}
             parallelCount={parallelCount}
             viewportCount={parallelCount}
@@ -3054,6 +3242,8 @@ function App() {
               setTimeout(() => handleGenerateRef.current(), 0)
             }}
             onOpenInpaint={img => setInpaintTarget(img)}
+            galleryEntries={galleryEntries}
+            onGalleryClose={() => setGalleryEntries(null)}
           />
         </div>
 

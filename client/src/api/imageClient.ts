@@ -219,7 +219,8 @@ function extractImagesGemini(data: unknown): GeneratedImage[] | null {
       if (inlineData) {
         const mimeType = (inlineData.mimeType as string) ?? 'image/png'
         const b64data = inlineData.data as string | undefined
-        if (b64data) {
+        // 确保 base64 数据非空且长度足够（有效图片至少几百字节）
+        if (b64data && b64data.length > 100) {
           images.push({ id: String(idx++), url: `data:${mimeType};base64,${b64data}` })
           continue
         }
@@ -703,12 +704,15 @@ async function doFetchAndParse(
 
   // 按规范提取图片
   let images = spec === 'gemini' ? extractImagesGemini(data) : extractImagesOpenAI(data)
-  if (!images || images.length === 0) {
-    // Gemini 特殊处理：API 返回 200 但文本含错误信息（如 "Cannot read image.png"）
-    if (spec === 'gemini') {
-      const geminiErrorText = extractGeminiErrorText(data)
-      const checkText = (geminiErrorText || rawText).toLowerCase()
-      const hasError =
+
+  // Gemini 特殊处理：API 返回 200 但文本含错误信息（如 "Cannot read image.png"）
+  // 注意：即使提取到了图片，也要检查是否存在错误文本——
+  // 某些模型会在不支持图片输入时同时返回错误文本和一张"凑数"图片
+  if (spec === 'gemini') {
+    const geminiErrorText = extractGeminiErrorText(data)
+    if (geminiErrorText) {
+      const checkText = geminiErrorText.toLowerCase()
+      const hasImageInputError =
         checkText.includes('cannot read') ||
         checkText.includes('does not support image') ||
         (checkText.includes('not support') && checkText.includes('image')) ||
@@ -717,9 +721,8 @@ async function doFetchAndParse(
         checkText.includes("can't read") ||
         (checkText.includes('does not support') && checkText.includes('input')) ||
         checkText.includes('this model does not')
-      if (hasError) {
-        const cleanMsg = geminiErrorText || rawText.slice(0, 500)
-        console.warn('[Gemini 图片降级] 检测到模型不支持图片输入:', cleanMsg.slice(0, 200))
+      if (hasImageInputError) {
+        console.warn('[Gemini 图片降级] 检测到模型不支持图片输入:', geminiErrorText.slice(0, 200))
         return errResult(
           endpoint,
           spec,
@@ -730,6 +733,9 @@ async function doFetchAndParse(
         )
       }
     }
+  }
+
+  if (!images || images.length === 0) {
     const hint =
       spec === 'gemini'
         ? '期望 candidates[].content.parts[].inlineData.data，或 parts[].text 中的 Markdown/data:image 图片'

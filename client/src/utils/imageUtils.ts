@@ -7,7 +7,10 @@
 export async function createThumbnail(imageUrl: string, maxSize = 150): Promise<string | null> {
   return new Promise(resolve => {
     const img = new Image()
-    img.crossOrigin = 'anonymous'
+    // 仅对外部 HTTP URL 设置 crossOrigin；data: / blob: URL 不需要且可能导致加载失败
+    if (imageUrl.startsWith('http:') || imageUrl.startsWith('https:')) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => {
       let canvas: HTMLCanvasElement | null = null
       try {

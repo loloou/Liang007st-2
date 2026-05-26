@@ -11,6 +11,19 @@ import type { ResolutionPresetId, SizeTierId } from '../utils/resolutionPresets'
 import { safeUrl } from '../utils/safeUrl'
 import { downloadImage } from '../utils/download'
 import { VIEWPORT_COLORS } from '../utils/viewportColors'
+import {
+  getFavorites,
+  getFavoriteId,
+  isFavorited,
+  toggleFavorite,
+  removeFavorite,
+  addTagToFavorite,
+  removeTagFromFavorite,
+  setFavoriteGroup,
+  getAllTags,
+  getAllGroups,
+  type FavoriteImage,
+} from '../utils/favorites'
 
 type GenerationSlotView = {
   id: string
@@ -55,6 +68,8 @@ interface Props {
   toggleSelectAll: () => void
   handleBatchDownload: () => void
   setPreviewImage: (img: GeneratedImage | null) => void
+  /** 当前全屏预览的图片（用于 Esc 优先级判断） */
+  previewImage?: GeneratedImage | null
   generationSlots?: GenerationSlotView[]
   parallelCount?: number
   viewportCount?: number
@@ -65,6 +80,23 @@ interface Props {
   onRenameSlot?: (slotId: string, newName: string) => void
   onRetrySlot?: (slot: GenerationSlotView) => void
   onOpenInpaint?: (img: GeneratedImage) => void
+  /** 画廊数据：历史视口组条目，非空时显示画廊标签 */
+  galleryEntries?: GalleryEntry[] | null
+  /** 关闭画廊 */
+  onGalleryClose?: () => void
+}
+
+/** 画廊条目 — 历史视口组中的一个视口 */
+export type GalleryEntry = {
+  id: string
+  viewportIndex?: number
+  viewportName?: string
+  prompt: string
+  model: string
+  width: number
+  height: number
+  batchSize: number
+  results: GeneratedImage[]
 }
 
 const ResultPanel: React.FC<Props> = ({
@@ -84,6 +116,7 @@ const ResultPanel: React.FC<Props> = ({
   toggleSelectAll,
   handleBatchDownload,
   setPreviewImage,
+  previewImage,
   generationSlots = [],
   parallelCount = 1,
   viewportCount: rawViewportCount = 1,
@@ -94,9 +127,43 @@ const ResultPanel: React.FC<Props> = ({
   onRenameSlot,
   onRetrySlot,
   onOpenInpaint,
+  galleryEntries,
+  onGalleryClose,
 }) => {
   const viewportCount = Math.max(1, Math.min(6, rawViewportCount))
   const [maximizedViewportIndex, setMaximizedViewportIndex] = useState<number | null>(null)
+  const [selectedViewportIdx, setSelectedViewportIdx] = useState<number | null>(null)
+  // 标签页：'results' | 'gallery'
+  const [activeTab, setActiveTab] = useState<'results' | 'gallery'>('results')
+  // 画廊内选中的视口索引
+  const [galleryActiveIdx, setGalleryActiveIdx] = useState(0)
+  // 画廊内每个视口当前查看的图片索引
+  const [galleryImageIdx, setGalleryImageIdx] = useState<Record<number, number>>({})
+  // 收藏列表版本号（用于触发重新渲染）
+  const [, setFavVersion] = useState(0)
+  const favorites = getFavorites()
+  // 画廊子标签：'current' | 'favorites'
+  const [gallerySubTab, setGallerySubTab] = useState<'current' | 'favorites'>('current')
+  // 收藏列表中选中的图片索引
+  const [favActiveIdx, setFavActiveIdx] = useState(0)
+  // 收藏筛选：标签 / 分组
+  const [favFilterTag, setFavFilterTag] = useState<string | null>(null)
+  const [favFilterGroup, setFavFilterGroup] = useState<string | null>(null)
+  // 收藏显示方式 — 默认网格（Eagle风格）
+  const [favViewMode, setFavViewMode] = useState<'single' | 'grid' | 'list'>('grid')
+  // 标签输入
+  const [tagInput, setTagInput] = useState('')
+  const [tagEditImgId, setTagEditImgId] = useState<string | null>(null)
+  // 分组输入
+  const [groupInput, setGroupInput] = useState('')
+  const [groupEditImgId, setGroupEditImgId] = useState<string | null>(null)
+  // 网格悬浮预览
+  const [hoverPreview, setHoverPreview] = useState<{
+    fav: FavoriteImage
+    x: number
+    y: number
+  } | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showCopyFeedback = useCallback((msg: string, duration = 2000) => {
@@ -107,6 +174,7 @@ const ResultPanel: React.FC<Props> = ({
   useEffect(() => {
     return () => {
       if (copyFeedbackTimerRef.current) clearTimeout(copyFeedbackTimerRef.current)
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
     }
   }, [])
   const [viewportActiveImgIdx, setViewportActiveImgIdx] = useState<Record<string, number>>({})
@@ -206,6 +274,64 @@ const ResultPanel: React.FC<Props> = ({
   const getOriginalUrl = (img: GeneratedImage) =>
     (img as GeneratedImage & { originalUrl?: string }).originalUrl || img.url
 
+  // 收藏/取消收藏
+  const handleToggleFavorite = useCallback(
+    (
+      img: GeneratedImage,
+      meta?: { prompt?: string; model?: string; width?: number; height?: number },
+    ) => {
+      const extImg = img as typeof img & { originalUrl?: string }
+      toggleFavorite({ id: img.id, url: img.url, originalUrl: extImg.originalUrl }, meta)
+      setFavVersion(v => v + 1)
+    },
+    [],
+  )
+
+  // 收藏心形图标渲染（每次渲染时都重新检查收藏状态）
+  const renderFavHeart = useCallback(
+    (
+      img: GeneratedImage,
+      meta?: { prompt?: string; model?: string; width?: number; height?: number },
+      size = 20,
+    ) => {
+      const extImg = img as typeof img & { originalUrl?: string }
+      const faved = isFavorited(
+        getFavoriteId({ id: img.id, url: img.url, originalUrl: extImg.originalUrl }),
+      )
+      return (
+        <button
+          className={`flex items-center justify-center rounded-full transition ${
+            faved
+              ? 'bg-red-500/30 text-red-400 hover:bg-red-500/50'
+              : 'bg-black/50 text-white/40 hover:bg-black/70 hover:text-white/70'
+          }`}
+          style={{ width: size + 8, height: size + 8 }}
+          onClick={e => {
+            e.stopPropagation()
+            handleToggleFavorite(img, meta)
+          }}
+          title={faved ? '取消收藏' : '收藏'}
+        >
+          <svg
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            fill={faved ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+            />
+          </svg>
+        </button>
+      )
+    },
+    [handleToggleFavorite],
+  )
+
   const selectSlot = (slot: GenerationSlotView) => {
     setActiveSlotId?.(slot.id)
     onSelectSlot?.(slot)
@@ -258,6 +384,38 @@ const ResultPanel: React.FC<Props> = ({
     }
   }, [maximizedViewportIndex, viewportCount])
 
+  // 画廊数据传入时自动切换到画廊标签 + 当前子标签
+  useEffect(() => {
+    if (galleryEntries && galleryEntries.length > 0) {
+      setActiveTab('gallery')
+      setGallerySubTab('current')
+      setGalleryActiveIdx(0)
+      setGalleryImageIdx({})
+    }
+  }, [galleryEntries])
+
+  // Esc 优先级：浮层 > 全屏预览 > 画廊
+  useEffect(() => {
+    if (activeTab !== 'gallery') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // 1. 标签/分组编辑浮层打开时先关浮层
+        if (tagEditImgId || groupEditImgId) {
+          setTagEditImgId(null)
+          setGroupEditImgId(null)
+          return
+        }
+        // 2. 全屏预览打开时不处理（让预览组件自己处理）
+        if (previewImage) return
+        // 3. 关闭画廊
+        onGalleryClose?.()
+        setActiveTab('results')
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [activeTab, onGalleryClose, previewImage, tagEditImgId, groupEditImgId])
+
   useEffect(() => {
     if (maximizedViewportIndex === null) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -266,6 +424,19 @@ const ResultPanel: React.FC<Props> = ({
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [maximizedViewportIndex])
+
+  // 将 slots 映射到视口：取最近的 viewportCount 个 slot（不足则填 null）
+  const viewportSlots: (GenerationSlotView | null)[] = []
+  for (let i = 0; i < viewportCount; i++) {
+    viewportSlots.push(generationSlots[i] ?? null)
+  }
+
+  // activeSlotId 从外部变化时同步选中索引
+  useEffect(() => {
+    if (!activeSlotId) return
+    const idx = generationSlots.findIndex(s => s?.id === activeSlotId)
+    if (idx >= 0 && idx < viewportCount) setSelectedViewportIdx(idx)
+  }, [activeSlotId, generationSlots, viewportCount])
 
   // 视口网格 class
   const gridClass =
@@ -277,11 +448,6 @@ const ResultPanel: React.FC<Props> = ({
           ? 'grid grid-cols-2 grid-rows-2 gap-1'
           : 'grid grid-cols-3 grid-rows-2 gap-1'
 
-  // 将 slots 映射到视口：取最近的 viewportCount 个 slot（不足则填 null）
-  const viewportSlots: (GenerationSlotView | null)[] = []
-  for (let i = 0; i < viewportCount; i++) {
-    viewportSlots.push(generationSlots[i] ?? null)
-  }
   const visibleViewportSlots = viewportSlots
   const maximizedSlot =
     maximizedViewportIndex !== null ? (viewportSlots[maximizedViewportIndex] ?? null) : null
@@ -290,34 +456,43 @@ const ResultPanel: React.FC<Props> = ({
   // 渲染单个视口
   const renderViewportCell = (slot: GenerationSlotView | null, vpIndex: number) => {
     const isActive = slot ? slot.id === activeSlotId : false
+    const isSelected = selectedViewportIdx === vpIndex
+    const isHighlighted = isActive || isSelected
     const firstImg = slot?.results?.[0]
     const imgUrl = firstImg ? getOriginalUrl(firstImg) : null
 
     return (
       <div
         key={slot?.id ?? `empty-${vpIndex}`}
-        className={`group relative flex min-h-0 flex-1 flex-col overflow-hidden border transition ${viewportCount <= 1 ? '' : 'rounded-lg'} ${maximizedViewportIndex === vpIndex ? 'h-full w-full rounded-xl' : ''}`}
+        className={`group relative flex min-h-0 flex-1 flex-col overflow-hidden border-2 transition ${viewportCount <= 1 ? '' : 'rounded-lg'} ${maximizedViewportIndex === vpIndex ? 'h-full w-full rounded-xl' : ''}`}
         style={{
-          backgroundColor: isActive
+          backgroundColor: isHighlighted
             ? 'var(--viewport-bg-active, rgba(255,255,255,0.03))'
             : 'var(--viewport-bg, #07080d)',
-          borderColor: isActive
+          borderColor: isHighlighted
             ? VIEWPORT_COLORS[vpIndex % 6].hex
             : `${VIEWPORT_COLORS[vpIndex % 6].hex}33`,
         }}
         onMouseEnter={e => {
-          if (!isActive)
+          if (!isHighlighted)
             (e.currentTarget as HTMLElement).style.borderColor =
               `${VIEWPORT_COLORS[vpIndex % 6].hex}80`
         }}
         onMouseLeave={e => {
-          if (!isActive)
+          if (!isHighlighted)
             (e.currentTarget as HTMLElement).style.borderColor =
               `${VIEWPORT_COLORS[vpIndex % 6].hex}33`
         }}
         onClick={() => {
+          setSelectedViewportIdx(vpIndex)
           if (slot) {
             selectSlot(slot)
+          }
+        }}
+        onDoubleClick={e => {
+          e.stopPropagation()
+          if (viewportCount >= 2) {
+            setMaximizedViewportIndex(maximizedViewportIndex === vpIndex ? null : vpIndex)
           }
         }}
       >
@@ -613,15 +788,50 @@ const ResultPanel: React.FC<Props> = ({
       {/* 标题栏 */}
       <div className="panel-titlebar hud-line relative flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
         <div className="flex items-center gap-2 text-sm text-slate-200">
-          <span className="font-semibold">生成结果</span>
-          {results.length > 0 && <span className="badge-primary">{results.length} 张</span>}
-          {results.length > 0 && lastDuration && (
-            <span className="badge-primary/60 font-mono text-slate-500">用时 {lastDuration}</span>
+          {/* 标签切换 */}
+          <button
+            className={`rounded-md px-2 py-0.5 text-[12px] font-semibold transition ${
+              activeTab === 'results'
+                ? 'bg-primary-500/20 text-primary-300'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            onClick={() => setActiveTab('results')}
+          >
+            生成结果
+          </button>
+          <button
+            className={`relative rounded-md px-2 py-0.5 text-[12px] font-semibold transition ${
+              activeTab === 'gallery'
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            onClick={() => setActiveTab('gallery')}
+          >
+            画廊
+            {galleryEntries && galleryEntries.length > 0 && activeTab !== 'gallery' && (
+              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
+            )}
+          </button>
+          <span className="mx-1 h-3 w-px bg-white/[0.08]" />
+          {activeTab === 'results' && (
+            <>
+              {results.length > 0 && <span className="badge-primary">{results.length} 张</span>}
+              {results.length > 0 && lastDuration && (
+                <span className="badge-primary/60 font-mono text-slate-500">
+                  用时 {lastDuration}
+                </span>
+              )}
+              {generationSlots.length > 0 && parallelCount > 1 && (
+                <span className="badge-primary/60 font-mono text-slate-400">
+                  并行 {parallelCount} · 运行{' '}
+                  {generationSlots.filter(slot => slot.status === 'running').length}
+                </span>
+              )}
+            </>
           )}
-          {generationSlots.length > 0 && parallelCount > 1 && (
-            <span className="badge-primary/60 font-mono text-slate-400">
-              并行 {parallelCount} · 运行{' '}
-              {generationSlots.filter(slot => slot.status === 'running').length}
+          {activeTab === 'gallery' && galleryEntries && galleryEntries.length > 0 && (
+            <span className="badge-primary/60 font-mono text-amber-400/80">
+              {galleryEntries.length} 个视口
             </span>
           )}
           {storeStatus === 'running' &&
@@ -661,400 +871,1244 @@ const ResultPanel: React.FC<Props> = ({
       </div>
 
       {/* 内容区 */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* ── 多视口网格（viewportCount >= 2）── */}
-        {viewportCount >= 2 ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className={viewportStageClass}>
-              {visibleViewportSlots.map((slot, idx) =>
-                renderViewportCell(slot, maximizedViewportIndex ?? idx),
-              )}
-            </div>
-            {/* 底部视口切换栏 */}
-            <div className="app-scrollbar flex h-11 flex-shrink-0 items-center justify-center gap-1.5 overflow-x-auto border-t border-white/[0.06] bg-black/20 px-2 py-1.5">
-              {viewportSlots.map((slot, idx) => {
-                const isActive = slot ? slot.id === activeSlotId : false
-                const thumb = slot?.results?.[0]
-                return (
-                  <button
-                    key={slot?.id ?? `vp-${idx}`}
-                    className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border transition ${
-                      isActive
-                        ? `${VIEWPORT_COLORS[idx % 6].bg} ring-1 ${VIEWPORT_COLORS[idx % 6].ring}`
-                        : slot?.status === 'running'
-                          ? 'border-amber-400/30 bg-amber-500/10'
-                          : slot?.status === 'error'
-                            ? 'border-red-400/30 bg-red-500/10'
-                            : 'bg-white/[0.04]'
-                    }`}
-                    style={{
-                      borderColor: isActive
-                        ? VIEWPORT_COLORS[idx % 6].hex
-                        : slot?.status === 'running'
-                          ? undefined
-                          : slot?.status === 'error'
-                            ? undefined
-                            : `${VIEWPORT_COLORS[idx % 6].hex}33`,
-                    }}
-                    onClick={() => {
-                      if (slot) {
-                        selectSlot(slot)
-                      }
-                      if (maximizedViewportIndex !== null) setMaximizedViewportIndex(idx)
-                    }}
-                    title={`视口 ${idx + 1}${slot?.status === 'running' ? ' · 生成中' : slot?.status === 'error' ? ' · 失败' : slot?.results?.length ? ` · ${slot.results.length}张` : ''}`}
-                  >
-                    {thumb ? (
-                      <img
-                        src={safeUrl(thumb.url || getOriginalUrl(thumb))}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : slot?.status === 'running' ? (
-                      <div className="h-3 w-3 animate-spin rounded-full border border-amber-300 border-t-transparent" />
-                    ) : slot?.status === 'error' ? (
-                      <span className="text-[10px] font-bold text-red-300">!</span>
-                    ) : (
-                      <span className={`text-[8px] font-bold ${VIEWPORT_COLORS[idx % 6].label}`}>
-                        {idx + 1}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ) : /* ── 单视口模式（viewportCount=1） ── */
-        generationSlots.length > 0 && generationSlots[0] ? (
-          <div className="flex h-full w-full flex-col overflow-hidden bg-[#07080d]">
-            {/* 活跃槽位信息 */}
-            {activeSlot && (
-              <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] bg-white/[0.025] px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] ${activeSlot.status === 'running' ? 'bg-amber-500/15 text-amber-200' : activeSlot.status === 'error' ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'}`}
-                    >
-                      {activeSlot.status === 'running'
-                        ? '生成中'
-                        : activeSlot.status === 'error'
-                          ? '生成失败'
-                          : `已完成 ${activeSlot.results.length} 张`}
-                    </span>
-                    <span className="font-mono text-[11px] text-slate-500">
-                      {activeSlot.request.width}×{activeSlot.request.height} · batch{' '}
-                      {activeSlot.request.batchSize}
-                    </span>
-                  </div>
-                  <p className="mt-1 truncate text-[11px] leading-relaxed text-slate-400">
-                    {activeSlot.request.prompt}
-                  </p>
-                </div>
-                <div className="hidden max-w-[36%] truncate font-mono text-[10px] text-slate-500 lg:block">
-                  {activeSlot.request.model}
-                </div>
-                {activeSlot.status !== 'running' && onRetrySlot && (
-                  <button
-                    className="flex-shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-300 transition hover:bg-white/[0.08]"
-                    onClick={() => onRetrySlot(activeSlot)}
-                  >
-                    重试
-                  </button>
-                )}
+      {activeTab === 'results' ? (
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {/* ── 多视口网格（viewportCount >= 2）── */}
+          {viewportCount >= 2 ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className={viewportStageClass}>
+                {visibleViewportSlots.map((slot, idx) => renderViewportCell(slot, idx))}
               </div>
-            )}
-
-            {/* 主图区 */}
-            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.055),transparent_55%)] px-4 py-4">
-              {activeSlot?.status === 'running' ? (
-                <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-amber-400/20 bg-black/30 px-8 py-8 shadow-2xl backdrop-blur-md">
-                  <div className="flex h-24 w-24 flex-col items-center justify-center rounded-3xl border border-amber-400/25 bg-amber-500/10 shadow-2xl">
-                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-                    <span className="mt-3 font-mono text-xs font-semibold text-amber-100">
-                      {Math.floor(activeSlot.elapsedSeconds / 60) > 0
-                        ? `${Math.floor(activeSlot.elapsedSeconds / 60)}分${activeSlot.elapsedSeconds % 60}秒`
-                        : `${activeSlot.elapsedSeconds}秒`}
-                    </span>
-                  </div>
-                  <div className="w-full">
-                    <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
-                        style={{ width: `${activeSlot.progressPct}%` }}
-                      />
-                    </div>
-                    <div className="mt-2 flex justify-between text-[11px] text-amber-100/90">
-                      <span>生成中…</span>
-                      <span>{activeSlot.progressPct}%</span>
-                    </div>
-                  </div>
-                </div>
-              ) : activeSlot?.status === 'error' ? (
-                <div className="flex max-w-md flex-col items-center gap-3 px-6 text-center text-red-300">
-                  <span className="text-sm font-semibold">生成失败</span>
-                  <p className="text-xs leading-relaxed text-red-200/80">{activeSlot.error}</p>
-                  {onRetrySlot && (
+              {/* 底部视口切换栏 */}
+              <div className="app-scrollbar flex h-11 flex-shrink-0 items-center justify-center gap-1.5 overflow-x-auto border-t border-white/[0.06] bg-black/20 px-2 py-1.5">
+                {viewportSlots.map((slot, idx) => {
+                  const isSlotActive = slot ? slot.id === activeSlotId : false
+                  const isSelected = selectedViewportIdx === idx
+                  const isHighlighted = isSlotActive || isSelected
+                  const thumb = slot?.results?.[0]
+                  return (
                     <button
-                      className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-200 transition hover:bg-red-500/20"
+                      key={slot?.id ?? `vp-${idx}`}
+                      className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 transition ${
+                        isHighlighted
+                          ? `${VIEWPORT_COLORS[idx % 6].bg} ring-2 ${VIEWPORT_COLORS[idx % 6].ring}`
+                          : slot?.status === 'running'
+                            ? 'border-amber-400/30 bg-amber-500/10'
+                            : slot?.status === 'error'
+                              ? 'border-red-400/30 bg-red-500/10'
+                              : 'border-white/[0.08] bg-white/[0.04]'
+                      }`}
+                      style={{
+                        borderColor: isHighlighted
+                          ? VIEWPORT_COLORS[idx % 6].hex
+                          : slot?.status === 'running'
+                            ? undefined
+                            : slot?.status === 'error'
+                              ? undefined
+                              : `${VIEWPORT_COLORS[idx % 6].hex}33`,
+                      }}
+                      onClick={() => {
+                        // 单击：选中该视口，标记数字高亮
+                        setSelectedViewportIdx(idx)
+                        if (slot) {
+                          selectSlot(slot)
+                        }
+                        // 最大化状态下单击切换到该视口
+                        if (maximizedViewportIndex !== null) setMaximizedViewportIndex(idx)
+                      }}
+                      onDoubleClick={e => {
+                        // 双击：放大/还原该视口
+                        e.stopPropagation()
+                        setMaximizedViewportIndex(maximizedViewportIndex === idx ? null : idx)
+                      }}
+                      title={`视口 ${idx + 1}${slot?.status === 'running' ? ' · 生成中' : slot?.status === 'error' ? ' · 失败' : slot?.results?.length ? ` · ${slot.results.length}张` : ''}`}
+                    >
+                      {thumb ? (
+                        <img
+                          src={safeUrl(thumb.url || getOriginalUrl(thumb))}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : slot?.status === 'running' ? (
+                        <div className="h-3 w-3 animate-spin rounded-full border border-amber-300 border-t-transparent" />
+                      ) : slot?.status === 'error' ? (
+                        <span className="text-[10px] font-bold text-red-300">!</span>
+                      ) : (
+                        <span className={`text-[8px] font-bold ${VIEWPORT_COLORS[idx % 6].label}`}>
+                          {idx + 1}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : /* ── 单视口模式（viewportCount=1） ── */
+          generationSlots.length > 0 && generationSlots[0] ? (
+            <div className="flex h-full w-full flex-col overflow-hidden bg-[#07080d]">
+              {/* 活跃槽位信息 */}
+              {activeSlot && (
+                <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] bg-white/[0.025] px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] ${activeSlot.status === 'running' ? 'bg-amber-500/15 text-amber-200' : activeSlot.status === 'error' ? 'bg-red-500/15 text-red-200' : 'bg-emerald-500/15 text-emerald-200'}`}
+                      >
+                        {activeSlot.status === 'running'
+                          ? '生成中'
+                          : activeSlot.status === 'error'
+                            ? '生成失败'
+                            : `已完成 ${activeSlot.results.length} 张`}
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500">
+                        {activeSlot.request.width}×{activeSlot.request.height} · batch{' '}
+                        {activeSlot.request.batchSize}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] leading-relaxed text-slate-400">
+                      {activeSlot.request.prompt}
+                    </p>
+                  </div>
+                  <div className="hidden max-w-[36%] truncate font-mono text-[10px] text-slate-500 lg:block">
+                    {activeSlot.request.model}
+                  </div>
+                  {activeSlot.status !== 'running' && onRetrySlot && (
+                    <button
+                      className="flex-shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] text-slate-300 transition hover:bg-white/[0.08]"
                       onClick={() => onRetrySlot(activeSlot)}
                     >
                       重试
                     </button>
                   )}
                 </div>
-              ) : focusResults.length > 0 ? (
-                (() => {
-                  const activeImg = focusResults[focusSafeIdx]
-                  const activeImgUrl = getOriginalUrl(activeImg)
-                  return (
-                    <div
-                      className="group relative flex h-full w-full cursor-pointer items-center justify-center"
-                      onClick={() => setPreviewImage(activeImg)}
-                      onContextMenu={e => handleContextMenu(e, activeImg)}
+              )}
+
+              {/* 主图区 */}
+              <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.055),transparent_55%)] px-4 py-4">
+                {activeSlot?.status === 'running' ? (
+                  <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-amber-400/20 bg-black/30 px-8 py-8 shadow-2xl backdrop-blur-md">
+                    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-3xl border border-amber-400/25 bg-amber-500/10 shadow-2xl">
+                      <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                      <span className="mt-3 font-mono text-xs font-semibold text-amber-100">
+                        {Math.floor(activeSlot.elapsedSeconds / 60) > 0
+                          ? `${Math.floor(activeSlot.elapsedSeconds / 60)}分${activeSlot.elapsedSeconds % 60}秒`
+                          : `${activeSlot.elapsedSeconds}秒`}
+                      </span>
+                    </div>
+                    <div className="w-full">
+                      <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-amber-400 to-primary-400 transition-all"
+                          style={{ width: `${activeSlot.progressPct}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 flex justify-between text-[11px] text-amber-100/90">
+                        <span>生成中…</span>
+                        <span>{activeSlot.progressPct}%</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : activeSlot?.status === 'error' ? (
+                  <div className="flex max-w-md flex-col items-center gap-3 px-6 text-center text-red-300">
+                    <span className="text-sm font-semibold">生成失败</span>
+                    <p className="text-xs leading-relaxed text-red-200/80">{activeSlot.error}</p>
+                    {onRetrySlot && (
+                      <button
+                        className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-200 transition hover:bg-red-500/20"
+                        onClick={() => onRetrySlot(activeSlot)}
+                      >
+                        重试
+                      </button>
+                    )}
+                  </div>
+                ) : focusResults.length > 0 ? (
+                  (() => {
+                    const activeImg = focusResults[focusSafeIdx]
+                    const activeImgUrl = getOriginalUrl(activeImg)
+                    return (
+                      <div
+                        className="group relative flex h-full w-full cursor-pointer items-center justify-center"
+                        onClick={() => setPreviewImage(activeImg)}
+                        onContextMenu={e => handleContextMenu(e, activeImg)}
+                      >
+                        <img
+                          key={`slot-focus-${activeSlot?.id}-${focusSafeIdx}`}
+                          src={safeUrl(activeImgUrl)}
+                          alt=""
+                          className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl transition-all duration-300"
+                          draggable={false}
+                        />
+                        {focusResults.length > 1 && (
+                          <div className="absolute bottom-3 left-1/2 flex max-w-[90%] -translate-x-1/2 gap-1.5 overflow-x-auto rounded-xl border border-white/[0.08] bg-black/55 px-2 py-1.5 backdrop-blur">
+                            {focusResults.map((img, idx) => (
+                              <button
+                                key={img.id}
+                                className={`h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border-2 transition ${idx === focusSafeIdx ? 'border-primary-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setResultActiveIdx(idx)
+                                }}
+                              >
+                                <img
+                                  src={safeUrl(img.url || getOriginalUrl(img))}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()
+                ) : (
+                  <span className="text-xs text-slate-500">暂无图片</span>
+                )}
+              </div>
+            </div>
+          ) : status === 'running' && results.length === 0 ? (
+            /* 骨架屏 */
+            <div className="grid h-full w-full grid-cols-2 gap-4 p-4 md:grid-cols-3 lg:grid-cols-4">
+              {Array.from({ length: batchSize }).map((_, i) => (
+                <div key={i} className="overflow-hidden rounded-xl">
+                  <div className="skeleton h-40 w-full" />
+                  <div className="space-y-1.5 p-2">
+                    <div className="skeleton h-2.5 w-3/4" />
+                    <div className="skeleton h-2 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : results.length === 0 ? (
+            /* 空状态 */
+            <div className="flex h-full w-full flex-col items-center justify-center px-8 py-12 text-slate-500">
+              <div className="empty-placeholder group mb-6 flex h-52 w-72 cursor-default flex-col items-center justify-center rounded-[30px]">
+                <div className="mb-5 grid grid-cols-3 gap-2 opacity-50">
+                  {[
+                    'bg-purple-500/30',
+                    'bg-blue-500/30',
+                    'bg-pink-500/30',
+                    'bg-amber-500/30',
+                    'bg-emerald-500/30',
+                    'bg-cyan-500/30',
+                  ].map((c, i) => (
+                    <div key={i} className={`h-8 w-8 rounded-lg ${c}`} />
+                  ))}
+                </div>
+                <p className="text-xs font-medium text-slate-500">你的作品将在这里展示</p>
+              </div>
+              <p className="mb-1 text-sm font-medium text-slate-400">暂无生成结果</p>
+              <p className="max-w-[220px] text-center text-xs leading-relaxed text-slate-400">
+                在右侧输入提示词，
+                <br />
+                选择模型后点击「开始生图」
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const activeImg = results[safeIdx]
+              const extendedImg = activeImg as typeof activeImg & { originalUrl?: string }
+              const activeImgUrl = extendedImg.originalUrl || activeImg.url
+              return (
+                <div className="flex h-full w-full flex-col">
+                  {/* 主图区 */}
+                  <div
+                    className="group relative flex-1 cursor-pointer overflow-hidden"
+                    onClick={() => {
+                      if (status !== 'running') setPreviewImage(activeImg)
+                    }}
+                    onContextMenu={e => handleContextMenu(e, activeImg)}
+                  >
+                    <img
+                      key={`main-${safeIdx}`}
+                      src={activeImgUrl}
+                      alt=""
+                      className={`h-full w-full object-contain ${status === 'running' ? 'scale-105 opacity-40' : ''} transition-all duration-300`}
+                      draggable={false}
+                      onError={e => {
+                        e.currentTarget.style.display = 'none'
+                        const sibling = e.currentTarget.nextElementSibling as HTMLElement
+                        if (sibling) sibling.style.display = 'flex'
+                      }}
+                    />
+                    <div className="hidden h-full w-full items-center justify-center text-slate-400">
+                      图片加载失败
+                    </div>
+
+                    {status === 'running' && (
+                      <div className="absolute right-3 top-3 z-30 rounded-xl border border-amber-400/25 bg-black/55 px-3 py-1.5 font-mono text-xs font-semibold text-amber-200 shadow-xl backdrop-blur-md">
+                        生图时间{' '}
+                        {Math.floor(elapsedSeconds / 60) > 0
+                          ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
+                          : `${elapsedSeconds}秒`}
+                      </div>
+                    )}
+
+                    {/* 生成中遮罩 */}
+                    {status === 'running' && (
+                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center">
+                        <div className="overlay-dark absolute inset-0 backdrop-blur-sm" />
+                        <div className="relative z-10 flex w-full max-w-xs flex-col items-center gap-3 px-6">
+                          <div className="flex items-center gap-2 text-white">
+                            <svg
+                              className="h-5 w-5 animate-spin text-amber-400"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            <span className="text-sm font-medium">生成中…</span>
+                            <span className="ml-1 font-mono text-xs text-amber-300">
+                              {Math.floor(elapsedSeconds / 60) > 0
+                                ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
+                                : `${elapsedSeconds}秒`}
+                            </span>
+                          </div>
+                          <div className="w-full">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/20">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500"
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                            <div className="mt-1 flex justify-between">
+                              <span className="text-[10px] text-amber-200">正在生成新图…</span>
+                              <span className="font-mono text-[10px] text-amber-200">
+                                {progressPct}%
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-center text-[10px] text-white/60">
+                            旧图已保留，新图完成后自动切换
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 返回按钮 */}
+                    <button
+                      className="absolute left-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-black/80 text-white opacity-0 transition hover:bg-slate-600 group-hover:opacity-100"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setResults([])
+                        setResultActiveIdx(0)
+                        setSelectedImageIds(new Set())
+                      }}
+                      title="返回默认界面"
                     >
-                      <img
-                        key={`slot-focus-${activeSlot?.id}-${focusSafeIdx}`}
-                        src={safeUrl(activeImgUrl)}
-                        alt=""
-                        className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl transition-all duration-300"
-                        draggable={false}
-                      />
-                      {focusResults.length > 1 && (
-                        <div className="absolute bottom-3 left-1/2 flex max-w-[90%] -translate-x-1/2 gap-1.5 overflow-x-auto rounded-xl border border-white/[0.08] bg-black/55 px-2 py-1.5 backdrop-blur">
-                          {focusResults.map((img, idx) => (
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* 左右切换 */}
+                    {results.length > 1 && (
+                      <>
+                        <button
+                          className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setResultActiveIdx(i => (i - 1 + results.length) % results.length)
+                          }}
+                        >
+                          ‹
+                        </button>
+                        <button
+                          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setResultActiveIdx(i => (i + 1) % results.length)
+                          }}
+                        >
+                          ›
+                        </button>
+                        <div className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
+                          {safeIdx + 1} / {results.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 缩略图横条 */}
+                  {results.length > 1 && (
+                    <div className="app-scrollbar flex flex-shrink-0 gap-1.5 overflow-x-auto border-t border-white/[0.06] px-2 py-2">
+                      {results.map((img, idx) => {
+                        const extImg = img as typeof img & { originalUrl?: string }
+                        const thumbUrl = img.url || extImg.originalUrl
+                        return (
+                          <div key={img.id} className="relative flex-shrink-0">
                             <button
-                              key={img.id}
-                              className={`h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border-2 transition ${idx === focusSafeIdx ? 'border-primary-400' : 'border-transparent opacity-70 hover:opacity-100'}`}
-                              onClick={e => {
-                                e.stopPropagation()
-                                setResultActiveIdx(idx)
-                              }}
+                              onClick={() => setResultActiveIdx(idx)}
+                              className={`h-12 w-12 overflow-hidden rounded-lg border-2 transition-all ${idx === safeIdx ? 'border-primary-400 ring-1 ring-primary-400/30' : 'border-transparent hover:border-white/20'}`}
                             >
                               <img
-                                src={safeUrl(img.url || getOriginalUrl(img))}
+                                src={safeUrl(thumbUrl)}
                                 alt=""
                                 className="h-full w-full object-cover"
                               />
                             </button>
-                          ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })()
+          )}
+        </div>
+      ) : (
+        /* ── 画廊模式 ── */
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* 画廊子标签栏 */}
+          <div className="flex flex-shrink-0 items-center justify-between border-b border-white/[0.06] bg-white/[0.02] px-3 py-1">
+            <div className="flex items-center gap-1.5">
+              <button
+                className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
+                  gallerySubTab === 'current'
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+                onClick={() => setGallerySubTab('current')}
+              >
+                当前
+              </button>
+              <button
+                className={`relative rounded-md px-2 py-0.5 text-[11px] font-medium transition ${
+                  gallerySubTab === 'favorites'
+                    ? 'bg-red-500/20 text-red-300'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+                onClick={() => {
+                  setGallerySubTab('favorites')
+                  setFavActiveIdx(0)
+                }}
+              >
+                收藏
+                {favorites.length > 0 && (
+                  <span className="ml-1 text-[9px] opacity-60">{favorites.length}</span>
+                )}
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                onGalleryClose?.()
+                setActiveTab('results')
+              }}
+              className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              关闭
+            </button>
+          </div>
+
+          {/* ── 画廊子标签：当前 ── */}
+          {gallerySubTab === 'current' && galleryEntries && galleryEntries.length > 0 ? (
+            (() => {
+              const ge = galleryEntries[galleryActiveIdx] ?? galleryEntries[0]
+              const vpColor = VIEWPORT_COLORS[galleryActiveIdx % 6]
+              const gImgIdx = galleryImageIdx[galleryActiveIdx] ?? 0
+              const gSafeIdx = Math.min(Math.max(gImgIdx, 0), Math.max(ge.results.length - 1, 0))
+              const gActiveImg = ge.results[gSafeIdx]
+              const gActiveImgUrl = gActiveImg
+                ? safeUrl(
+                    (gActiveImg as typeof gActiveImg & { originalUrl?: string }).originalUrl ??
+                      gActiveImg.url,
+                  )
+                : ''
+              return (
+                <>
+                  {/* 视口信息栏 */}
+                  <div className="flex flex-shrink-0 items-center gap-3 border-b border-white/[0.06] bg-white/[0.025] px-4 py-1.5">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${vpColor.border} ${vpColor.label}`}
+                    >
+                      视口 {ge.viewportIndex ?? galleryActiveIdx + 1}
+                      {ge.viewportName ? ` · ${ge.viewportName}` : ''}
+                    </span>
+                    <span className="font-mono text-[11px] text-slate-500">
+                      {ge.width}x{ge.height} · {ge.results.length} 张 · {ge.model}
+                    </span>
+                  </div>
+                  {/* 主图区 — 和生成结果完全一致的布局 */}
+                  {ge.results.length > 0 ? (
+                    <div className="flex h-full w-full flex-col">
+                      <div
+                        className="group relative flex-1 cursor-pointer overflow-hidden"
+                        onClick={() => {
+                          if (gActiveImg) setPreviewImage(gActiveImg)
+                        }}
+                        onContextMenu={e => {
+                          if (gActiveImg) handleContextMenu(e, gActiveImg)
+                        }}
+                      >
+                        <img
+                          key={`gallery-${galleryActiveIdx}-${gSafeIdx}`}
+                          src={gActiveImgUrl}
+                          alt=""
+                          className="h-full w-full object-contain transition-all duration-300"
+                          draggable={false}
+                          onError={e => {
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
+
+                        {/* 收藏图标 — 右上角 */}
+                        {gActiveImg && (
+                          <div className="absolute right-2 top-2 z-20 opacity-0 transition group-hover:opacity-100">
+                            {renderFavHeart(gActiveImg, {
+                              prompt: ge.prompt,
+                              model: ge.model,
+                              width: ge.width,
+                              height: ge.height,
+                            })}
+                          </div>
+                        )}
+
+                        {/* 左右切换箭头 */}
+                        {ge.results.length > 1 && (
+                          <>
+                            <button
+                              className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
+                              onClick={e => {
+                                e.stopPropagation()
+                                const prev = (gSafeIdx - 1 + ge.results.length) % ge.results.length
+                                setGalleryImageIdx(p => ({ ...p, [galleryActiveIdx]: prev }))
+                              }}
+                            >
+                              ‹
+                            </button>
+                            <button
+                              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
+                              onClick={e => {
+                                e.stopPropagation()
+                                const next = (gSafeIdx + 1) % ge.results.length
+                                setGalleryImageIdx(p => ({ ...p, [galleryActiveIdx]: next }))
+                              }}
+                            >
+                              ›
+                            </button>
+                            <div className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
+                              {gSafeIdx + 1} / {ge.results.length}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* 缩略图横条 — 和生成结果完全一致 */}
+                      {ge.results.length > 1 && (
+                        <div className="app-scrollbar flex flex-shrink-0 gap-1.5 overflow-x-auto border-t border-white/[0.06] px-2 py-2">
+                          {ge.results.map((img, idx) => {
+                            const thumbUrl =
+                              (img as typeof img & { originalUrl?: string }).originalUrl ?? img.url
+                            return (
+                              <div key={img.id ?? idx} className="relative flex-shrink-0">
+                                <button
+                                  onClick={() =>
+                                    setGalleryImageIdx(p => ({ ...p, [galleryActiveIdx]: idx }))
+                                  }
+                                  className={`h-12 w-12 overflow-hidden rounded-lg border-2 transition-all ${idx === gSafeIdx ? 'border-primary-400 ring-1 ring-primary-400/30' : 'border-transparent hover:border-white/20'}`}
+                                >
+                                  <img
+                                    src={safeUrl(thumbUrl)}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
-                  )
-                })()
-              ) : (
-                <span className="text-xs text-slate-500">暂无图片</span>
-              )}
-            </div>
-          </div>
-        ) : status === 'running' && results.length === 0 ? (
-          /* 骨架屏 */
-          <div className="grid h-full w-full grid-cols-2 gap-4 p-4 md:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: batchSize }).map((_, i) => (
-              <div key={i} className="overflow-hidden rounded-xl">
-                <div className="skeleton h-40 w-full" />
-                <div className="space-y-1.5 p-2">
-                  <div className="skeleton h-2.5 w-3/4" />
-                  <div className="skeleton h-2 w-1/2" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : results.length === 0 ? (
-          /* 空状态 */
-          <div className="flex h-full w-full flex-col items-center justify-center px-8 py-12 text-slate-500">
-            <div className="empty-placeholder group mb-6 flex h-52 w-72 cursor-default flex-col items-center justify-center rounded-[30px]">
-              <div className="mb-5 grid grid-cols-3 gap-2 opacity-50">
-                {[
-                  'bg-purple-500/30',
-                  'bg-blue-500/30',
-                  'bg-pink-500/30',
-                  'bg-amber-500/30',
-                  'bg-emerald-500/30',
-                  'bg-cyan-500/30',
-                ].map((c, i) => (
-                  <div key={i} className={`h-8 w-8 rounded-lg ${c}`} />
-                ))}
-              </div>
-              <p className="text-xs font-medium text-slate-500">你的作品将在这里展示</p>
-            </div>
-            <p className="mb-1 text-sm font-medium text-slate-400">暂无生成结果</p>
-            <p className="max-w-[220px] text-center text-xs leading-relaxed text-slate-400">
-              在右侧输入提示词，
-              <br />
-              选择模型后点击「开始生图」
-            </p>
-          </div>
-        ) : (
-          (() => {
-            const activeImg = results[safeIdx]
-            const extendedImg = activeImg as typeof activeImg & { originalUrl?: string }
-            const activeImgUrl = extendedImg.originalUrl || activeImg.url
-            return (
-              <div className="flex h-full w-full flex-col">
-                {/* 主图区 */}
-                <div
-                  className="group relative flex-1 cursor-pointer overflow-hidden"
-                  onClick={() => {
-                    if (status !== 'running') setPreviewImage(activeImg)
-                  }}
-                  onContextMenu={e => handleContextMenu(e, activeImg)}
-                >
-                  <img
-                    key={`main-${safeIdx}`}
-                    src={activeImgUrl}
-                    alt=""
-                    className={`h-full w-full object-contain ${status === 'running' ? 'scale-105 opacity-40' : ''} transition-all duration-300`}
-                    draggable={false}
-                    onError={e => {
-                      e.currentTarget.style.display = 'none'
-                      const sibling = e.currentTarget.nextElementSibling as HTMLElement
-                      if (sibling) sibling.style.display = 'flex'
-                    }}
-                  />
-                  <div className="hidden h-full w-full items-center justify-center text-slate-400">
-                    图片加载失败
+                  ) : (
+                    <div className="flex flex-1 items-center justify-center text-xs text-slate-500">
+                      无结果
+                    </div>
+                  )}
+
+                  {/* 底部视口切换栏 */}
+                  {galleryEntries.length > 1 && (
+                    <div className="flex flex-shrink-0 items-center justify-center gap-1.5 border-t border-white/[0.06] bg-black/20 px-2 py-1.5">
+                      {galleryEntries.map((ge2, idx) => {
+                        const isActive = idx === galleryActiveIdx
+                        const vc = VIEWPORT_COLORS[idx % 6]
+                        const thumb = ge2.results[0]
+                        return (
+                          <button
+                            key={ge2.id}
+                            className={`relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 transition ${
+                              isActive
+                                ? `${vc.bg} ring-2 ${vc.ring}`
+                                : 'border-white/[0.08] bg-white/[0.04] hover:border-white/20'
+                            }`}
+                            style={{ borderColor: isActive ? vc.hex : undefined }}
+                            onClick={() => setGalleryActiveIdx(idx)}
+                          >
+                            {thumb ? (
+                              <img
+                                src={safeUrl(thumb.originalUrl ?? thumb.url)}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                draggable={false}
+                              />
+                            ) : (
+                              <span className={`text-[8px] font-bold ${vc.label}`}>{idx + 1}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </>
+              )
+            })()
+          ) : gallerySubTab === 'favorites' ? (
+            /* ── 收藏子标签 ── */
+            (() => {
+              const allTags = getAllTags()
+              const allGroups = getAllGroups()
+              const filtered = favorites.filter(f => {
+                if (favFilterTag && (!f.tags || !f.tags.includes(favFilterTag))) return false
+                if (favFilterGroup && f.group !== favFilterGroup) return false
+                return true
+              })
+              const favSafeIdx = Math.min(
+                Math.max(favActiveIdx, 0),
+                Math.max(filtered.length - 1, 0),
+              )
+              const favImg = filtered[favSafeIdx]
+              const favImgUrl = favImg ? safeUrl(favImg.originalUrl ?? favImg.url) : ''
+              return filtered.length > 0 ? (
+                <div className="flex h-full w-full flex-col">
+                  {/* 筛选栏：标签 + 分组 + 视图切换 */}
+                  <div className="app-scrollbar flex flex-shrink-0 items-center gap-1.5 overflow-x-auto border-b border-white/[0.06] bg-white/[0.02] px-3 py-1">
+                    {/* 分组筛选 */}
+                    <button
+                      className={`rounded-md px-1.5 py-0.5 text-[9px] transition ${!favFilterGroup ? 'bg-white/[0.1] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                      onClick={() => {
+                        setFavFilterGroup(null)
+                        setFavActiveIdx(0)
+                      }}
+                    >
+                      全部
+                    </button>
+                    {allGroups.map(g => (
+                      <button
+                        key={g}
+                        className={`rounded-md px-1.5 py-0.5 text-[9px] transition ${favFilterGroup === g ? 'bg-amber-500/20 text-amber-300' : 'text-slate-500 hover:text-slate-300'}`}
+                        onClick={() => {
+                          setFavFilterGroup(favFilterGroup === g ? null : g)
+                          setFavActiveIdx(0)
+                        }}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                    <span className="mx-0.5 h-3 w-px bg-white/[0.08]" />
+                    {/* 标签筛选 */}
+                    {allTags.map(t => (
+                      <button
+                        key={t}
+                        className={`rounded-full px-1.5 py-0.5 text-[9px] transition ${favFilterTag === t ? 'bg-primary-500/20 text-primary-300' : 'text-slate-500 hover:text-slate-300'}`}
+                        onClick={() => {
+                          setFavFilterTag(favFilterTag === t ? null : t)
+                          setFavActiveIdx(0)
+                        }}
+                      >
+                        #{t}
+                      </button>
+                    ))}
+                    <span className="flex-1" />
+                    {/* 视图切换 */}
+                    {(['single', 'grid', 'list'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        className={`rounded px-1 py-0.5 text-[9px] transition ${favViewMode === mode ? 'bg-white/[0.1] text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                        onClick={() => setFavViewMode(mode)}
+                        title={mode === 'single' ? '单图' : mode === 'grid' ? '网格' : '列表'}
+                      >
+                        {mode === 'single' ? '▣' : mode === 'grid' ? '▦' : '☰'}
+                      </button>
+                    ))}
                   </div>
 
-                  {status === 'running' && (
-                    <div className="absolute right-3 top-3 z-30 rounded-xl border border-amber-400/25 bg-black/55 px-3 py-1.5 font-mono text-xs font-semibold text-amber-200 shadow-xl backdrop-blur-md">
-                      生图时间{' '}
-                      {Math.floor(elapsedSeconds / 60) > 0
-                        ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
-                        : `${elapsedSeconds}秒`}
-                    </div>
-                  )}
-
-                  {/* 生成中遮罩 */}
-                  {status === 'running' && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center">
-                      <div className="overlay-dark absolute inset-0 backdrop-blur-sm" />
-                      <div className="relative z-10 flex w-full max-w-xs flex-col items-center gap-3 px-6">
-                        <div className="flex items-center gap-2 text-white">
-                          <svg
-                            className="h-5 w-5 animate-spin text-amber-400"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                            />
-                          </svg>
-                          <span className="text-sm font-medium">生成中…</span>
-                          <span className="ml-1 font-mono text-xs text-amber-300">
-                            {Math.floor(elapsedSeconds / 60) > 0
-                              ? `${Math.floor(elapsedSeconds / 60)}分${elapsedSeconds % 60}秒`
-                              : `${elapsedSeconds}秒`}
-                          </span>
-                        </div>
-                        <div className="w-full">
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-white/20">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500"
-                              style={{ width: `${progressPct}%` }}
-                            />
-                          </div>
-                          <div className="mt-1 flex justify-between">
-                            <span className="text-[10px] text-amber-200">正在生成新图…</span>
-                            <span className="font-mono text-[10px] text-amber-200">
-                              {progressPct}%
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-center text-[10px] text-white/60">
-                          旧图已保留，新图完成后自动切换
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 返回按钮 */}
-                  <button
-                    className="absolute left-2 top-2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-black/80 text-white opacity-0 transition hover:bg-slate-600 group-hover:opacity-100"
-                    onClick={e => {
-                      e.stopPropagation()
-                      setResults([])
-                      setResultActiveIdx(0)
-                      setSelectedImageIds(new Set())
-                    }}
-                    title="返回默认界面"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                      />
-                    </svg>
-                  </button>
-
-                  {/* 左右切换 */}
-                  {results.length > 1 && (
+                  {/* ── 单图模式 ── */}
+                  {favViewMode === 'single' ? (
                     <>
-                      <button
-                        className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setResultActiveIdx(i => (i - 1 + results.length) % results.length)
+                      <div
+                        className="group relative flex-1 cursor-pointer overflow-hidden"
+                        onClick={() => {
+                          if (favImg)
+                            setPreviewImage({
+                              id: favImg.id,
+                              url: favImg.originalUrl ?? favImg.url,
+                            })
                         }}
                       >
-                        ‹
-                      </button>
-                      <button
-                        className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
-                        onClick={e => {
-                          e.stopPropagation()
-                          setResultActiveIdx(i => (i + 1) % results.length)
-                        }}
-                      >
-                        ›
-                      </button>
-                      <div className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
-                        {safeIdx + 1} / {results.length}
+                        {favImg && (
+                          <img
+                            key={`fav-${favSafeIdx}`}
+                            src={favImgUrl}
+                            alt=""
+                            className="h-full w-full object-contain"
+                            draggable={false}
+                          />
+                        )}
+                        {/* 收藏心+标签操作 — 右上角 */}
+                        {favImg && (
+                          <div className="absolute right-2 top-2 z-20 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                            {/* 标签按钮 */}
+                            <button
+                              className="flex h-7 items-center gap-0.5 rounded-full bg-black/50 px-2 text-[9px] text-slate-300 transition hover:bg-black/70"
+                              onClick={e => {
+                                e.stopPropagation()
+                                setTagEditImgId(tagEditImgId === favImg.id ? null : favImg.id)
+                              }}
+                              title="添加标签"
+                            >
+                              #
+                            </button>
+                            {/* 分组按钮 */}
+                            <button
+                              className="flex h-7 items-center gap-0.5 rounded-full bg-black/50 px-2 text-[9px] text-slate-300 transition hover:bg-black/70"
+                              onClick={e => {
+                                e.stopPropagation()
+                                setGroupEditImgId(groupEditImgId === favImg.id ? null : favImg.id)
+                              }}
+                              title="设置分组"
+                            >
+                              📁
+                            </button>
+                            {/* 取消收藏 */}
+                            <button
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500/30 text-red-400 transition hover:bg-red-500/50"
+                              onClick={e => {
+                                e.stopPropagation()
+                                removeFavorite(favImg.id)
+                                setFavVersion(v => v + 1)
+                                if (favActiveIdx >= filtered.length - 1)
+                                  setFavActiveIdx(Math.max(0, favActiveIdx - 1))
+                              }}
+                              title="取消收藏"
+                            >
+                              <svg
+                                width={14}
+                                height={14}
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                        {/* 标签编辑浮层 */}
+                        {tagEditImgId === favImg?.id && (
+                          <div
+                            className="absolute right-2 top-11 z-30 w-52 rounded-xl border border-white/[0.12] bg-[#0d0e14]/95 shadow-2xl backdrop-blur-md"
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                              if (e.key === 'Escape') {
+                                e.stopPropagation()
+                                setTagEditImgId(null)
+                              }
+                            }}
+                          >
+                            <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
+                              <span className="text-[10px] font-bold text-slate-300">标签管理</span>
+                              <button
+                                className="text-[10px] text-slate-500 hover:text-white"
+                                onClick={() => setTagEditImgId(null)}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="px-3 py-2">
+                              {allTags.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-1">
+                                  {allTags.map(t => {
+                                    const has = favImg.tags?.includes(t)
+                                    return (
+                                      <button
+                                        key={t}
+                                        className={`rounded-full px-2 py-0.5 text-[10px] transition ${has ? 'bg-primary-500/30 text-primary-200 ring-1 ring-primary-400/30' : 'bg-white/[0.06] text-slate-400 hover:bg-white/[0.1] hover:text-slate-200'}`}
+                                        onClick={() => {
+                                          if (has) {
+                                            removeTagFromFavorite(favImg.id, t)
+                                          } else {
+                                            addTagToFavorite(favImg.id, t)
+                                          }
+                                          setFavVersion(v => v + 1)
+                                        }}
+                                      >
+                                        #{t}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                              <form
+                                className="flex gap-1"
+                                onSubmit={e => {
+                                  e.preventDefault()
+                                  if (tagInput.trim()) {
+                                    addTagToFavorite(favImg.id, tagInput.trim())
+                                    setTagInput('')
+                                    setFavVersion(v => v + 1)
+                                  }
+                                }}
+                              >
+                                <input
+                                  autoFocus
+                                  className="flex-1 rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] text-white outline-none ring-1 ring-white/[0.08] focus:ring-primary-400/40"
+                                  placeholder="输入新标签后回车…"
+                                  value={tagInput}
+                                  onChange={e => setTagInput(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Escape') {
+                                      e.stopPropagation()
+                                      setTagEditImgId(null)
+                                    }
+                                  }}
+                                />
+                                <button
+                                  type="submit"
+                                  className="rounded-lg bg-primary-500/20 px-2 py-1 text-[10px] font-medium text-primary-300 transition hover:bg-primary-500/30"
+                                >
+                                  添加
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+                        {/* 分组编辑浮层 */}
+                        {groupEditImgId === favImg?.id && (
+                          <div
+                            className="absolute right-2 top-11 z-30 w-48 rounded-xl border border-white/[0.12] bg-[#0d0e14]/95 shadow-2xl backdrop-blur-md"
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                              if (e.key === 'Escape') {
+                                e.stopPropagation()
+                                setGroupEditImgId(null)
+                              }
+                            }}
+                          >
+                            <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-1.5">
+                              <span className="text-[10px] font-bold text-slate-300">分组管理</span>
+                              <button
+                                className="text-[10px] text-slate-500 hover:text-white"
+                                onClick={() => setGroupEditImgId(null)}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="px-3 py-2">
+                              <div className="mb-2 flex flex-wrap gap-1">
+                                <button
+                                  className={`rounded-lg px-2 py-0.5 text-[10px] transition ${!favImg.group ? 'bg-white/[0.12] text-white ring-1 ring-white/20' : 'bg-white/[0.04] text-slate-500 hover:bg-white/[0.08] hover:text-slate-300'}`}
+                                  onClick={() => {
+                                    setFavoriteGroup(favImg.id, undefined)
+                                    setFavVersion(v => v + 1)
+                                    setGroupEditImgId(null)
+                                  }}
+                                >
+                                  无分组
+                                </button>
+                                {allGroups.map(g => (
+                                  <button
+                                    key={g}
+                                    className={`rounded-lg px-2 py-0.5 text-[10px] transition ${favImg.group === g ? 'bg-amber-500/25 text-amber-200 ring-1 ring-amber-400/30' : 'bg-white/[0.04] text-slate-500 hover:bg-white/[0.08] hover:text-slate-300'}`}
+                                    onClick={() => {
+                                      setFavoriteGroup(favImg.id, g)
+                                      setFavVersion(v => v + 1)
+                                      setGroupEditImgId(null)
+                                    }}
+                                  >
+                                    {g}
+                                  </button>
+                                ))}
+                              </div>
+                              <form
+                                className="flex gap-1"
+                                onSubmit={e => {
+                                  e.preventDefault()
+                                  if (groupInput.trim()) {
+                                    setFavoriteGroup(favImg.id, groupInput.trim())
+                                    setGroupInput('')
+                                    setFavVersion(v => v + 1)
+                                    setGroupEditImgId(null)
+                                  }
+                                }}
+                              >
+                                <input
+                                  autoFocus
+                                  className="flex-1 rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] text-white outline-none ring-1 ring-white/[0.08] focus:ring-amber-400/40"
+                                  placeholder="输入新分组后回车…"
+                                  value={groupInput}
+                                  onChange={e => setGroupInput(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Escape') {
+                                      e.stopPropagation()
+                                      setGroupEditImgId(null)
+                                    }
+                                  }}
+                                />
+                                <button
+                                  type="submit"
+                                  className="rounded-lg bg-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-300 transition hover:bg-amber-500/30"
+                                >
+                                  添加
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+                        {/* 左右切换 */}
+                        {filtered.length > 1 && (
+                          <>
+                            <button
+                              className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
+                              onClick={e => {
+                                e.stopPropagation()
+                                setFavActiveIdx(i => (i - 1 + filtered.length) % filtered.length)
+                              }}
+                            >
+                              ‹
+                            </button>
+                            <button
+                              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-xl leading-none text-white opacity-0 transition hover:bg-black/60 group-hover:opacity-100"
+                              onClick={e => {
+                                e.stopPropagation()
+                                setFavActiveIdx(i => (i + 1) % filtered.length)
+                              }}
+                            >
+                              ›
+                            </button>
+                            <div className="absolute left-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">
+                              {favSafeIdx + 1} / {filtered.length}
+                            </div>
+                          </>
+                        )}
+                        {/* 当前图片的标签+分组 */}
+                        {favImg && (favImg.tags?.length || favImg.group) && (
+                          <div className="absolute bottom-2 left-2 z-10 flex flex-wrap gap-1">
+                            {favImg.group && (
+                              <span className="rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold text-amber-300">
+                                {favImg.group}
+                              </span>
+                            )}
+                            {favImg.tags?.map(t => (
+                              <span
+                                key={t}
+                                className="rounded-full bg-primary-500/15 px-1.5 py-0.5 text-[8px] text-primary-300"
+                              >
+                                #{t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      {/* 缩略图横条 */}
+                      {filtered.length > 1 && (
+                        <div className="app-scrollbar flex flex-shrink-0 gap-1.5 overflow-x-auto border-t border-white/[0.06] px-2 py-2">
+                          {filtered.map((fav, idx) => (
+                            <div key={fav.id} className="relative flex-shrink-0">
+                              <button
+                                onClick={() => setFavActiveIdx(idx)}
+                                className={`h-12 w-12 overflow-hidden rounded-lg border-2 transition-all ${idx === favSafeIdx ? 'border-red-400 ring-1 ring-red-400/30' : 'border-transparent hover:border-white/20'}`}
+                              >
+                                <img
+                                  src={safeUrl(fav.originalUrl ?? fav.url)}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </>
-                  )}
-                </div>
-
-                {/* 缩略图横条 */}
-                {results.length > 1 && (
-                  <div className="app-scrollbar flex flex-shrink-0 gap-1.5 overflow-x-auto border-t border-white/[0.06] px-2 py-2">
-                    {results.map((img, idx) => {
-                      const extImg = img as typeof img & { originalUrl?: string }
-                      const thumbUrl = img.url || extImg.originalUrl
-                      return (
-                        <div key={img.id} className="relative flex-shrink-0">
-                          <button
-                            onClick={() => setResultActiveIdx(idx)}
-                            className={`h-12 w-12 overflow-hidden rounded-lg border-2 transition-all ${idx === safeIdx ? 'border-primary-400 ring-1 ring-primary-400/30' : 'border-transparent hover:border-white/20'}`}
+                  ) : favViewMode === 'grid' ? (
+                    /* ── 网格模式 (Eagle风格) ── */
+                    <div className="app-scrollbar relative grid flex-1 grid-cols-3 gap-1.5 overflow-y-auto p-1.5 sm:grid-cols-4 lg:grid-cols-5">
+                      {filtered.map((fav, idx) => {
+                        const isSelected = idx === favSafeIdx
+                        return (
+                          <div
+                            key={fav.id}
+                            className={`group/card relative cursor-pointer overflow-hidden rounded-lg border-2 transition-all duration-150 ${
+                              isSelected
+                                ? 'scale-[1.02] border-primary-400 ring-2 ring-primary-400/30'
+                                : 'border-transparent hover:border-white/20 hover:shadow-lg hover:shadow-black/30'
+                            }`}
+                            onClick={() => setFavActiveIdx(idx)}
+                            onDoubleClick={() => {
+                              setFavActiveIdx(idx)
+                              setFavViewMode('single')
+                            }}
+                            onMouseEnter={e => {
+                              const rect = e.currentTarget.getBoundingClientRect()
+                              if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+                              hoverTimerRef.current = setTimeout(() => {
+                                setHoverPreview({ fav, x: rect.right + 8, y: rect.top })
+                              }, 400)
+                            }}
+                            onMouseLeave={() => {
+                              if (hoverTimerRef.current) {
+                                clearTimeout(hoverTimerRef.current)
+                                hoverTimerRef.current = null
+                              }
+                              setHoverPreview(null)
+                            }}
                           >
                             <img
-                              src={safeUrl(thumbUrl)}
+                              src={safeUrl(fav.originalUrl ?? fav.url)}
                               alt=""
-                              className="h-full w-full object-cover"
+                              className="aspect-square w-full object-cover transition-transform duration-200 group-hover/card:scale-105"
+                              draggable={false}
                             />
+                            {/* 右上角操作栏 */}
+                            <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition group-hover/card:opacity-100">
+                              <button
+                                className="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[9px] text-slate-300 hover:bg-primary-500/40 hover:text-white"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setFavActiveIdx(idx)
+                                  setFavViewMode('single')
+                                  setTagEditImgId(fav.id)
+                                }}
+                                title="标签"
+                              >
+                                #
+                              </button>
+                              <button
+                                className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/40 text-red-300 hover:bg-red-500/60"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  removeFavorite(fav.id)
+                                  setFavVersion(v => v + 1)
+                                }}
+                                title="取消收藏"
+                              >
+                                <svg width={10} height={10} viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                              </button>
+                            </div>
+                            {/* 底部信息叠加层 */}
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-1.5 pb-1 pt-4 opacity-0 transition group-hover/card:opacity-100">
+                              <p className="truncate text-[8px] text-white/90">
+                                {fav.prompt ?? ''}
+                              </p>
+                              <div className="mt-0.5 flex flex-wrap gap-0.5">
+                                {fav.group && (
+                                  <span className="rounded bg-amber-500/30 px-1 text-[7px] text-amber-200">
+                                    {fav.group}
+                                  </span>
+                                )}
+                                {fav.tags?.map(t => (
+                                  <span
+                                    key={t}
+                                    className="rounded bg-white/15 px-1 text-[7px] text-slate-200"
+                                  >
+                                    #{t}
+                                  </span>
+                                ))}
+                                {fav.width && (
+                                  <span className="text-[7px] text-white/50">
+                                    {fav.width}x{fav.height}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {/* 选中指示器 */}
+                            {isSelected && (
+                              <div className="absolute left-1 top-1">
+                                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-[8px] text-white shadow">
+                                  ✓
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {/* 悬浮预览浮层 */}
+                      {hoverPreview &&
+                        createPortal(
+                          <div
+                            className="pointer-events-none fixed z-[9999] max-h-[400px] max-w-[360px] overflow-hidden rounded-xl border border-white/[0.1] bg-[#0a0b10] shadow-2xl"
+                            style={{
+                              left: Math.min(hoverPreview.x, window.innerWidth - 370),
+                              top: Math.max(8, Math.min(hoverPreview.y, window.innerHeight - 420)),
+                            }}
+                          >
+                            <img
+                              src={safeUrl(hoverPreview.fav.originalUrl ?? hoverPreview.fav.url)}
+                              alt=""
+                              className="max-h-[320px] w-full object-contain"
+                            />
+                            <div className="border-t border-white/[0.06] px-3 py-2">
+                              <p className="truncate text-[10px] text-slate-300">
+                                {hoverPreview.fav.prompt ?? ''}
+                              </p>
+                              <div className="mt-0.5 flex items-center gap-1.5">
+                                <span className="text-[9px] text-slate-500">
+                                  {hoverPreview.fav.width}x{hoverPreview.fav.height}
+                                </span>
+                                <span className="text-[9px] text-slate-500">
+                                  {hoverPreview.fav.model}
+                                </span>
+                                {hoverPreview.fav.group && (
+                                  <span className="rounded bg-amber-500/20 px-1 text-[8px] text-amber-300">
+                                    {hoverPreview.fav.group}
+                                  </span>
+                                )}
+                                {hoverPreview.fav.tags?.map(t => (
+                                  <span key={t} className="text-[8px] text-primary-300">
+                                    #{t}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
+                    </div>
+                  ) : (
+                    /* ── 列表模式 ── */
+                    <div className="app-scrollbar flex flex-1 flex-col gap-1 overflow-y-auto p-1">
+                      {filtered.map((fav, idx) => (
+                        <div
+                          key={fav.id}
+                          className={`group/row flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 transition ${idx === favSafeIdx ? 'border-red-400/40 bg-red-500/5' : 'border-white/[0.04] hover:bg-white/[0.03]'}`}
+                          onClick={() => {
+                            setFavActiveIdx(idx)
+                            setFavViewMode('single')
+                          }}
+                        >
+                          <img
+                            src={safeUrl(fav.originalUrl ?? fav.url)}
+                            alt=""
+                            className="h-12 w-12 flex-shrink-0 rounded-lg object-cover"
+                            draggable={false}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[10px] text-slate-300">
+                              {fav.prompt ?? '无提示词'}
+                            </p>
+                            <div className="mt-0.5 flex items-center gap-1">
+                              {fav.group && (
+                                <span className="rounded bg-amber-500/20 px-1 py-0.5 text-[7px] text-amber-300">
+                                  {fav.group}
+                                </span>
+                              )}
+                              {fav.tags?.map(t => (
+                                <span
+                                  key={t}
+                                  className="rounded-full bg-white/[0.06] px-1 py-0.5 text-[7px] text-slate-400"
+                                >
+                                  #{t}
+                                </span>
+                              ))}
+                              <span className="text-[8px] text-slate-500">
+                                {fav.width}x{fav.height}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            className="flex-shrink-0 opacity-0 transition group-hover/row:opacity-100"
+                            onClick={e => {
+                              e.stopPropagation()
+                              removeFavorite(fav.id)
+                              setFavVersion(v => v + 1)
+                            }}
+                          >
+                            <svg
+                              width={14}
+                              height={14}
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="text-red-400"
+                            >
+                              <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
                           </button>
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })()
-        )}
-      </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center text-slate-500">
+                  <svg
+                    width={32}
+                    height={32}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    className="mb-2 opacity-30"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                    />
+                  </svg>
+                  <p className="text-xs">
+                    {favFilterTag || favFilterGroup ? '该筛选条件下暂无收藏' : '暂无收藏'}
+                  </p>
+                  <p className="mt-1 text-[10px]">在图片上点击心形图标即可收藏</p>
+                  {(favFilterTag || favFilterGroup) && (
+                    <button
+                      className="mt-2 rounded-lg bg-white/[0.06] px-3 py-1 text-[10px] text-slate-400 hover:text-white"
+                      onClick={() => {
+                        setFavFilterTag(null)
+                        setFavFilterGroup(null)
+                      }}
+                    >
+                      清除筛选
+                    </button>
+                  )}
+                </div>
+              )
+            })()
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center text-slate-500">
+              <p className="text-xs">画廊为空</p>
+              <p className="mt-1 text-[10px]">双击历史记录中的视口组可在此查看</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── 自定义右键菜单 ── */}
       {maximizedViewportIndex !== null &&
