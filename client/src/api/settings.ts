@@ -557,4 +557,142 @@ export type ApiSettings = ApiConfig & {
   selectedModelIds: string[]
   modelList: string[]
 }
-export type ApiSettingsWithLegacy = ApiSettings
+
+export type ProviderSnapshot = {
+  id: string
+  name?: string
+  protocol?: string
+  // camelCase (Electron IPC) or snake_case (HTTP /api/providers)
+  baseUrl?: string
+  base_url?: string
+  apiKeys?: string[]
+  api_key?: string
+  enabled?: boolean
+  primary?: boolean
+  imageModels?: string[]
+  image_models?: string[]
+  chatModels?: string[]
+  chat_models?: string[]
+  videoModels?: string[]
+  video_models?: string[]
+  image_generation_endpoint?: string
+  image_edit_endpoint?: string
+  customEndpoints?: { textToImage?: string; inpaint?: string }
+  walletApiKey?: string
+  wallet_api_key?: string
+  remark?: string
+  ms_loras?: unknown[]
+  rh_apps?: unknown[]
+  rh_workflows?: unknown[]
+}
+
+/** Normalize a provider snapshot to always use camelCase fields */
+function normalizeProviderSnapshot(p: ProviderSnapshot): ProviderSnapshot {
+  return {
+    ...p,
+    baseUrl: p.baseUrl || p.base_url || '',
+    apiKeys: p.apiKeys || (p.api_key ? [p.api_key] : []),
+    imageModels: p.imageModels || p.image_models || [],
+    chatModels: p.chatModels || p.chat_models || [],
+    videoModels: p.videoModels || p.video_models || [],
+    walletApiKey: p.walletApiKey || p.wallet_api_key || '',
+  }
+}
+
+function stableModelId(providerId: string, kind: 'image' | 'chat', modelId: string): string {
+  const raw = `${providerId}__${kind}__${modelId}`
+  return raw.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || genId()
+}
+
+function normalizeProviderSpec(protocol?: string): ApiSpec {
+  return String(protocol || 'openai').toLowerCase() === 'gemini' ? 'gemini' : 'openai'
+}
+
+export function apiConfigFromProviders(
+  providers: ProviderSnapshot[],
+  baseConfig: ApiConfig = getApiConfig(),
+): ApiConfig {
+  const raw = Array.isArray(providers) ? providers : []
+  if (raw.length === 0) return baseConfig
+  const list = raw.map(normalizeProviderSnapshot)
+
+  const enabled = list.filter(p => p.enabled !== false)
+  const primary = enabled.find(p => p.primary) || enabled[0] || list[0]
+  const imageModels: ImageModel[] = []
+  const chatModels: ChatModel[] = []
+  const apiVendors: ApiVendor[] = []
+
+  for (const provider of list) {
+    const baseUrl = String(provider.baseUrl || '').trim()
+    const apiKey = String(provider.apiKeys?.[0] || provider.api_key || '').trim()
+    const spec = normalizeProviderSpec(provider.protocol)
+
+    apiVendors.push({
+      id: provider.id,
+      name: provider.name || provider.id,
+      baseUrl,
+      apiKey,
+      remark: provider.remark,
+    })
+
+    for (const modelId of Array.isArray(provider.imageModels) ? provider.imageModels : []) {
+      const trimmed = String(modelId || '').trim()
+      if (!trimmed) continue
+      imageModels.push({
+        id: stableModelId(provider.id, 'image', trimmed),
+        modelId: trimmed,
+        label: trimmed,
+        apiKey,
+        baseUrl,
+        apiSpec: spec,
+        supportsInpaint: Boolean(
+          provider.image_edit_endpoint || provider.customEndpoints?.inpaint,
+        ),
+        inpaintEndpoint: provider.image_edit_endpoint || provider.customEndpoints?.inpaint,
+      })
+    }
+
+    for (const modelId of Array.isArray(provider.chatModels) ? provider.chatModels : []) {
+      const trimmed = String(modelId || '').trim()
+      if (!trimmed) continue
+      chatModels.push({
+        id: stableModelId(provider.id, 'chat', trimmed),
+        modelId: trimmed,
+        label: trimmed,
+        apiKey,
+        baseUrl,
+      })
+    }
+
+    // 把参考项目里额外的能力先保留下来，避免静默丢失
+    if (Array.isArray(provider.videoModels) && provider.videoModels.length > 0) {
+      const mergedRemark = [provider.remark, 'videoModels:', provider.videoModels.length].filter(Boolean).join(' ')
+      const vendorIndex = apiVendors.findIndex(v => v.id === provider.id)
+      if (vendorIndex >= 0) apiVendors[vendorIndex].remark = mergedRemark
+    }
+  }
+
+  const activeImageModel =
+    imageModels.find(m => m.id === baseConfig.activeImageModelId) || imageModels[0] || null
+  const activeVendor = apiVendors.find(v => v.id === baseConfig.activeVendorId) || primary
+  const primaryBaseUrl = String(primary?.baseUrl || '').trim()
+  const primaryApiKey = String(primary?.apiKeys?.[0] || primary?.api_key || '').trim()
+
+  return {
+    ...baseConfig,
+    globalBaseUrl: primaryBaseUrl || baseConfig.globalBaseUrl,
+    globalApiKey: primaryApiKey || baseConfig.globalApiKey,
+    globalApiSpec: normalizeProviderSpec(primary?.protocol),
+    chatModels,
+    imageModels,
+    activeImageModelId: activeImageModel?.id || '',
+    apiVendors,
+    activeVendorId: activeVendor?.id || '',
+  }
+}
+
+export function syncApiConfigFromProviders(providers: ProviderSnapshot[]): ApiConfig {
+  const next = apiConfigFromProviders(providers, getApiConfig())
+  saveApiConfig(next)
+  return next
+}

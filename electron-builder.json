@@ -8,7 +8,16 @@
   "files": [
     "electron/**/*",
     "client/dist/**/*",
+    "client/public/static/**/*",
+    "client/public/infinite-canvas/**/*",
     "logo.ico"
+  ],
+  "extraResources": [
+    {
+      "from": "electron/resources",
+      "to": "resources",
+      "filter": ["**/*"]
+    }
   ],
   "win": {
     "target": [

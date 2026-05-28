@@ -5,11 +5,13 @@
   "main": "electron/main.js",
   "author": "liang007",
   "scripts": {
-    "dev": "npm run dev --workspace client",
+    "dev": "concurrently -k -n vite,electron -c blue,green \"npm run dev --workspace client\" \"wait-on http://127.0.0.1:5173 && npm run electron:dev\"",
+    "dev:web": "npm run dev --workspace client",
     "build": "npm run build --workspace client",
     "preview": "npm run preview --workspace client",
+    "preview:web": "npm run preview --workspace client",
     "lint": "npm run lint --workspace client",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "node -e \"delete process.env.ELECTRON_RUN_AS_NODE;require('child_process').spawn(require('electron'),['.'],{stdio:'inherit',env:Object.fromEntries(Object.entries(process.env).filter(([k])=>k!=='ELECTRON_RUN_AS_NODE'))}).on('close',c=>process.exit(c||0))\"",
     "electron:build": "npm run build && electron-builder -w",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -17,9 +19,13 @@
     "client"
   ],
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
-    "electron": "^41.0.2",
+    "electron": "^35.7.5",
     "electron-builder": "^26.8.1",
     "wait-on": "^8.0.3"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }

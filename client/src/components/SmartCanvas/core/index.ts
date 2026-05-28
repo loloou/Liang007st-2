@@ -1,0 +1,5 @@
+export { ViewportManager } from './ViewportManager'
+export { UndoManager } from './UndoManager'
+export type { CanvasSnapshot } from './UndoManager'
+export { InteractionManager } from './InteractionManager'
+export type { InteractionMode, DragState, SelectionBox } from './InteractionManager'

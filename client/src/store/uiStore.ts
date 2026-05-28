@@ -4,7 +4,7 @@
 //  职责：
 //    - 右侧面板宽度 & 拖拽状态
 //    - 主题切换
-//    - 顶部弹窗（余额、ComfyUI、绘图引擎、性能监控）
+//    - 顶部弹窗（余额、绘图引擎、性能监控）
 //    - 图片预览（大图 + 缩放/拖动）
 //    - 历史面板（全屏预览 + 批量选择 + 错误详情）
 //    - 管理弹窗（模板/历史管理 + 内联编辑）
@@ -49,7 +49,6 @@ interface UiState {
   balanceStatus: 'idle' | 'loading' | 'ok' | 'fail'
   balanceMessage: string
   balancePopupOpen: boolean
-  comfyPopupOpen: boolean
   enginePopupOpen: boolean
 
   // 性能监控
@@ -154,7 +153,6 @@ interface UiState {
   setBalanceStatus: (s: 'idle' | 'loading' | 'ok' | 'fail') => void
   setBalanceMessage: (m: string) => void
   setBalancePopupOpen: (v: boolean) => void
-  setComfyPopupOpen: (v: boolean) => void
   setEnginePopupOpen: (v: boolean) => void
 
   // 性能监控
@@ -270,7 +268,6 @@ export const useUiStore = create<UiState>()((set, get) => ({
   balanceStatus: 'idle',
   balanceMessage: '',
   balancePopupOpen: false,
-  comfyPopupOpen: false,
   enginePopupOpen: false,
 
   performanceMonitorOpen: false,
@@ -350,10 +347,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
   setBalanceStatus: s => set({ balanceStatus: s }),
   setBalanceMessage: m => set({ balanceMessage: m }),
   setBalancePopupOpen: v => set({ balancePopupOpen: v }),
-  setComfyPopupOpen: v =>
-    set({ comfyPopupOpen: v, enginePopupOpen: v ? false : get().enginePopupOpen }),
-  setEnginePopupOpen: v =>
-    set({ enginePopupOpen: v, comfyPopupOpen: v ? false : get().comfyPopupOpen }),
+  setEnginePopupOpen: v => set({ enginePopupOpen: v }),
 
   // ── 性能监控 ──────────────────────────────────────────────────────────────
   setPerformanceMonitorOpen: v => {

@@ -23,6 +23,54 @@ import {
   extractImagesOpenAI,
 } from './apiUtils'
 
+// ── 代理 fetch：避免浏览器 CORS 拦截 ──────────────────────
+/**
+ * 外部 API 请求走代理通道：
+ *   Electron 环境 → electronAPI.fetchRequest (主进程代发)
+ *   浏览器/Vite   → /__liang007_proxy_fetch (Vite 中间件)
+ * 返回与 fetch Response 兼容的 { ok, status, text() } 对象
+ */
+async function proxyFetch(
+  url: string,
+  init?: { method?: string; headers?: HeadersInit; body?: string; signal?: AbortSignal },
+): Promise<Response> {
+  const method = init?.method || 'POST'
+  const headers = Object.fromEntries(new Headers(init?.headers || {})) as Record<string, string>
+  const body = init?.body
+
+  // Electron IPC 通道
+  if (window.electronAPI?.fetchRequest) {
+    const result = await window.electronAPI.fetchRequest({ url, method, headers, body, timeout: 600_000 })
+    const respBody = typeof result.body === 'string' ? result.body : JSON.stringify(result.body ?? '')
+    const respHeaders = new Headers()
+    if (result.headers?.['content-type']) respHeaders.set('content-type', result.headers['content-type'])
+    return new Response(respBody, {
+      status: result.status || 0,
+      statusText: result.statusText || '',
+      headers: respHeaders,
+    })
+  }
+
+  // Vite dev proxy 通道
+  if (import.meta.env.DEV) {
+    const proxyResp = await fetch('/__liang007_proxy_fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, method, headers, body, timeout: 600_000 }),
+      signal: init?.signal,
+    })
+    const proxyData = await proxyResp.json()
+    const respBody = typeof proxyData.body === 'string' ? proxyData.body : JSON.stringify(proxyData.body ?? '')
+    return new Response(respBody, {
+      status: proxyData.status || 0,
+      statusText: proxyData.statusText || '',
+    })
+  }
+
+  // 打包后直接 fetch（Electron 主窗口加载本地文件时没有 CORS 问题）
+  return fetch(url, init)
+}
+
 // ── 请求参数类型 ──────────────────────────────────────────
 export type GenerateParams = {
   prompt: string
@@ -52,6 +100,19 @@ const GEMINI_DEFAULT_MODEL = 'gemini-2.0-flash-preview-image-generation'
 const GEMINI_BATCH_CONCURRENCY = 2
 const TRANSIENT_HTTP_STATUS = new Set([408, 429, 500, 502, 503, 504])
 const MAX_TRANSIENT_RETRIES = 2
+
+function normalizeImageModelId(modelId: string, spec: ApiSpec): string {
+  const raw = String(modelId || '').trim()
+  if (!raw) return ''
+
+  // 一些旧配置会把尺寸后缀拼到模型名后面，例如 gemini-xxx-2k。
+  // 这里只在 Gemini 规范下去掉尾部尺寸标记，避免把无效 model id 送到接口。
+  if (spec === 'gemini') {
+    return raw.replace(/-(?:1k|2k|4k)$/i, '')
+  }
+
+  return raw
+}
 
 // ── 工具函数 ──────────────────────────────────────────────
 
@@ -494,7 +555,10 @@ export async function generateImages(params: GenerateParams): Promise<GenerateRe
   const spec = activeInfo.spec
 
   // model 优先用 UI 传入值，回退激活模型 modelId
-  const resolvedModel = params.model?.trim() || activeInfo.model?.modelId?.trim() || ''
+  const resolvedModel = normalizeImageModelId(
+    params.model?.trim() || activeInfo.model?.modelId?.trim() || '',
+    spec,
+  )
 
   const endpoint = buildEndpoint(API_BASE_URL, spec, resolvedModel)
 
@@ -583,7 +647,7 @@ async function doFetchAndParse(
     const timer = setTimeout(() => controller.abort(), 600_000)
 
     try {
-      resp = await fetch(endpoint, {
+      resp = await proxyFetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
@@ -914,7 +978,7 @@ export async function testApiGenerate(
   const timer = setTimeout(() => controller.abort(), 15_000)
 
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await proxyFetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify(testBody),

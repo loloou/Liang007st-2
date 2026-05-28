@@ -11,7 +11,7 @@ const APP_VERSION = rootPkg.version
 
 const ALLOWED_PROXY_METHODS = new Set(['GET', 'POST'])
 const ALLOWED_PROXY_HEADERS = new Set(['accept', 'authorization', 'content-type'])
-const MAX_PROXY_TIMEOUT_MS = 30_000
+const MAX_PROXY_TIMEOUT_MS = 600_000
 
 function isBlockedProxyHostname(hostname: string): boolean {
   const host = hostname.toLowerCase()
@@ -151,6 +151,20 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       host: '127.0.0.1',
       strictPort: true,
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:17438',
+          changeOrigin: true,
+        },
+        '/generate': {
+          target: 'http://127.0.0.1:17438',
+          changeOrigin: true,
+        },
+        '/ws': {
+          target: 'http://127.0.0.1:17438',
+          ws: true,
+        },
+      },
     },
     base: './',
     build: {

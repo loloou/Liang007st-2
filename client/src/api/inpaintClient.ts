@@ -7,7 +7,6 @@ import {
   type ApiSpec,
   type ImageModel,
 } from './settings'
-import type { GeneratedImage } from './imageClient'
 import type { GenerateResult } from './apiUtils'
 import {
   toOpenAISizeString,
@@ -265,6 +264,8 @@ export async function inpaintImage(params: InpaintParams): Promise<GenerateResul
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 600_000)
       try {
+        // Electron 环境：session 级 CORS bypass 已在 main.js 配置，直接 fetch 即可
+        // Vite dev 环境：也直接 fetch，如遇 CORS 可通过 Vite proxy 配置解决
         resp = await fetch(endpoint, {
           method: 'POST',
           headers,

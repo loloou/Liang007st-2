@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
+const InfiniteCanvasServer = require('./services/infiniteCanvasServer');
+const { registerIpcHandlers } = require('./ipcHandlers');
 
 // ── 性能优化：命令行参数（必须在 app.ready 之前设置）────────────────────────
 app.commandLine.appendSwitch('disable-gpu-sandbox');
@@ -12,11 +14,14 @@ app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
 // V8 代码缓存：加速后续启动的 JS 解析
 app.commandLine.appendSwitch('js-flags', '--optimize-for-size');
 
+const isDev = !app.isPackaged;
+
 let mainWindow = null;
+let infiniteCanvasServer = null;
 
 const ALLOWED_PROXY_METHODS = new Set(['GET', 'POST']);
 const ALLOWED_PROXY_HEADERS = new Set(['accept', 'authorization', 'content-type']);
-const MAX_PROXY_TIMEOUT_MS = 30_000;
+const MAX_PROXY_TIMEOUT_MS = 600_000;
 
 function isBlockedProxyHostname(hostname) {
   const host = String(hostname || '').toLowerCase();
@@ -108,13 +113,28 @@ function createWindow() {
     show: false,
   });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  const loadPromise = isDev
-    ? mainWindow.loadURL(devServerUrl)
-    : mainWindow.loadFile(path.join(__dirname, '../client/dist/index.html'));
+  // 开发模式加载 Vite 前端，打包模式加载 client/dist/index.html
+  // INFINITE_CANVAS_URL 只作为后端 API 地址，不作为主窗口页面
+  const localIndex = path.join(__dirname, '..', 'client', 'dist', 'index.html');
+  let loadPromise;
+  if (isDev) {
+    loadPromise = mainWindow.loadURL('http://127.0.0.1:5173');
+  } else if (fs.existsSync(localIndex)) {
+    loadPromise = mainWindow.loadFile(localIndex);
+  } else {
+    // 兜底：加载后端服务的静态页面
+    loadPromise = mainWindow.loadURL(process.env.INFINITE_CANVAS_URL || 'http://127.0.0.1:17438/');
+  }
   loadPromise.catch((err) => {
     console.error('[liang007] 页面加载失败:', err.message);
+  });
+
+  // 页面加载完成后注入 INFINITE_CANVAS_URL 供 InfiniteCanvas 组件使用
+  mainWindow.webContents.on('did-finish-load', () => {
+    const canvasUrl = process.env.INFINITE_CANVAS_URL || '';
+    if (canvasUrl) {
+      mainWindow?.webContents.executeJavaScript(`window.INFINITE_CANVAS_URL = ${JSON.stringify(canvasUrl)};`).catch(() => {});
+    }
   });
 
   // 限时显示：如果 ready-to-show 超过 3 秒还没触发，先显示窗口防止用户以为卡死
@@ -265,11 +285,28 @@ app.whenReady().then(() => {
     }
   });
 
-  createWindow();
+  infiniteCanvasServer = new InfiniteCanvasServer(app.getPath('userData'), mainWindow);
+  infiniteCanvasServer.start(Number(process.env.INFINITE_CANVAS_PORT || 17438)).then(url => {
+    process.env.INFINITE_CANVAS_URL = `${url}/`;
+    createWindow();
+    // 注册所有 IPC handlers（preload.js 暴露的 electronAPI 方法）
+    registerIpcHandlers(mainWindow);
+  }).catch(err => {
+    console.error('[liang007] Infinite-Canvas server 启动失败:', err.message);
+    process.env.INFINITE_CANVAS_URL = '';
+    createWindow();
+    registerIpcHandlers(mainWindow);
+  });
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    if (isDev) {
+      // 开发模式下窗口关闭不退出，保持后端服务运行供 Vite 预览使用
+      console.log('[liang007] 开发模式：窗口已关闭，后端服务继续运行 (端口 17438)');
+      return;
+    }
+    try { infiniteCanvasServer?.dispose(); } catch { /* ignore */ }
     app.quit();
   }
 });

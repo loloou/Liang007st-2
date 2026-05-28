@@ -25,9 +25,11 @@ import {
   setApiSettings,
   getApiConfig,
   resolveApiSpec,
+  syncApiConfigFromProviders,
   type ApiConfig,
   type ChatModel,
   type ImageModel,
+  type ProviderSnapshot,
 } from './api/settings'
 import {
   getResolution,
@@ -49,7 +51,6 @@ import { fetchAllBalances, type MultiBalanceResult } from './api/balance'
 import { getTheme, setTheme, getThemeConfig, type ThemeMode, injectThemeVars } from './utils/theme'
 import { createThumbnail } from './utils/imageUtils'
 import { idbGet, idbSet } from './utils/idb'
-import SettingsDialog from './components/SettingsDialog'
 import ThemeMenu from './components/ThemeMenu'
 import VendorManager from './components/VendorManager'
 import ControlPanel from './components/ControlPanel'
@@ -183,7 +184,8 @@ function App() {
   ])
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null)
   const model = useGenerationStore(s => s.model)
-  const setModel = (v: string) => useGenerationStore.getState().setModel(v)
+  const normalizeImageModelId = (value: string) => String(value || '').trim().replace(/-(?:1k|2k|4k)$/i, '')
+  const setModel = (v: string) => useGenerationStore.getState().setModel(normalizeImageModelId(v))
   const modelList = useGenerationStore(s => s.modelList)
   const setModelList = (v: string[] | ((prev: string[]) => string[])) => {
     const store = useGenerationStore.getState()
@@ -213,7 +215,7 @@ function App() {
   const [modelPickerSearch, setModelPickerSearch] = useState('')
   const [modelPickerCategoryTag, setModelPickerCategoryTag] = useState<string | null>(null)
   const [modelPickerVendorTag, setModelPickerVendorTag] = useState<string | null>(null)
-  // 共享配置草稿（供应商管理、模型选择器等内联弹窗使用，SettingsDialog 有独立副本）
+  // 共享配置草稿（供应商管理、模型选择器等内联弹窗使用）
   const [cfgDraft, setCfgDraft] = useState<ApiConfig>(() => getApiConfig())
   // model-select modal 需要的 settingsForm（后续提取 ModelPicker 时移除）
   const [settingsForm, setSettingsForm] = useState(() => {
@@ -280,6 +282,8 @@ function App() {
   const themeBtnRef = useRef<HTMLButtonElement>(null)
   const perfBtnRef = useRef<HTMLButtonElement>(null)
   const balanceBtnRef = useRef<HTMLButtonElement>(null)
+  const apiSettingsFrameRef = useRef<HTMLIFrameElement>(null)
+  const canvasRef = useRef<import('./components/InfiniteCanvas').InfiniteCanvasHandle>(null)
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
   const [balancePopupOpen, setBalancePopupOpen] = useState(false)
   const [whiteboardOpen, setWhiteboardOpen] = useState(false)
@@ -723,6 +727,41 @@ function App() {
   }, [resolutionPreset, sizeTier, referenceSize])
 
   useEffect(() => {
+    if (!whiteboardOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Ask iframe to save first, then it will post close message
+        canvasRef.current?.requestClose()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [whiteboardOpen])
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    const closeSettings = () => {
+      setSettingsOpen(false)
+      void syncFromProviders.current(false)
+    }
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeSettings()
+    }
+    const messageHandler = (event: MessageEvent) => {
+      if (event.data?.type !== 'api-settings:close') return
+      if (event.origin !== window.location.origin) return
+      if (event.source !== apiSettingsFrameRef.current?.contentWindow) return
+      closeSettings()
+    }
+    window.addEventListener('keydown', keyHandler)
+    window.addEventListener('message', messageHandler)
+    return () => {
+      window.removeEventListener('keydown', keyHandler)
+      window.removeEventListener('message', messageHandler)
+    }
+  }, [settingsOpen])
+
+  useEffect(() => {
     const runningCount = generationSlots.filter(slot => slot.status === 'running').length
     setStatus(runningCount > 0 ? 'running' : 'idle')
   }, [generationSlots])
@@ -879,7 +918,7 @@ function App() {
         batchSize,
         width,
         height,
-        model,
+        model: normalizeImageModelId(model),
         resolutionPreset,
         sizeTier,
       }
@@ -1496,6 +1535,92 @@ function App() {
     injectThemeVars(themeConfig)
   }, [themeConfig])
 
+  // provider 同步状态 toast
+  const [providerSyncToast, setProviderSyncToast] = useState<{
+    type: 'ok' | 'fail'
+    message: string
+    visible: boolean
+  } | null>(null)
+  const providerSyncToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const syncFromProviders = useRef(async (silent = false) => {
+    let providers: ProviderSnapshot[] = []
+    try {
+      const providersResponse: unknown = await fetch('/api/providers').then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      providers = Array.isArray(providersResponse)
+        ? providersResponse
+        : ((providersResponse as { providers?: ProviderSnapshot[] })?.providers ?? [])
+    } catch {
+      // 后端不可用时，尝试从 localStorage 兜底读取
+      try {
+        const raw = localStorage.getItem('liang007_local_providers_v1')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) providers = parsed
+        }
+      } catch { /* ignore */ }
+    }
+    if (providers.length === 0 && !silent) {
+      console.warn('[App] Provider list is empty, skipping sync')
+      return
+    }
+    if (providers.length === 0) return
+    try {
+      const cfg = syncApiConfigFromProviders(providers)
+      const active =
+        cfg.imageModels.find(m => m.id === cfg.activeImageModelId) ?? cfg.imageModels[0]
+      setModelList(cfg.imageModels.map(m => m.modelId).filter(Boolean))
+      setModel(active?.modelId || '')
+      if (!silent) {
+        setProviderSyncToast({
+          type: 'ok',
+          message: `API 配置已同步 (${cfg.imageModels.length} 个图像模型)`,
+          visible: true,
+        })
+        if (providerSyncToastTimer.current) clearTimeout(providerSyncToastTimer.current)
+        providerSyncToastTimer.current = setTimeout(
+          () => setProviderSyncToast(prev => (prev ? { ...prev, visible: false } : null)),
+          3000,
+        )
+      }
+    } catch (err) {
+      console.warn('[App] Failed to sync API providers:', err)
+      if (!silent) {
+        setProviderSyncToast({
+          type: 'fail',
+          message: 'API 配置同步失败，请检查后端是否启动',
+          visible: true,
+        })
+        if (providerSyncToastTimer.current) clearTimeout(providerSyncToastTimer.current)
+        providerSyncToastTimer.current = setTimeout(
+          () => setProviderSyncToast(prev => (prev ? { ...prev, visible: false } : null)),
+          5000,
+        )
+      }
+    }
+  })
+
+  const syncDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    void syncFromProviders.current(true) // 启动时静默同步
+    const channel = new BroadcastChannel('studio-api')
+    channel.onmessage = event => {
+      if (event.data?.type === 'providers-changed') {
+        if (syncDebounceTimer.current) clearTimeout(syncDebounceTimer.current)
+        syncDebounceTimer.current = setTimeout(() => void syncFromProviders.current(false), 300)
+      }
+    }
+    return () => {
+      channel.close()
+      if (providerSyncToastTimer.current) clearTimeout(providerSyncToastTimer.current)
+      if (syncDebounceTimer.current) clearTimeout(syncDebounceTimer.current)
+    }
+  }, [])
+
   // 编辑弹窗拖动调整尺寸已删除（改为内联编辑）
 
   return (
@@ -1533,9 +1658,9 @@ function App() {
           <button
             onClick={() => setSettingsOpen(true)}
             className="glass-button btn-hover-lift rounded-lg px-3 py-1.5 text-xs"
-            aria-label="打开设置"
+            aria-label="打开 API 设置"
           >
-            设置
+            API 设置
           </button>
           <button
             ref={balanceBtnRef}
@@ -1615,7 +1740,13 @@ function App() {
         >
           <button
             className={`btn-hover-lift glass-button rounded-lg px-3 py-1.5 text-xs transition-all ${whiteboardOpen ? 'text-primary-400 ring-1 ring-primary-500/30' : ''}`}
-            onClick={() => setWhiteboardOpen(!whiteboardOpen)}
+            onClick={() => {
+              if (whiteboardOpen) {
+                canvasRef.current?.requestClose()
+              } else {
+                setWhiteboardOpen(true)
+              }
+            }}
             aria-label={whiteboardOpen ? '关闭无限画布' : '打开无限画布'}
           >
             无限画布
@@ -1736,17 +1867,59 @@ function App() {
         onClose={() => setPerformanceMonitorOpen(false)}
       />
 
-      {/* ════════════════════════════════════════════════════════
-           设置弹窗 — 模型接口配置（Chat / Image / 工具）
-      ════════════════════════════════════════════════════════ */}
-      <SettingsDialog
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onSave={(modelIds, activeModelId) => {
-          setModelList(modelIds)
-          setModel(activeModelId)
-        }}
-      />
+      {/* API 设置弹窗 */}
+      {settingsOpen && (
+        <div
+          className="overlay-dark fixed inset-0 z-[9998] flex items-center justify-center p-3"
+          onClick={e => {
+            if (e.target === e.currentTarget) {
+              setSettingsOpen(false)
+              void syncFromProviders.current(false)
+            }
+          }}
+        >
+          <div className="glass-popup relative h-[88vh] w-[88vw] max-w-6xl overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/95 shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-100">API 设置</div>
+                <div className="text-[11px] text-slate-400">
+                  管理 API 平台、模型和密钥，保存后主界面和无限画布同时生效
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsOpen(false)
+                  void syncFromProviders.current(false)
+                }}
+                className="rounded-lg px-2.5 py-1.5 text-sm text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                aria-label="关闭 API 设置"
+              >
+                关闭
+              </button>
+            </div>
+            <iframe
+              ref={apiSettingsFrameRef}
+              title="API Settings"
+              src="/static/api-settings.html?v=2026.05.25.4"
+              className="block h-[calc(88vh-52px)] w-full border-0 bg-white"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Provider 同步状态 toast */}
+      {providerSyncToast?.visible && (
+        <div
+          className={`fixed bottom-6 left-1/2 z-[10010] -translate-x-1/2 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-2xl backdrop-blur-xl transition-all ${
+            providerSyncToast.type === 'ok'
+              ? 'border border-emerald-500/20 bg-emerald-500/15 text-emerald-300'
+              : 'border border-red-500/20 bg-red-500/15 text-red-300'
+          }`}
+        >
+          {providerSyncToast.message}
+        </div>
+      )}
 
       {/* 选择模型弹窗：悬浮模式，固定定位，可超出设置弹窗，支持拖拽缩放 */}
       {modelSelectOpen && (
@@ -3299,17 +3472,23 @@ function App() {
           </div>
         )}
 
-        {/* 无限画布 */}
+        {/* 无限画布 — 全屏覆盖主内容区，保留顶部 header */}
         {whiteboardOpen && (
-          <Suspense
-            fallback={
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0f]">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
-              </div>
-            }
-          >
-            <InfiniteCanvas onClose={() => setWhiteboardOpen(false)} />
-          </Suspense>
+          <div className="fixed inset-0 top-12 z-40 bg-[#0a0a0f]">
+            <Suspense
+              fallback={
+                <div className="flex h-full w-full items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-400 border-t-transparent" />
+                </div>
+              }
+            >
+              <InfiniteCanvas
+                ref={canvasRef}
+                onClose={() => setWhiteboardOpen(false)}
+                generationParams={{ model, resolutionPreset, sizeTier, batchSize, width, height }}
+              />
+            </Suspense>
+          </div>
         )}
 
         {/* ── 模型选择弹窗（获取模型列表后弹出）────────────────────── */}
